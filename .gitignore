@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# claude code runtime
+.claude/context-status.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# BigSeller scraper local session and captured data
+tools/bigseller-scraper/runtime/

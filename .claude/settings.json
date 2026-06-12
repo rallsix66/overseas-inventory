@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)"
+    ],
+    "deny": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node .claude/scripts/context-status.cjs",
+    "padding": 0,
+    "refreshInterval": 10
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/scripts/context-tracker.cjs SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/scripts/context-tracker.cjs UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/scripts/context-tracker.cjs PreCompact"
+          }
+        ]
+      }
+    ]
+  }
+}
