@@ -8,9 +8,7 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 
 ## Current Task
 
-`P5-SY4B` — Migration 00006：事务型海外库存同步 RPC
-
-P5-SY4B 返工完成。Migration 00006（673 行）已修正：`quantity` 严格校验（非 null / JSON number / 严格整数拒绝 bool+float+字符串+超大值 / >= 0）已移至步骤 5b，在所有 Variant/Inventory/Warehouse 写入前完成；SQL 注释测试场景 1 前置条件已修正（WM0074 已有 Inventory qty=21289 → UNCHANGED），可实际验算 inserted=1 / updated=1 / unchanged=1。26/26 纯函数测试通过。禁止执行 Migration、连接 Supabase 执行 SQL 或开始 P5-SY4C。
+`P5-SY5C2` — Sync Feature Module 后端模块：类型补全 + Schema + Repository + SyncService + 依赖工厂 + Server Actions + Mock Provider/Runner（任务包第三次修订完成，待独立复审）
 
 ## Completed Tasks
 
@@ -28,6 +26,14 @@ P5-SY4B 返工完成。Migration 00006（673 行）已修正：`quantity` 严格
 - `P5-SY1` — BigSeller 抓取器只读试跑与首仓字段确认（2026-06-12，独立验收通过）
 - `P5-SY3B` — 菲律宾 Inventory 实际写入与新 SKU 创建（2026-06-12，第四次独立验收通过；91 Variants + 91 Inventory + Warehouse 改名，幂等与执行保护验证通过）
 - `P5-SY4A` — SyncLog 与失败保留机制设计及任务拆分（2026-06-12，第七次独立设计验收通过）
+- `P5-SY4B` — Migration 00006：事务型海外库存同步 RPC（2026-06-13，独立静态验收通过；673 行，26/26 测试，未执行）
+- `P5-SY4C` — Executor 适配 RPC 与 SyncLog 写入（2026-06-13，独立验收通过；156/156 测试通过：76 executor + 26 plan + 44 verifier + 10 structural，未执行 Migration，未发生数据库写入）
+- `P5-SY4D` — 同步失败模式测试覆盖（2026-06-13，独立验收通过；183/183 测试通过：27 sync_log + 76 executor + 26 plan + 44 verifier + 10 structural，全部通过 CLI 严格验证退出码，compileall/lint/build 通过，未连接 Supabase，未执行 Migration）
+- `P5-SY4E` — CLI 集成与 Dry Run 端到端验证（2026-06-13，独立验收通过；修复 plan_drift_check 不再硬编码 PASS，新增 plan_drift_count/differences；193/193 测试通过：10 cli_integration + 27 sync_log + 76 executor + 26 plan + 44 verifier + 10 structural）
+- `P5-SY5` — 手动同步入口架构设计与任务拆分（2026-06-14，V5.4.3 第十一次独立设计验收通过；validateJsonValue ~24 场景，P5-SY5F ~46 场景，仅设计文档未实现代码）
+- `P5-SY5A` — Migration 00007：sync_run 表与同步运行 RPC（2026-06-14，第五次聚焦返工，独立静态验收通过；59/59 静态契约测试；claim FOR UPDATE 竞态修复 + release NULL exit_code 拒绝）
+- `P5-SY5B` — 认证链修复（2026-06-14，独立验收通过；25/25 单元测试；新增 `getCurrentActiveUser()` / `requireActiveAuth()` / `requireActiveAdmin()`，旧函数行为不变）
+- `P5-SY5C` — Sync Feature Module 骨架（2026-06-14，独立验收通过；129/129 测试；validateJsonValue V5.4.3 / ArtifactProvider 接口 / GC orchestrator / SyncRunner 契约 / 类型契约 + expectTypeOf 精确断言）
 
 ## Authentication Status
 
@@ -36,7 +42,7 @@ P5-SY4B 返工完成。Migration 00006（673 行）已修正：`quantity` 严格
 - Supabase Auth（邮箱密码登录）
 - Session 管理（`@supabase/ssr`）
 - `src/middleware.ts` — 路由守卫（未登录 → `/auth/login`）
-- `src/lib/auth.ts` — `getCurrentUser()` / `requireAdmin()` / `requireAuth()`
+- `src/lib/auth.ts` — `getCurrentUser()` / `requireAdmin()` / `requireAuth()` / `getCurrentActiveUser()` / `requireActiveAdmin()` / `requireActiveAuth()`
 - `/auth/login` — 登录页（自定义 UI，中文错误提示）
 - `/auth/callback` — Auth 回调处理
 - Dashboard Header — 用户信息 + 角色标签 + 退出按钮
@@ -90,7 +96,8 @@ P5-SY4B 返工完成。Migration 00006（673 行）已修正：`quantity` 严格
 - ProductVariant 页面开发（`/dashboard/variants`、`/dashboard/variants/unmatched`）— 延期，优先交付海外库存 MVP
 - 8 个现有 lint warnings — 不影响功能，在最终验收时批量修复
 - `middleware.ts` 迁移至 `proxy.ts` — Next.js 16 弃用警告，当前 middleware 仍正常工作
-- `profiles.is_active` 接入认证链 — 当前仅校验角色未校验启用状态
+- `profiles.is_active` 认证函数已新增（P5-SY5B），旧调用方逐步迁移
+- P5-SY5C 已完成（types / validateJsonValue / ArtifactProvider 接口 / GC orchestrator / SyncRunner 接口 / contract.test.ts）。P5-SY5C2 任务包第三次修订完成（第二次复审未通过 → 7 项修正），待独立复审。
 - 库存历史快照（`inventory_snapshots` 表）— V1 使用覆盖更新
 - 自动同步与部署 — 手动执行同步，无 CI/CD
 - 当前使用 Vercel/Next.js 与 Supabase 快速开发；正式部署平台、免费方案和公司内部使用条款待上线前评估
@@ -132,6 +139,33 @@ P5-SY4B 返工完成。Migration 00006（673 行）已修正：`quantity` 严格
 
 | 日期 | 变更 |
 |---|---|
+| 2026-06-14 | P5-SY5 V5.4.1 第九次修订完成：第八次独立设计验收聚焦返工未通过，V5.4.1 覆盖全部 3 项返工要求 — (1) 调整 claim_sync_run 验证顺序：dry_run_run_id PERFORM 验证移至 advisory lock + FOR UPDATE 之后、任何 UPDATE/INSERT 之前，锁保护区内消除 TOCTOU 窗口，更新 SQL 草案和 P5-SY5G 测试；(2) 修复 GC 时间模型：cutoff 直接使用 `now - 7 days`（移除错误的 max()），恢复 getRecentlyCompletedRunIds(now-60min) 双层保护（Layer 1: 7 天存储截止 + Layer 2: 60 分钟业务保护），禁止 artifact.createdAt 推导 sync_run.finished_at（独立时间戳）；(3) 定义 JsonValue 运行时验证器：validateJsonValue() 递归拒绝 undefined/function/Symbol/BigInt/NaN/Infinity/toJSON/自定义原型，prepare() 先验证再 stringify，新增 ~12 项 validateJsonValue 测试和 GC 防误删边界测试。修订 D27 为"GC cutoff 固定为审计保留期 + 双层保护"，新增 D28（validateJsonValue 运行时验证）。仅修改设计和状态文档，未实现代码。等待第九次独立设计验收。 |
+| 2026-06-14 | P5-SY5A Migration 00007 第二次聚焦返工完成：修复 8 项缺陷 — (1) claim_sync_run IS DISTINCT FROM 'admin' 拒绝 NULL role + triggered_by 绑定 auth.uid()；(2) 查询 RPC 脱敏矩阵：禁止 input_artifact_hash/plan_artifact_hash/lease_expires_at/heartbeat_at/原始 triggered_by UUID，Admin 返回 display_name，Operator 返回脱敏邮箱 + controlled result_summary + Chinese 失败摘要；(3) failed_requires_fields 增加 finished_at IS NOT NULL；(4) cleanup 仅遍历过期 in_progress warehouse；(5) sync_log.exit_code 移除 DEFAULT 1 + CHECK (IS NULL OR IN (0,1,2))；(6) release v_pre_wh_id/v_post_wh_id 独立变量 + warehouse lock 行存在校验；(7) get_sync_runs p_limit 显式拒绝 + jsonb_agg ORDER BY；(8) 强化契约测试 32→47 项。未执行 Migration，未连接 Supabase。等待 P5-SY5A 独立静态验收。 |
+| 2026-06-14 | P5-SY5A Migration 00007 第一次聚焦返工完成：补齐 sync_run 5 列（triggered_by/triggered_from/heartbeat_at/result_summary/created_at）；release_sync_run 锁后 SELECT sync_run FOR UPDATE + 终态重校验；get_sync_runs CTE ORDER BY + LIMIT before jsonb_agg；claim_sync_run 全部锁后 clock_timestamp()；sync_log FK/CHECK/DEFAULT 约束；修复 dry_run_run_id SELECT INTO 重复写入。静态 SQL 契约测试 32/32 通过。等待独立静态验收。 |
+| 2026-06-14 | P5-SY5A Migration 00007 第四次聚焦返工完成：修复 5 项缺陷 — (1) release_sync_run 删除 p_finished_at 参数；(2) 全部锁后单次 v_now := clock_timestamp()；(3) completed/failed 统一使用 v_now 写入 finished_at；(4) claim_sync_run dry_run 过期判断 <= 60 分钟（恰好 60 分钟拒绝）；(5) REVOKE/GRANT 签名更新 10→9 参数。强化契约测试 51→54 项。未执行 Migration，未连接 Supabase。等待 P5-SY5A 独立静态验收。 |
+| 2026-06-14 | P5-SY5A Migration 00007 第三次聚焦返工完成：修复 7 项缺陷 — (1) 查询 RPC 邮箱来源 profiles→auth.users（profiles 无 email 字段）；(2) Operator get_sync_run_detail 删除 plan_drift_differences；(3) Operator result_summary 白名单仅含 variantsCreated + inventoryUpdated；(4) get_sync_runs/get_sync_run_detail 新增 warehouse_name (LEFT JOIN warehouse)；(5) heartbeat_sync_run 单次 clock_timestamp() 用于 heartbeat_at + lease_expires_at；(6) 契约测试强化 47→51 项（auth.users.email、branch-level 分支验证、warehouse_name、白名单、heartbeat v_now）；(7) 文档同步。未执行 Migration，未连接 Supabase。等待 P5-SY5A 独立静态验收。 |
+| 2026-06-14 | P5-SY5 V5.4.3 第十一次修订完成：第十次独立设计验收聚焦返工未通过，V5.4.3 覆盖全部 4 项返工要求 — (1) 修复数组验证：仅接受规范数组索引（String(index)===key, index<length）拒绝 "01"/"4294967295"、Object.getPrototypeOf(array) === Array.prototype 拒绝子类、'toJSON' in value 拒绝数组 toJSON；(2) 修复对象验证：Reflect.ownKeys 遍历全部字符串键 + 拒绝不可枚举属性（enumerable===false）+ 使用 descriptor.value 读取值；(3) 修复循环检测：WeakSet try/finally 删除（仅代表递归祖先链），共享引用通过、真正循环拒绝；(4) 新增 ~8 项聚焦测试（非规范索引/不可枚举/Array 子类/数组 toJSON/共享引用/循环祖先链），validateJsonValue ~16→~24 场景，P5-SY5F ~38→~46 场景。仅修改设计和状态文档，未实现代码。等待第十一次独立设计验收。 |
+| 2026-06-14 | P5-SY5 V5.4.2 第十次修订完成：第九次独立设计验收聚焦返工未通过，V5.4.2 覆盖全部 2 项返工要求 — (1) 完善 validateJsonValue 草案：WeakSet 循环引用检测（含路径）、Reflect.ownKeys 明确拒绝 Symbol 键（对象和数组）、拒绝稀疏数组（`!(i in value)` 空洞检测）、拒绝数组额外属性（非数字索引字符串键）、拒绝 accessor/getter 属性（Object.getOwnPropertyDescriptor 检测 descriptor.get/set）、全面禁止 any 类型（使用 unknown/object/Record<string, unknown>）；(2) 清理冲突文档：删除 current-task.md 验收标准中 V5.4 旧 GC 单层截止项和"取代旧安全性证明"引用；修正 p5-sy5-design.md D22 非确定性描述（移除 replacer/Date 仅保留 toJSON，明确 toJSON 在 prepare() 第 1 步由 validateJsonValue 拒绝）；全文检查并删除与 V5.4.1/V5.4.2 冲突的现行结论。仅修改设计和状态文档，未实现代码。等待第十次独立设计验收。 |
+| 2026-06-14 | P5-SY5 V5.4 第八次修订完成：第七次独立设计验收聚焦返工未通过，V5.4 覆盖全部 4 项返工要求 — (1) 绑定 Runner 执行内容：Artifact content 类型限制为严格 JsonValue，prepare() 返回 `{ bytes, hash, normalizedContent }`（normalizedContent = JSON.parse(bytes)），Runner 只能执行 normalizedContent（JsonValue），不得执行原始 object；(2) 原子验证 Real Write 绑定：claim_sync_run 在同一事务内原子验证 dry_run_run_id（warehouse 匹配 + mode=dry_run + status=completed + plan_drift_check=PASS + finished_at < 60 min + hashes 匹配），消除 TOCTOU 窗口；(3) 收紧 GC：GC cutoff 强制 ≥ 审计保留期（7 天），安全性证明（7 天 ≫ 60 分钟），删除 getRecentlyCompletedRunIds；(4) 删除旧 store(content) 契约，同步全部状态文档。新增 D25/D26/D27 设计决策。仅修改设计和状态文档，未实现代码。等待第八次独立设计验收。 |
+| 2026-06-14 | P5-SY5 V5.3 第七次修订完成：第六次独立设计验收聚焦返工未通过，V5.3 覆盖全部 4 项返工要求 — (1) 重做 ArtifactProvider bytes 契约：引入 `prepare(content) → { bytes, hash }` 唯一序列化点，`store()` 改为接受 `PreparedArtifact`，claim/store/verify 使用同一份 bytes；(2) 重做 GC 所有权：ArtifactProvider 不查询 sync_run，`gc()` 替换为 `listCandidates()` + GC orchestrator + `deleteMany()`；(3) 新增 `completed_dry_run_requires_plan_artifact` CHECK，共 11 个 CHECK；(4) 清理支持文档。仅修改设计和状态文档，未实现代码。等待第七次独立设计验收。 |
+| 2026-06-14 | P5-SY5 V5.1 内部修订：修复 cleanup_expired_sync_runs 的 v_failed_count 计数逻辑（从 fragile error_message 文本匹配+时间窗口改为从 expired CTE 直接 `SELECT count(*) INTO v_batch_count`）；修正 P5-SY5A 验收 CHECK 约束计数（6→7）。仅修改设计文档，未实现代码。等待第五次独立设计验收。 |
+| 2026-06-13 | P5-SY5 V5 第五次修订完成：第四次独立设计验收未通过，V5 覆盖全部 4 项返工要求 — 真正统一 claim/release/cleanup 锁顺序（全部按 advisory → FOR UPDATE → sync_run，重写 release/cleanup SQL 草案，删除不符合 PG 可见性的 cleanup 分步交错描述，P5-SY5G 增加 claim-vs-release/claim-vs-cleanup deadlock 验证要求无 deadlock）、修复 artifact 与 runId 生命周期（SyncService 预生成 UUID，`claim_sync_run` 接收 `p_run_id`，hash 基于 canonical JSON 规范化内容，claim 后 store 失败 release 为 failed）、落实终态字段约束（新增 `plan_drift_check_enum`/`plan_drift_count_non_negative`/`failed_requires_fields` CHECK，`completed_requires_fields` 扩展至含 plan_drift_count+plan_drift_differences，release RPC 校验 plan_drift_check 枚举+plan_drift_count 非负，cleanup 设置 exit_code=2 + 返回标记 failed 运行数）、修正文档（删除残留"143"、CLAUDE.md→AGENTS.md、P5-SY5A 严格前向 Migration 不用 IF NOT EXISTS）。`docs/tasks/archive/p5-sy5-design.md`（第五次修订）、`current-task.md`、`phase-5-sync.md` 已同步更新。未实现代码。等待第五次独立设计验收。 |
+| 2026-06-13 | P5-SY5 V4 第四次修订完成：第三次独立设计验收未通过，V4 覆盖全部 5 项返工要求。`docs/tasks/archive/p5-sy5-design.md`（第四次修订）、`current-task.md`、`phase-5-sync.md` 已同步更新。未实现代码。等待第四次独立设计验收。 |
+| 2026-06-13 | P5-SY5 V3 第三次修订完成：第二次独立设计验收未通过，V3 覆盖全部 6 项返工要求。`docs/tasks/archive/p5-sy5-design.md`（第三次修订，约 950 行）、`current-task.md`、`phase-5-sync.md` 已同步更新。未实现代码。等待第三次独立设计验收。 |
+| 2026-06-13 | P5-SY5 V2 第二次修订完成：第一次独立设计验收未通过，V2 覆盖全部 10 项返工要求。`docs/tasks/archive/p5-sy5-design.md`（第二次修订，约 650 行）。未实现代码。等待第二次独立设计验收。 |
+| 2026-06-13 | P5-SY5 架构设计完成：`docs/tasks/archive/p5-sy5-design.md` 覆盖 10 项设计要点（用户/权限/调用链/凭据隔离/SyncRunner 接口/并发锁/确认流程/sync_log 展示），拆分 P5-SY5A~F 共 6 个子任务。未实现代码。等待独立设计验收。 |
+| 2026-06-13 | P5-SY4E 独立验收通过。P5-SY5 开始：手动同步入口架构设计与任务拆分。暂不实现代码。 |
+| 2026-06-13 | P5-SY4E 第一次返工完成：修复 plan_drift_check 不再硬编码 PASS — diffs 为空→PASS，非空→DRIFT_DETECTED；新增 plan_drift_count 和 plan_drift_differences 字段；新增 2 项漂移真实性测试。193/193 测试通过（10 cli_integration + 27 sync_log + 76 executor + 26 plan + 44 verifier + 10 structural），compileall/lint/build 通过。真实 Dry Run 报告路径 `tools/bigseller-scraper/runtime/p5-sy3b-dry-run-20260613-145329.json`，plan_drift_check=DRIFT_DETECTED，plan_drift_count=6。 |
+| 2026-06-13 | P5-SY4E 完成：CLI --dry-run/--no-dry-run 互斥组 + 报告 sync_log 摘要 + 8 项聚焦测试 + 真实只读 Dry Run exit 0 无写入。191/191 测试通过（8 cli_integration + 27 sync_log + 76 executor + 26 plan + 44 verifier + 10 structural），compileall/lint/build 通过。报告路径 `tools/bigseller-scraper/runtime/p5-sy3b-dry-run-20260613-143813.json`，sync_log.enabled=True, written=False, reason="Dry Run 模式下不执行实际写入"。等待独立验收。 |
+| 2026-06-13 | P5-SY4D 独立验收通过。P5-SY4E 开始：CLI 显式 --dry-run 标志 + sync_log 报告摘要 + 真实只读 Dry Run 端到端验证 + 聚焦测试。 |
+| 2026-06-13 | P5-SY4D 最终收尾完成：场景 17 新增文件 I/O（os.path.isfile/builtins.open/json.load）和 Supabase 网关（fetch_ph_warehouse/fetch_ph_variants/fetch_inventory_by_warehouse）NOT-called 断言，完整验证拒绝发生在参数解析后、所有外部依赖调用前。183/183 测试通过，compileall/lint/build 通过。未连接 Supabase，未执行 Migration。 |
+| 2026-06-13 | P5-SY4D 第二次返工完成：场景 17 使用完整 Mock 链 + stdout 捕获严格断言禁止消息 + 所有后续操作均未调用；场景 18 Dry Run Mock 链新增 RPC/Phase G/Phase I/SyncLog/fallback mocks 并严格断言均未调用。27/27 测试通过 + 全部现有测试通过（183/183 total），compileall 通过，lint 0 errors 8 warnings，build 通过。未连接 Supabase，未执行 Migration。等待独立验收。 |
+| 2026-06-13 | P5-SY4D 第一次返工完成：全部 27 场景重写为通过 `cli_execute.main()` 严格验证退出码 0/1/2。s18 完整 Mock Dry Run CLI 流程 → SystemExit.code == 0，删除 `except Exception: pass`。s02–s12/s16/s19/s23/s24 断言 RPC 恰好 1 次 + Phase G/I 审计未调用 + failed SyncLog + fallback 未调用。s14 CLI exit 2，s15 CLI exit 1。s21/s22 断言 RPC/审计/SyncLog/fallback 均未调用。183/183 测试通过，compileall/lint/build 通过。未连接 Supabase，未执行 Migration。等待独立验收。 |
+| 2026-06-13 | P5-SY4D 开始：P5-SY4C 独立验收通过。新建 test_sync_log.py Mock 覆盖 24 场景。禁止连接 Supabase 或执行 Migration。 |
+| 2026-06-13 | P5-SY4C 第六次返工完成：4 项修复 — (1) _write_sync_log 成功响应身份校验增强：warehouse_id 必须严格等于请求 warehouse_id；id/status/warehouse_id 必须为非空字符串（拒绝数字/布尔）；list 响应必须恰好包含 1 条记录；非法响应重试 1 次后进入 fallback/exit 路径 (2) 新增 4 项聚焦测试（warehouse_id 不匹配、id 为数字、warehouse_id 为数字、list 多条记录） (3) 修复 2 项旧测试断言适配新校验消息。156/156 测试通过（76 executor + 26 plan + 44 verifier + 10 structural），compileall 通过，lint 0 errors 8 warnings，build 通过。禁止执行 Migration 或数据库写入。等待独立验收。 |
+| 2026-06-13 | P5-SY4C 第五次返工完成：7 项修复 — (1) RPC/摘要校验/审计失败时若 sync_log+fallback 双失败，向 stderr 输出明确警告（含 sync_log 错误和 fallback 错误原因），保持原始业务错误为主错误 (2) _write_sync_log 成功响应严格校验：拒绝对空 dict {}/[{}]、要求非空 id/status/warehouse_id、status 必须与请求 status 一致 (3) 新增 7 项聚焦测试（{} 拒绝、[{}] 拒绝、status 不匹配、缺 id、缺 warehouse_id、RPC 失败双失败 stderr 捕获、审计失败双失败 stderr 捕获）。152/152 测试通过（72 executor + 26 plan + 44 verifier + 10 structural），compileall 通过，lint 0 errors 8 warnings，build 通过。禁止执行 Migration 或数据库写入。等待独立验收。 |
+| 2026-06-13 | P5-SY4C 第四次返工完成：5 项修复 — (1) _write_sync_log 严格拒绝 list 首元素非 dict（[null]/[string]/[number]） (2) _save_fallback_log 自身异常保护：4 个调用点全部 try/except，原始 RPC/审计主错误不丢失，CLI exit 2 不再依赖 fallback_path (3) 新增 6 项聚焦测试 (4) eslint globalIgnores 加入 .pytest_cache (5) 文档同步。145/145 测试通过（65 executor + 26 plan + 44 verifier + 10 structural），compileall 通过，lint 0 errors，build 通过。禁止执行 Migration 或数据库写入。等待独立验收。 |
+| 2026-06-13 | P5-SY4B 独立静态验收通过：Migration 00006（673 行）`quantity` 严格校验移至步骤 5b + 测试场景 1 前置条件修正 + 新增场景 16b。26/26 测试通过，未执行 Migration。 |
 | 2026-06-12 | P5-SY4B 返工完成：`quantity` 严格校验（4 层：非 null / JSON number / 严格整数 / >= 0）移至步骤 5b（所有 Variant/Inventory/Warehouse 写入前），步骤 8 复用已校验 quantity；SQL 注释测试场景 1 修正 WM0074 前置条件（已有 Inventory qty=21289 → UNCHANGED），可实际验算 inserted=1 / updated=1 / unchanged=1；新增场景 16b（5 子场景覆盖非严格整数）。673 行，26/26 测试通过。未执行 Migration，未发生数据库写入。等待独立验收。 |
 | 2026-06-12 | P5-SY4B 第一次独立验收未通过：`quantity` 严格校验仍位于 Variant INSERT 之后，不符合关键输入校验先于全部业务写入的验收条件；SQL 注释测试场景 1 的前置条件实际产生 2 个 Inventory INSERT，与预期 `inserted=1 / unchanged=1` 冲突。26/26 纯函数测试通过；未执行 Migration，未发生数据库写入。 |
 | 2026-06-12 | P5-SY4B Migration 00006 创建完成：`supabase/migrations/00006_sync_warehouse_inventory.sql`（642 行）— 完整 13 步事务 RPC（统一快照时间解析与全量一致性校验在所有业务写入前完成）+ SECURITY INVOKER + SET search_path = '' + 所有对象 public. 限定 + REVOKE/GRANT 权限收口 + 23 个注释形式 SQL 测试场景。26/26 纯函数测试通过。未执行 Migration，未发生数据库写入。等待独立验收。 |
@@ -186,11 +220,11 @@ P5-SY4B 返工完成。Migration 00006（673 行）已修正：`quantity` 严格
 
 ## Current Build Status
 
-✅ 通过 — `npm run lint`（0 errors, 8 pre-existing warnings）+ `npm run build` 均通过；P5-SY3B 当前 25 plan + 14 executor + 44 verifier = 83 项测试通过（2026-06-12）
+✅ 通过 — `npm run lint`（0 errors, 8 pre-existing warnings）+ `npm run build` + `npm run test`（129/129）均通过；P5-SY5C 独立验收通过，P5-SY5C2 任务包第三次修订完成待独立复审。
 
 ## Known Limitations
 
-- `profiles.is_active` 尚未接入认证与权限校验链 — 当前仅校验角色（admin/operator），未校验账户启用状态。后续 Phase 需在 `getCurrentUser()` / `requireAuth()` 中补充。
+- `profiles.is_active` 认证函数已新增（P5-SY5B）— 旧调用方不受影响，后续任务逐步迁移。
 - `middleware.ts` 尚未迁移为 Next.js 16 的 `proxy.ts`
 
 ## Current Database Migration
@@ -203,11 +237,12 @@ P5-SY4B 返工完成。Migration 00006（673 行）已修正：`quantity` 严格
 
 ## Current Blockers
 
-- P5-SY4B Migration 00006 返工完成，等待独立验收。通过前禁止执行 Migration、开始 P5-SY4C 或发生真实数据库写入。
+无阻塞项。P5-SY5C2 任务包第三次修订完成，待独立复审。
 
 ## Next Step
 
-等待 P5-SY4B 独立验收（返工后）。通过后执行 P5-SY4C（Executor 适配 RPC 与 sync_log 写入）。禁止在验收通过前执行 Migration 或开始 P5-SY4C。
+等待 P5-SY5C2 任务包独立复审。复审通过后开始实现。
+禁止直接进入 P5-SY5D/E 或开始实现代码。
 
 ## P5-SY3A Dry Run 结果摘要（返工后）
 
@@ -560,13 +595,22 @@ BigSeller 实际 VXE 结构：
 
 ## Current Task References
 
-当前 P5-SY4B 按需读取：
+当前 P5-SY5C2 按需读取：
 
 - `docs/tasks/current-task.md`：当前唯一执行范围、验收与停止条件
-- `docs/tasks/archive/p5-sy4a-design-review.md`：事务 RPC 完整设计与历次独立审查记录
+- `src/features/sync/types.ts`：JsonValue / PreparedArtifact / Artifact / ArtifactCandidate / SyncRunner 类型
+- `src/features/sync/validate-json-value.ts`：validateJsonValue V5.4.3 运行时验证器
+- `src/features/sync/artifact-provider.ts`：ArtifactProvider 接口契约
+- `src/features/sync/gc-orchestrator.ts`：GC orchestrator 纯函数
+- `src/features/sync/sync-runner.ts`：SyncRunner 接口
+- `src/lib/auth.ts`：`getCurrentActiveUser()` / `requireActiveAuth()` / `requireActiveAdmin()`
+- `src/features/sync/schema.ts`：Zod 参数校验（本 Task 创建）
+- `src/features/sync/repository.ts`：Repository 接口 + Mock 实现（本 Task 创建）
+- `src/features/sync/sync-service.ts`：SyncService 编排（本 Task 创建）
+- `src/features/sync/actions.ts`：Server Actions（本 Task 创建）
+- `docs/tasks/archive/p5-sy5-design.md`：手动同步入口完整架构设计（V5.4.3）
 - `docs/tasks/phase-5-sync.md`：海外库存同步任务顺序
-- `docs/database-design.md`：数据库与 Migration 约束
 
 ## Last Updated
 
-2026-06-12（P5-SY4B 返工完成，等待独立验收）
+2026-06-14（P5-SY5C 独立验收通过，129/129 测试；P5-SY5C2 任务包第三次修订完成待独立复审）

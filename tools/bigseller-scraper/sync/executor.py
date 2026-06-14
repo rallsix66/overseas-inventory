@@ -1,20 +1,28 @@
-"""P5-SY3B 执行器 — 幂等 Variant 创建 + Inventory UPSERT + Warehouse 改名。
+"""P5-SY3B/P5-SY4C 执行器 — 幂等 Variant 创建 + Inventory UPSERT + Warehouse 改名 + SyncLog。
 
-使用 Supabase REST API + service_role key。
-所有写入操作设计为可安全重跑（幂等）：
-- ProductVariant: 按 (sku, country) 唯一约束，已存在则跳过，禁止覆盖 product_id/match_status
-- Inventory: 按 (variant_id, warehouse_id) 唯一约束 UPSERT，更新 quantity/last_sync_at
-- Warehouse: 仅按名称/id 精确 UPDATE
+P5-SY3B (execute_plan):
+  使用 Supabase REST API + service_role key。
+  所有写入操作设计为可安全重跑（幂等）：
+  - ProductVariant: 按 (sku, country) 唯一约束，已存在则跳过，禁止覆盖 product_id/match_status
+  - Inventory: 按 (variant_id, warehouse_id) 唯一约束 UPSERT，更新 quantity/last_sync_at
+  - Warehouse: 仅按名称/id 精确 UPDATE
+
+P5-SY4C (execute_plan_v2):
+  使用 sync_warehouse_inventory RPC 单次事务写入替代分批 REST 请求。
+  RPC 成功后执行 Phase G/I 只读二次审计，审计通过后记录 sync_log。
+  失败时分类记录 sync_log（failed/network_timeout_unknown）及 fallback 日志。
 
 禁止：
-- 覆盖已匹配 Variant 的 product_id / match_status
-- 创建新 Warehouse
-- 写 sync_log
+  - 覆盖已匹配 Variant 的 product_id / match_status
+  - 创建新 Warehouse
+  - P5-SY3B 写 sync_log（仅 P5-SY4C 写入）
 """
 import json
+import os
 import urllib.request
 import urllib.error
 import ssl
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -645,6 +653,880 @@ def classify_variants(
                 'match_status': 'unmatched',
             })
     return to_create, skipped
+
+
+# =========================================================================
+# P5-SY4C: RPC 适配与 SyncLog 写入
+# =========================================================================
+
+def _build_rpc_payload(plan: dict, last_sync_at: str) -> tuple:
+    """纯函数：从 generated_plan 构建 sync_warehouse_inventory RPC 参数。
+
+    p_variants 仅含 new_variants 的 sku、country、name。
+    p_inventory 合并 inventory_updates、inventory_inserts、
+    inventory_after_variant_create、inventory_unchanged（完整库存快照）。
+    所有条目使用同一个 last_sync_at。
+
+    严格 quantity 校验：仅接受 type is int 且 >= 0；
+    拒绝 bool（int 子类）、float、字符串、None。
+    校验在所有数据转换前完成，禁止先 int() 再校验。
+
+    Args:
+        plan: generate_plan() 返回的写入计划 dict
+        last_sync_at: 统一快照时间（ISO 8601 timestamptz 格式）
+
+    Returns:
+        (warehouse_id: str, p_variants: list, p_inventory: list, p_warehouse_name: str)
+
+    Raises:
+        RuntimeError: 空快照、重复业务键、无效 quantity、空 SKU/country/name、
+                      新 Variant 缺少对应 Inventory、缺少 warehouse_id
+    """
+    from .config import WAREHOUSE_COUNTRY
+
+    rename = plan.get('warehouse_rename_required') or {}
+    warehouse_id = rename.get('warehouse_id')
+    if not warehouse_id:
+        raise RuntimeError(
+            'plan 缺少 warehouse_id（warehouse_rename_required.warehouse_id）'
+        )
+
+    p_warehouse_name = rename.get('target_name') or TARGET_WAREHOUSE_NAME
+    if not p_warehouse_name:
+        raise RuntimeError('plan 缺少目标 Warehouse 名称')
+
+    new_variants = plan.get('new_variants', [])
+    p_variants = []
+    seen_variant_keys = set()
+
+    for nv in new_variants:
+        sku = nv.get('sku')
+        country = nv.get('country', WAREHOUSE_COUNTRY)
+        name = (nv.get('name') or '').strip()
+
+        if not sku or not sku.strip():
+            raise RuntimeError('新 Variant 的 SKU 不能为空')
+        if not country or not country.strip():
+            raise RuntimeError(
+                f'新 Variant 的 country 不能为空: sku={sku}'
+            )
+        if not name:
+            raise RuntimeError(
+                f'新 Variant 的 name 不能为空: sku={sku}'
+            )
+
+        sku = sku.strip()
+        country = country.strip()
+
+        key = (sku, country)
+        if key in seen_variant_keys:
+            raise RuntimeError(
+                f'p_variants 含重复 (sku,country) 业务键: '
+                f'sku={sku}, country={country}'
+            )
+        seen_variant_keys.add(key)
+
+        p_variants.append({
+            'sku': sku,
+            'country': country,
+            'name': name,
+        })
+
+    updates = plan.get('inventory_updates', [])
+    inserts = plan.get('inventory_inserts', [])
+    after_create = plan.get('inventory_after_variant_create', [])
+    unchanged = plan.get('inventory_unchanged', [])
+
+    p_inventory = []
+    seen_inv_keys = set()
+
+    def _validate_quantity(raw_qty, sku: str, category: str):
+        """严格校验 quantity：仅接受 type is int 且 >= 0。
+        拒绝 bool（int 子类）、float、字符串、None。
+        必须在任何数据转换前调用。
+        """
+        if raw_qty is None:
+            raise RuntimeError(
+                f'quantity 不能为 None: sku={sku}, category={category}'
+            )
+        if type(raw_qty) is bool:
+            raise RuntimeError(
+                f'quantity 不能为布尔值: sku={sku}, category={category}, 值={raw_qty}'
+            )
+        if type(raw_qty) is not int:
+            raise RuntimeError(
+                f'quantity 必须为 int 类型（拒绝 {type(raw_qty).__name__}）: '
+                f'sku={sku}, category={category}, 值={raw_qty!r}'
+            )
+        if raw_qty < 0:
+            raise RuntimeError(
+                f'quantity 不能为负数: sku={sku}, category={category}, quantity={raw_qty}'
+            )
+        return raw_qty
+
+    def _add_inventory_item(sku: str, country: str, qty: int):
+        """添加一条 Inventory 条目，含重复业务键检测。"""
+        nonlocal p_inventory, seen_inv_keys
+        key = (sku, country)
+        if key in seen_inv_keys:
+            raise RuntimeError(
+                f'p_inventory 含重复 (sku,country) 业务键: '
+                f'sku={sku}, country={country}'
+            )
+        seen_inv_keys.add(key)
+        p_inventory.append({
+            'sku': sku,
+            'country': country,
+            'quantity': qty,
+            'last_sync_at': last_sync_at,
+        })
+
+    # 处理 updates / inserts / after_create（使用 new_quantity 字段）
+    for cat_name, cat_items in [
+        ('inventory_updates', updates),
+        ('inventory_inserts', inserts),
+        ('inventory_after_variant_create', after_create),
+    ]:
+        for item in cat_items:
+            sku = item.get('sku', '')
+            country = item.get('country', WAREHOUSE_COUNTRY)
+
+            if not sku or not sku.strip():
+                raise RuntimeError(
+                    f'Inventory SKU 不能为空: category={cat_name}'
+                )
+            if not country or not country.strip():
+                raise RuntimeError(
+                    f'Inventory country 不能为空: sku={sku}, category={cat_name}'
+                )
+
+            sku = sku.strip()
+            country = country.strip()
+            raw_qty = item.get('new_quantity')
+            qty = _validate_quantity(raw_qty, sku, cat_name)
+            _add_inventory_item(sku, country, qty)
+
+    # 处理 unchanged（使用 quantity 字段）
+    for item in unchanged:
+        sku = item.get('sku', '')
+        country = item.get('country', WAREHOUSE_COUNTRY)
+
+        if not sku or not sku.strip():
+            raise RuntimeError('Inventory SKU 不能为空: category=inventory_unchanged')
+        if not country or not country.strip():
+            raise RuntimeError(
+                f'Inventory country 不能为空: sku={sku}, category=inventory_unchanged'
+            )
+
+        sku = sku.strip()
+        country = country.strip()
+        raw_qty = item.get('quantity')
+        qty = _validate_quantity(raw_qty, sku, 'inventory_unchanged')
+        _add_inventory_item(sku, country, qty)
+
+    if not p_inventory:
+        raise RuntimeError(
+            'p_inventory 不能为空快照（无 updates/inserts/after_variant_create/unchanged）'
+        )
+
+    # 新 Variant-Inventory 关联完整性校验：
+    # 每个 p_variants 的 (sku,country) 必须存在于 p_inventory
+    for nv in p_variants:
+        key = (nv['sku'], nv['country'])
+        if key not in seen_inv_keys:
+            raise RuntimeError(
+                f'新 Variant 缺少对应 Inventory: '
+                f'sku={nv["sku"]}, country={nv["country"]}'
+            )
+
+    return warehouse_id, p_variants, p_inventory, p_warehouse_name
+
+
+def _call_sync_rpc(
+    warehouse_id: str,
+    p_variants: list,
+    p_inventory: list,
+    p_warehouse_name: str,
+) -> dict:
+    """调用 sync_warehouse_inventory RPC。
+
+    通过 Supabase REST API POST /rpc/sync_warehouse_inventory。
+    仅发送一次请求，不自动重试。
+    网络超时分类为 network_timeout_unknown。
+
+    Args:
+        warehouse_id: 目标 Warehouse UUID
+        p_variants: [{sku, country, name}] 新 Variant 列表
+        p_inventory: [{sku, country, quantity, last_sync_at}] 完整库存快照
+        p_warehouse_name: 目标 Warehouse 名称
+
+    Returns:
+        RPC 返回的摘要 dict，含 variants_created / inventory_received /
+        inventory_inserted / inventory_updated / inventory_unchanged /
+        warehouse_renamed
+
+    Raises:
+        RuntimeError: RPC 业务错误（含 PostgreSQL 错误信息）
+        RuntimeError: 网络超时（错误消息包含 network_timeout_unknown）
+    """
+    url = f'{_SUPABASE_URL}/rest/v1/rpc/sync_warehouse_inventory'
+    body = json.dumps({
+        'p_warehouse_id': warehouse_id,
+        'p_variants': p_variants,
+        'p_inventory': p_inventory,
+        'p_warehouse_name': p_warehouse_name,
+    }).encode('utf-8')
+
+    req = urllib.request.Request(url, data=body, method='POST')
+    req.add_header('apikey', _SERVICE_KEY)
+    req.add_header('Authorization', f'Bearer {_SERVICE_KEY}')
+    req.add_header('Content-Type', 'application/json')
+    req.add_header('Accept', 'application/json')
+
+    ctx = ssl.create_default_context()
+
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=120) as resp:
+            resp_body = resp.read().decode('utf-8')
+            if resp_body.strip():
+                data = json.loads(resp_body)
+                if isinstance(data, dict):
+                    return data
+                if isinstance(data, list) and len(data) > 0:
+                    return data[0]
+            return {}
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode('utf-8', errors='replace')
+        raise RuntimeError(
+            f'Supabase RPC 错误 ({e.code}): {e.url}\n{body_text[:1000]}'
+        ) from None
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f'Supabase RPC 返回非法 JSON（RPC 已执行，提交状态未知）: {e}\n'
+            f'必须只读查询核对数据库状态后再决定是否重试'
+        ) from None
+    except UnicodeDecodeError as e:
+        raise RuntimeError(
+            f'Supabase RPC 返回非法 UTF-8（RPC 已执行，提交状态未知）: {e}\n'
+            f'必须只读查询核对数据库状态后再决定是否重试\n'
+            f'禁止自动重试 RPC 写请求'
+        ) from None
+    except (urllib.error.URLError, OSError, ConnectionResetError) as e:
+        raise RuntimeError(
+            f'network_timeout_unknown: RPC 网络错误（未重试，仅发送一次请求）\n'
+            f'原始错误: {e}\n'
+            f'结果未知: 网络在 RPC 响应前断开，数据库侧事务状态不确定\n'
+            f'（可能已提交、可能已回滚、可能仍在执行）。\n'
+            f'恢复指引:\n'
+            f'  1. 检查网络连接和 Supabase 服务状态\n'
+            f'  2. 确认 .env.local 中 NEXT_PUBLIC_SUPABASE_URL 正确\n'
+            f'  3. 必须先只读查询核对当前 Variant、Inventory、Warehouse 状态\n'
+            f'  4. 确认数据库无残留写入或部分变更后再决定是否重试\n'
+            f'分类: network_timeout_unknown'
+        ) from None
+
+
+def _write_sync_log(
+    warehouse_id: str,
+    status: str,
+    new_variants_count: int,
+    error_message: str | None,
+    started_at: str,
+    finished_at: str,
+) -> dict:
+    """写入 sync_log 记录。
+
+    使用 service_role key，不经过 RLS。
+
+    Args:
+        warehouse_id: 仓库 UUID
+        status: 'success' 或 'failed'
+        new_variants_count: 新建 Variant 数量
+        error_message: 错误信息（success 时为 None）
+        started_at: 同步开始时间（ISO 8601）
+        finished_at: 同步结束时间（ISO 8601）
+
+    Returns:
+        创建的 sync_log 记录 dict
+
+    Raises:
+        RuntimeError: sync_log 写入失败
+    """
+    if status not in ('success', 'failed'):
+        raise RuntimeError(
+            f'sync_log status 必须为 success 或 failed，实际: {status}'
+        )
+
+    if new_variants_count < 0:
+        raise RuntimeError(
+            f'new_variants_count 不能为负数: {new_variants_count}'
+        )
+
+    url = f'{_BASE}/sync_log'
+    body_data = {
+        'warehouse_id': warehouse_id,
+        'status': status,
+        'new_variants_count': new_variants_count,
+        'error_message': error_message,
+        'started_at': started_at,
+        'finished_at': finished_at,
+    }
+    data_bytes = json.dumps(body_data).encode('utf-8')
+
+    def _attempt_write():
+        req = urllib.request.Request(url, data=data_bytes, method='POST')
+        req.add_header('apikey', _SERVICE_KEY)
+        req.add_header('Authorization', f'Bearer {_SERVICE_KEY}')
+        req.add_header('Content-Type', 'application/json')
+        req.add_header('Prefer', 'return=representation')
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            resp_body = resp.read().decode('utf-8')
+            if not resp_body.strip():
+                raise RuntimeError('sync_log 返回空响应')
+            resp_data = json.loads(resp_body)
+            if isinstance(resp_data, list):
+                if len(resp_data) == 0:
+                    raise RuntimeError('sync_log 返回空列表 []')
+                if len(resp_data) != 1:
+                    raise RuntimeError(
+                        f'sync_log list 响应必须恰好包含 1 条记录，'
+                        f'实际: {len(resp_data)} 条'
+                    )
+                record = resp_data[0]
+            elif isinstance(resp_data, dict):
+                record = resp_data
+            else:
+                raise RuntimeError(
+                    f'sync_log 返回非预期 JSON 结构（期望 list 或 dict，'
+                    f'实际: {type(resp_data).__name__}）'
+                )
+
+            if not isinstance(record, dict):
+                raise RuntimeError(
+                    f'sync_log 返回非预期结构: 记录必须为 dict，'
+                    f'实际: {type(record).__name__}（值={record!r}）'
+                )
+
+            # 拒绝空 dict {}
+            if not record:
+                raise RuntimeError('sync_log 返回空对象 {}')
+
+            # 必需字段为非空字符串（拒绝数字、布尔、空字符串等）
+            for field in ('id', 'status', 'warehouse_id'):
+                val = record.get(field)
+                if type(val) is not str or not val:
+                    raise RuntimeError(
+                        f'sync_log 记录字段 {field} 必须为非空字符串，'
+                        f'实际类型: {type(val).__name__}, 值: {val!r}'
+                    )
+
+            # status 必须与请求一致
+            if record.get('status') != status:
+                raise RuntimeError(
+                    f'sync_log 记录 status 不匹配: '
+                    f'期望 {status!r}, 实际 {record.get("status")!r}'
+                )
+
+            # warehouse_id 必须与请求一致
+            if record.get('warehouse_id') != warehouse_id:
+                raise RuntimeError(
+                    f'sync_log 记录 warehouse_id 不匹配: '
+                    f'期望 {warehouse_id!r}, 实际 {record.get("warehouse_id")!r}'
+                )
+
+            return record
+
+    first_error = None
+    for attempt in range(2):
+        try:
+            return _attempt_write()
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError,
+                json.JSONDecodeError, UnicodeDecodeError, RuntimeError) as e:
+            first_error = e
+            if attempt == 0:
+                time.sleep(1.0)
+                continue
+
+    # 两次均失败 → 抛出异常，由调用方保存 fallback
+    if isinstance(first_error, urllib.error.HTTPError):
+        body_text = first_error.read().decode('utf-8', errors='replace')
+        raise RuntimeError(
+            f'sync_log 写入失败（重试 1 次后仍失败，HTTP {first_error.code}）: '
+            f'{first_error.url}\n{body_text[:500]}'
+        ) from None
+    if isinstance(first_error, (json.JSONDecodeError, UnicodeDecodeError)):
+        raise RuntimeError(
+            f'sync_log 写入失败（重试 1 次后仍失败，响应解析错误）: '
+            f'{type(first_error).__name__}: {first_error}'
+        ) from None
+    if isinstance(first_error, RuntimeError):
+        raise first_error
+    raise RuntimeError(
+        f'sync_log 写入网络错误（重试 1 次后仍失败）: {first_error}'
+    ) from None
+
+
+def _save_fallback_log(sync_log_data: dict, output_dir: str) -> str:
+    """sync_log 写入失败时保存本地 fallback JSON。
+
+    Args:
+        sync_log_data: sync_log 记录 dict（含 warehouse_id/status/error_message 等）
+        output_dir: 输出目录路径
+
+    Returns:
+        保存的 fallback 文件路径
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    filename = f'fallback-sync-log-{timestamp}.json'
+    filepath = os.path.join(output_dir, filename)
+
+    fallback = {
+        'type': 'fallback_sync_log',
+        'generated_at': datetime.now().astimezone().isoformat(timespec='seconds'),
+        'sync_log_data': sync_log_data,
+    }
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(fallback, f, ensure_ascii=False, indent=2)
+
+    return filepath
+
+
+def execute_plan_v2(
+    plan: dict,
+    *,
+    sync_log_enabled: bool = True,
+    last_sync_at: str | None = None,
+    fallback_dir: str | None = None,
+) -> dict:
+    """使用 sync_warehouse_inventory RPC 执行写入计划。
+
+    一次 RPC 调用完成 Variant 创建、Inventory 三向写入与 Warehouse 改名。
+    RPC 成功后执行 Phase G/I 只读二次审计，审计通过后记录 sync_log。
+
+    Args:
+        plan: generate_plan() 返回的写入计划
+        sync_log_enabled: 是否写入 sync_log（非 Dry Run 必须为 True）
+        last_sync_at: 统一快照时间，默认使用当前时间
+        fallback_dir: fallback log 输出目录，默认使用 runtime 目录
+
+    Returns:
+        执行报告 dict:
+        {
+            'started_at': str,
+            'finished_at': str,
+            'warehouse_id': str,
+            'rpc_summary': dict,
+            'phase_g_verified': bool,
+            'phase_i_verified': bool,
+            'sync_log_written': bool,
+            'sync_log_fallback_path': str | None,
+            'errors': list,
+        }
+
+    Raises:
+        RuntimeError: RPC 业务错误或网络超时
+    """
+    if last_sync_at is None:
+        last_sync_at = datetime.now().astimezone().isoformat(timespec='seconds')
+
+    if fallback_dir is None:
+        project_root = Path(__file__).resolve().parents[3]
+        fallback_dir = os.path.join(
+            project_root, 'tools', 'bigseller-scraper', 'runtime'
+        )
+
+    # 提取 warehouse_id
+    rename = plan.get('warehouse_rename_required') or {}
+    warehouse_id = rename.get('warehouse_id')
+    if not warehouse_id:
+        raise RuntimeError('plan 缺少 warehouse_id（warehouse_rename_required.warehouse_id）')
+
+    new_variants_plan = plan.get('new_variants', [])
+    new_variants_count = len(new_variants_plan)
+
+    result = {
+        'started_at': datetime.now().astimezone().isoformat(timespec='seconds'),
+        'finished_at': None,
+        'warehouse_id': warehouse_id,
+        'rpc_summary': None,
+        'phase_g_verified': False,
+        'phase_i_verified': False,
+        'sync_log_written': False,
+        'sync_log_fallback_path': None,
+        'sync_log_enabled': sync_log_enabled,
+        'errors': [],
+    }
+
+    # =====================================================================
+    # 1. 构建 RPC 参数
+    # =====================================================================
+    wh_id, p_variants, p_inventory, p_wh_name = _build_rpc_payload(
+        plan, last_sync_at
+    )
+    print(f'[execute_plan_v2] RPC 参数已构建: '
+          f'variants={len(p_variants)}, inventory={len(p_inventory)}, '
+          f'warehouse_name="{p_wh_name}"')
+
+    # =====================================================================
+    # 2. 调用 RPC
+    # =====================================================================
+    started_at = result['started_at']
+    rpc_error = None
+
+    try:
+        rpc_result = _call_sync_rpc(wh_id, p_variants, p_inventory, p_wh_name)
+    except RuntimeError as e:
+        rpc_error = e
+        finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
+        result['finished_at'] = finished_at
+
+        error_str = str(e)
+        is_network_timeout = 'network_timeout_unknown' in error_str.lower()
+
+        # 记录 sync_log failed
+        if sync_log_enabled:
+            try:
+                _write_sync_log(
+                    warehouse_id=warehouse_id,
+                    status='failed',
+                    new_variants_count=new_variants_count,
+                    error_message=error_str[:2000],
+                    started_at=started_at,
+                    finished_at=finished_at,
+                )
+                result['sync_log_written'] = True
+            except RuntimeError as sl_err:
+                try:
+                    fb_path = _save_fallback_log(
+                        {
+                            'warehouse_id': warehouse_id,
+                            'status': 'failed',
+                            'new_variants_count': new_variants_count,
+                            'error_message': error_str[:2000],
+                            'started_at': started_at,
+                            'finished_at': finished_at,
+                        },
+                        fallback_dir,
+                    )
+                    result['sync_log_fallback_path'] = fb_path
+                    result['errors'].append(
+                        f'sync_log 写入失败: {sl_err}（已保存 fallback: {fb_path}）'
+                    )
+                except Exception as fb_err:
+                    msg = (f'sync_log 写入失败且 fallback 保存失败 — '
+                           f'sync_log 错误: {sl_err}；fallback 错误: {fb_err}')
+                    result['errors'].append(msg)
+                    print(msg, file=sys.stderr)
+
+        raise  # 重新抛出原始错误
+
+    # =====================================================================
+    # 2b. RPC 返回摘要严格校验
+    # =====================================================================
+    _VALIDATE_RPC_FIELDS = [
+        'variants_created', 'inventory_received', 'inventory_inserted',
+        'inventory_updated', 'inventory_unchanged', 'warehouse_renamed',
+    ]
+
+    def _rpc_validation_failed(reason: str):
+        """RPC 摘要校验失败：记录 sync_log.failed + 抛出 RuntimeError。
+        RPC 已执行但返回不可信，数据库状态未知，必须只读核对。
+        """
+        full_msg = (
+            f'RPC 返回摘要校验失败（RPC 已执行，提交状态未知）: {reason}'
+        )
+        result['errors'].append(full_msg)
+        result['rpc_summary'] = rpc_result
+
+        finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
+        result['finished_at'] = finished_at
+
+        if sync_log_enabled:
+            try:
+                _write_sync_log(
+                    warehouse_id=warehouse_id,
+                    status='failed',
+                    new_variants_count=new_variants_count,
+                    error_message=full_msg[:2000],
+                    started_at=started_at,
+                    finished_at=finished_at,
+                )
+                result['sync_log_written'] = True
+            except RuntimeError as sl_err:
+                try:
+                    fb_path = _save_fallback_log(
+                        {
+                            'warehouse_id': warehouse_id,
+                            'status': 'failed',
+                            'new_variants_count': new_variants_count,
+                            'error_message': full_msg[:2000],
+                            'started_at': started_at,
+                            'finished_at': finished_at,
+                        },
+                        fallback_dir,
+                    )
+                    result['sync_log_fallback_path'] = fb_path
+                    result['errors'].append(
+                        f'sync_log 写入失败: {sl_err}（已保存 fallback: {fb_path}）'
+                    )
+                except Exception as fb_err:
+                    msg = (f'sync_log 写入失败且 fallback 保存失败 — '
+                           f'sync_log 错误: {sl_err}；fallback 错误: {fb_err}')
+                    result['errors'].append(msg)
+                    print(msg, file=sys.stderr)
+
+        raise RuntimeError(full_msg)
+
+    if not isinstance(rpc_result, dict):
+        _rpc_validation_failed(
+            f'期望 dict，实际类型: {type(rpc_result).__name__}'
+        )
+
+    for field in _VALIDATE_RPC_FIELDS:
+        if field not in rpc_result:
+            _rpc_validation_failed(
+                f'缺少必需字段: {field}，实际字段: {sorted(rpc_result.keys())}'
+            )
+
+    int_fields = [
+        'variants_created', 'inventory_received', 'inventory_inserted',
+        'inventory_updated', 'inventory_unchanged',
+    ]
+    for field in int_fields:
+        val = rpc_result[field]
+        if type(val) is bool or type(val) is not int:
+            _rpc_validation_failed(
+                f'{field} 必须为 int（拒绝 {type(val).__name__}），值={val!r}'
+            )
+        if val < 0:
+            _rpc_validation_failed(
+                f'{field} 不能为负数，值={val}'
+            )
+
+    wh_renamed = rpc_result['warehouse_renamed']
+    if type(wh_renamed) is not bool:
+        _rpc_validation_failed(
+            f'warehouse_renamed 必须为 bool，实际类型: {type(wh_renamed).__name__}'
+        )
+
+    received = rpc_result['inventory_received']
+    inserted = rpc_result['inventory_inserted']
+    updated = rpc_result['inventory_updated']
+    unchanged = rpc_result['inventory_unchanged']
+    if received != inserted + updated + unchanged:
+        _rpc_validation_failed(
+            f'inventory_received ({received}) != inserted ({inserted}) '
+            f'+ updated ({updated}) + unchanged ({unchanged}) = '
+            f'{inserted + updated + unchanged}'
+        )
+
+    result['rpc_summary'] = rpc_result
+    print(f'[execute_plan_v2] RPC 返回: {json.dumps(rpc_result)}')
+    print(f'[execute_plan_v2] RPC 摘要校验通过')
+
+    finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
+    result['finished_at'] = finished_at
+
+    # =====================================================================
+    # 3. Phase G: 写后 Inventory 只读审计
+    # =====================================================================
+
+    def _record_audit_failure(error_msg: str, phase_label: str) -> str:
+        """post-commit 审计失败：写入 sync_log.failed + 必要时保存 fallback。
+
+        所有审计失败（查询异常、验证差异）均通过此函数记录。
+        error_message 必须包含 'post-commit audit failed'。
+
+        Returns:
+            full_msg — 调用方必须用此返回值构造 RuntimeError，
+            确保主错误始终为审计失败信息，sync_log fallback 仅为附加信息。
+        """
+        full_msg = f'post-commit audit failed ({phase_label}): {error_msg}'
+        result['errors'].append(full_msg)
+
+        if not sync_log_enabled:
+            return full_msg
+
+        now_iso = datetime.now().astimezone().isoformat(timespec='seconds')
+        try:
+            _write_sync_log(
+                warehouse_id=warehouse_id,
+                status='failed',
+                new_variants_count=new_variants_count,
+                error_message=full_msg[:2000],
+                started_at=started_at,
+                finished_at=now_iso,
+            )
+            result['sync_log_written'] = True
+        except RuntimeError as sl_err:
+            try:
+                fb_path = _save_fallback_log(
+                    {
+                        'warehouse_id': warehouse_id,
+                        'status': 'failed',
+                        'new_variants_count': new_variants_count,
+                        'error_message': full_msg[:2000],
+                        'started_at': started_at,
+                        'finished_at': now_iso,
+                    },
+                    fallback_dir,
+                )
+                result['sync_log_fallback_path'] = fb_path
+                result['errors'].append(
+                    f'sync_log 写入失败（审计失败后）: {sl_err}'
+                    f'（已保存 fallback: {fb_path}）'
+                )
+            except Exception as fb_err:
+                msg = (f'sync_log 写入失败且 fallback 保存失败（审计失败后） — '
+                       f'sync_log 错误: {sl_err}；fallback 错误: {fb_err}')
+                result['errors'].append(msg)
+                print(msg, file=sys.stderr)
+
+        return full_msg
+
+    try:
+        time.sleep(0.5)
+
+        full_inventory_plan = []
+        for cat in ('inventory_updates', 'inventory_inserts',
+                    'inventory_after_variant_create', 'inventory_unchanged'):
+            for item in plan.get(cat, []):
+                full_inventory_plan.append({
+                    'sku': item['sku'],
+                    'new_quantity': int(item.get('new_quantity', item.get('quantity', 0))),
+                    'warehouse_id': item.get('warehouse_id', warehouse_id),
+                })
+
+        verify_inventory = _get(
+            'inventory'
+            '?select=id,variant_id,warehouse_id,quantity'
+            f'&warehouse_id=eq.{warehouse_id}'
+        )
+        print(f'[execute_plan_v2] Phase G: Inventory 写后查询 {len(verify_inventory)} 条')
+
+        time.sleep(0.3)
+        current_variants = _get(
+            'product_variant'
+            '?select=id,sku,country'
+            f'&country=eq.PH'
+        )
+        current_variant_map = {v['sku']: v['id'] for v in current_variants}
+
+        inv_diffs = verify_inventory_post_write(
+            inventory_plan=full_inventory_plan,
+            actual_inventory=verify_inventory,
+            variant_id_by_sku=current_variant_map,
+            warehouse_id=warehouse_id,
+        )
+
+        if inv_diffs:
+            diff_text = '\n'.join(f'  - {d}' for d in inv_diffs)
+            raise RuntimeError(_record_audit_failure(
+                f'Phase G Inventory 数据不一致 ({len(inv_diffs)} 项差异):\n{diff_text}',
+                'Phase G',
+            ))
+
+        result['phase_g_verified'] = True
+        print(f'[execute_plan_v2] Phase G 审计通过: '
+              f'{len(full_inventory_plan)} 条 SKU quantity 全部一致')
+
+        # ==================================================================
+        # 4. Phase I: Warehouse 最终状态审计
+        # ==================================================================
+        wh_final_rows = _get(
+            f'warehouse?id=eq.{warehouse_id}'
+            '&select=id,name,country,type,is_active'
+        )
+        if not wh_final_rows:
+            raise RuntimeError(_record_audit_failure(
+                f'无法查询 Warehouse id={warehouse_id}',
+                'Phase I',
+            ))
+
+        wh_final = wh_final_rows[0]
+
+        wh_expected = {
+            'id': warehouse_id,
+            'name': TARGET_WAREHOUSE_NAME,
+            'country': 'PH',
+            'type': 'overseas',
+            'is_active': True,
+        }
+        wh_diffs = verify_warehouse_final_state(wh_final, wh_expected)
+
+        if wh_diffs:
+            diff_text = '\n'.join(f'  - {d}' for d in wh_diffs)
+            raise RuntimeError(_record_audit_failure(
+                f'Phase I Warehouse 最终状态不符合预期 ({len(wh_diffs)} 项差异):\n{diff_text}',
+                'Phase I',
+            ))
+
+        result['phase_i_verified'] = True
+        print(f'[execute_plan_v2] Phase I 审计通过: '
+              f'id={wh_final["id"][:8]}..., '
+              f'name="{wh_final["name"]}", '
+              f'country={wh_final["country"]}, '
+              f'type={wh_final["type"]}, '
+              f'is_active={wh_final["is_active"]}')
+
+    except RuntimeError as e:
+        # 仅 _record_audit_failure 自身抛出的 RuntimeError 直接传播
+        if not any('post-commit audit failed' in err for err in result['errors']):
+            raise RuntimeError(_record_audit_failure(
+                f'查询或验证异常: {type(e).__name__}: {e}',
+                'post-commit audit',
+            )) from e
+        raise
+    except Exception as e:
+        raise RuntimeError(_record_audit_failure(
+            f'查询或验证异常: {type(e).__name__}: {e}',
+            'post-commit audit',
+        )) from e
+
+    # =====================================================================
+    # 5. 记录 sync_log success
+    # =====================================================================
+    if sync_log_enabled:
+        try:
+            _write_sync_log(
+                warehouse_id=warehouse_id,
+                status='success',
+                new_variants_count=rpc_result.get('variants_created', 0),
+                error_message=None,
+                started_at=started_at,
+                finished_at=finished_at,
+            )
+            result['sync_log_written'] = True
+            print('[execute_plan_v2] sync_log success 已写入')
+        except RuntimeError as sl_err:
+            try:
+                fb_path = _save_fallback_log(
+                    {
+                        'warehouse_id': warehouse_id,
+                        'status': 'success',
+                        'new_variants_count': rpc_result.get('variants_created', 0),
+                        'error_message': None,
+                        'started_at': started_at,
+                        'finished_at': finished_at,
+                    },
+                    fallback_dir,
+                )
+                result['sync_log_fallback_path'] = fb_path
+                result['errors'].append(
+                    f'sync_log 写入失败（RPC 已成功）: {sl_err}（已保存 fallback: {fb_path}）'
+                )
+                print(f'[execute_plan_v2] sync_log 写入失败，已保存 fallback: {fb_path}')
+            except Exception as fb_err:
+                msg = (f'sync_log 写入失败且 fallback 保存失败（RPC 已成功） — '
+                       f'sync_log 错误: {sl_err}；fallback 错误: {fb_err}')
+                result['errors'].append(msg)
+                print(msg, file=sys.stderr)
+
+    print('[execute_plan_v2] 完成')
+    return result
 
 
 def build_inventory_upsert_rows(
