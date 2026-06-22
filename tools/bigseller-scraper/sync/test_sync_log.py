@@ -63,14 +63,14 @@ SIMPLE_PLAN = {
          'product_id': None, 'match_status': 'unmatched', 'target_quantity': 100},
     ],
     'inventory_updates': [
-        {'sku': 'WM0005', 'warehouse_id': WH_ID, 'new_quantity': 1500},
+        {'sku': 'WM0005', 'warehouse_id': WH_ID, 'country': 'PH', 'new_quantity': 1500},
     ],
     'inventory_inserts': [],
     'inventory_after_variant_create': [
-        {'sku': 'NEW001', 'warehouse_id': WH_ID, 'new_quantity': 100},
+        {'sku': 'NEW001', 'warehouse_id': WH_ID, 'country': 'PH', 'new_quantity': 100},
     ],
     'inventory_unchanged': [
-        {'sku': 'WM0074', 'warehouse_id': WH_ID, 'quantity': 21289},
+        {'sku': 'WM0074', 'warehouse_id': WH_ID, 'country': 'PH', 'quantity': 21289},
     ],
 }
 
@@ -87,7 +87,7 @@ PLAN_ORPHAN_VARIANT = {
     'inventory_inserts': [],
     'inventory_after_variant_create': [],
     'inventory_unchanged': [
-        {'sku': 'WM0074', 'warehouse_id': WH_ID, 'quantity': 21289},
+        {'sku': 'WM0074', 'warehouse_id': WH_ID, 'country': 'PH', 'quantity': 21289},
     ],
 }
 
@@ -277,9 +277,9 @@ def _start_cli_non_dry_run_mocks(*,
     m['validate'] = stack.enter_context(
         patch('sync.input_validator.validate_json', return_value=MOCK_ROWS))
     m['fetch_wh'] = stack.enter_context(
-        patch('sync.supabase_gateway.fetch_ph_warehouse', return_value=MOCK_WAREHOUSE))
+        patch('sync.supabase_gateway.fetch_warehouse', return_value=MOCK_WAREHOUSE))
     m['fetch_var'] = stack.enter_context(
-        patch('sync.supabase_gateway.fetch_ph_variants', return_value=[]))
+        patch('sync.supabase_gateway.fetch_variants', return_value=[]))
     m['fetch_inv'] = stack.enter_context(
         patch('sync.supabase_gateway.fetch_inventory_by_warehouse', return_value=[]))
     m['gen_plan'] = stack.enter_context(
@@ -325,6 +325,9 @@ def _start_cli_non_dry_run_mocks(*,
         patch('sync.executor.verify_warehouse_final_state',
               return_value=[] if verify_wh_return is None else verify_wh_return))
 
+    m['wh_country'] = stack.enter_context(
+        patch('sync.config.WAREHOUSE_COUNTRY', 'PH'))
+
     return stack, m
 
 
@@ -349,9 +352,9 @@ def _start_cli_dry_run_mocks():
     m['validate'] = stack.enter_context(
         patch('sync.input_validator.validate_json', return_value=MOCK_ROWS))
     m['fetch_wh'] = stack.enter_context(
-        patch('sync.supabase_gateway.fetch_ph_warehouse', return_value=MOCK_WAREHOUSE))
+        patch('sync.supabase_gateway.fetch_warehouse', return_value=MOCK_WAREHOUSE))
     m['fetch_var'] = stack.enter_context(
-        patch('sync.supabase_gateway.fetch_ph_variants', return_value=[]))
+        patch('sync.supabase_gateway.fetch_variants', return_value=[]))
     m['fetch_inv'] = stack.enter_context(
         patch('sync.supabase_gateway.fetch_inventory_by_warehouse', return_value=[]))
     m['gen_plan'] = stack.enter_context(
@@ -366,6 +369,8 @@ def _start_cli_dry_run_mocks():
     m['verify_inv'] = stack.enter_context(patch('sync.executor.verify_inventory_post_write'))
     m['verify_wh'] = stack.enter_context(patch('sync.executor.verify_warehouse_final_state'))
     m['get'] = stack.enter_context(patch('sync.executor._get'))
+    m['wh_country'] = stack.enter_context(
+        patch('sync.config.WAREHOUSE_COUNTRY', 'PH'))
 
     return stack, m
 
@@ -553,12 +558,12 @@ def test_s06_warehouse_invalid():
 
 
 # =========================================================================
-# 场景 7: Warehouse country ≠ PH
+# 场景 7: inventory/variant country 与 warehouse.country 不一致
 # =========================================================================
 
-@test("场景07: Warehouse country ≠ PH → sync_log.failed, exit 1")
-def test_s07_warehouse_country_not_ph():
-    rpc_error = 'Warehouse country 必须为 PH, 实际: TH'
+@test("场景07: inventory/variant country 与 warehouse.country 不一致 → sync_log.failed, exit 1")
+def test_s07_country_mismatch():
+    rpc_error = 'Inventory country 必须等于 Warehouse country: inventory=TH, warehouse=PH (sku: WM0005)'
     stack, m = _start_cli_non_dry_run_mocks(
         rpc_side_effect=RuntimeError(rpc_error),
         log_return=MOCK_SYNC_LOG_FAILED,
@@ -577,7 +582,8 @@ def test_s07_warehouse_country_not_ph():
         m['log'].assert_called_once()
         assert m['log'].call_args[1]['status'] == 'failed'
         error_msg = str(m['log'].call_args[1].get('error_message', ''))
-        assert 'PH' in error_msg, f'error_message 应包含 PH: {error_msg[:200]}'
+        assert 'Warehouse country' in error_msg or '必须等于' in error_msg, \
+            f'error_message 应包含 country 不一致提示: {error_msg[:200]}'
         m['fb'].assert_not_called()
 
 
@@ -884,12 +890,13 @@ def test_s17_cli_reject_no_sync_log():
     _m_open = mock_open()
 
     with patch('sys.argv', CLI_ARGS_REJECT), \
+         patch('sync.config.WAREHOUSE_COUNTRY', 'PH'), \
          patch('os.path.isfile', return_value=True) as mock_isfile, \
          patch('builtins.open', _m_open) as mock_file, \
          patch('json.load') as mock_json_load, \
          patch('sys.stdout', stdout_buf), \
-         patch('sync.supabase_gateway.fetch_ph_warehouse') as mock_fetch_wh, \
-         patch('sync.supabase_gateway.fetch_ph_variants') as mock_fetch_var, \
+         patch('sync.supabase_gateway.fetch_warehouse') as mock_fetch_wh, \
+         patch('sync.supabase_gateway.fetch_variants') as mock_fetch_var, \
          patch('sync.supabase_gateway.fetch_inventory_by_warehouse') as mock_fetch_inv, \
          patch('sync.executor._call_sync_rpc') as mock_rpc, \
          patch('sync.executor._write_sync_log') as mock_log, \
@@ -1249,6 +1256,136 @@ def test_s_extra_sync_log_disabled():
 
 
 # =========================================================================
+# 补充: P5-SY8B-VN 令牌
+# =========================================================================
+
+VN_NO_DRY_RUN_ARGS = [
+    'cli_execute.py',
+    '--input-json', '/fake/input-vn.json',
+    '--dry-run-report', '/fake/report-vn.json',
+    '--execute', '--confirm', 'P5-SY8B-VN',
+    '--no-dry-run',
+]
+
+
+@test("补充: P5-SY8B-VN 令牌 --no-dry-run 全部成功 → exit 0")
+def test_s_extra_vn_token_no_dry_run_success():
+    """P5-SY8B-VN token + --no-dry-run: full success path, synced_count correct."""
+    stack = ExitStack()
+    m = {}
+    m['argv'] = stack.enter_context(patch('sys.argv', VN_NO_DRY_RUN_ARGS))
+    m['wh_country'] = stack.enter_context(
+        patch('sync.config.WAREHOUSE_COUNTRY', 'VN'))
+    m['isfile'] = stack.enter_context(patch('os.path.isfile', return_value=True))
+    m['open'] = stack.enter_context(patch('builtins.open', mock_open()))
+    m['supabase_url'] = stack.enter_context(
+        patch('sync.executor._SUPABASE_URL', 'https://fake.supabase.co'))
+    m['service_key'] = stack.enter_context(
+        patch('sync.executor._SERVICE_KEY', 'fake-service-key'))
+    m['json_load'] = stack.enter_context(patch('json.load',
+        side_effect=[MOCK_INPUT_DATA, MOCK_DRY_RUN_REPORT]))
+    m['json_dump'] = stack.enter_context(patch('json.dump'))
+    m['validate'] = stack.enter_context(
+        patch('sync.input_validator.validate_json', return_value=MOCK_ROWS))
+    m['fetch_wh'] = stack.enter_context(
+        patch('sync.supabase_gateway.fetch_warehouse', return_value=MOCK_WAREHOUSE))
+    m['fetch_var'] = stack.enter_context(
+        patch('sync.supabase_gateway.fetch_variants', return_value=[]))
+    m['fetch_inv'] = stack.enter_context(
+        patch('sync.supabase_gateway.fetch_inventory_by_warehouse', return_value=[]))
+    m['gen_plan'] = stack.enter_context(
+        patch('sync.plan_generator.generate_plan', return_value=SIMPLE_PLAN))
+    m['compare'] = stack.enter_context(
+        patch('sync.verifier.compare_plans', return_value=[]))
+    m['rpc'] = stack.enter_context(
+        patch('sync.executor._call_sync_rpc', return_value=MOCK_RPC_RESULT))
+    m['log'] = stack.enter_context(
+        patch('sync.executor._write_sync_log', return_value=MOCK_SYNC_LOG_SUCCESS))
+    m['fb'] = stack.enter_context(patch('sync.executor._save_fallback_log'))
+    m['get'] = stack.enter_context(patch('sync.executor._get'))
+    _setup_get_side_effect(m['get'])
+    m['verify_inv'] = stack.enter_context(
+        patch('sync.executor.verify_inventory_post_write', return_value=[]))
+    m['verify_wh'] = stack.enter_context(
+        patch('sync.executor.verify_warehouse_final_state', return_value=[]))
+    with stack:
+        try:
+            from sync.cli_execute import main
+            main()
+            assert False, '应调用 sys.exit(0)'
+        except SystemExit as e:
+            assert e.code == 0, f'退出码应为 0，实际: {e.code}'
+
+        # (a) RPC 调用 1 次
+        m['rpc'].assert_called_once()
+        # (b) Phase G/I 审计已执行并通过
+        m['verify_inv'].assert_called_once()
+        m['verify_wh'].assert_called_once()
+        # (c) SyncLog success
+        m['log'].assert_called_once()
+        assert m['log'].call_args[1]['status'] == 'success'
+        assert m['log'].call_args[1]['error_message'] is None
+        # (d) Fallback 未调用
+        m['fb'].assert_not_called()
+
+
+@test("补充: 无效令牌在 --no-dry-run 路径被拒绝 fail-fast，在任何 I/O 前 exit 1")
+def test_s_extra_invalid_token_rejected_before_io():
+    """Invalid token must be rejected after argparse parsing, before any I/O or network."""
+    import io as _io
+    stdout_buf = _io.StringIO()
+    _m_open = mock_open()
+
+    invalid_argv = [
+        'cli_execute.py',
+        '--input-json', '/fake/input.json',
+        '--dry-run-report', '/fake/report.json',
+        '--execute', '--confirm', 'BAD-TOKEN',
+        '--no-dry-run',
+    ]
+    with patch('sys.argv', invalid_argv), \
+         patch('os.path.isfile', return_value=True) as mock_isfile, \
+         patch('builtins.open', _m_open) as mock_file, \
+         patch('json.load') as mock_json_load, \
+         patch('sys.stdout', stdout_buf), \
+         patch('sync.supabase_gateway.fetch_warehouse') as mock_fetch_wh, \
+         patch('sync.supabase_gateway.fetch_variants') as mock_fetch_var, \
+         patch('sync.supabase_gateway.fetch_inventory_by_warehouse') as mock_fetch_inv, \
+         patch('sync.executor._call_sync_rpc') as mock_rpc, \
+         patch('sync.executor._write_sync_log') as mock_log, \
+         patch('sync.executor._save_fallback_log') as mock_fb, \
+         patch('sync.executor.verify_inventory_post_write') as mock_verify_inv, \
+         patch('sync.executor.verify_warehouse_final_state') as mock_verify_wh, \
+         patch('sync.executor._get') as mock_get, \
+         patch('sync.executor._SUPABASE_URL', 'https://fake.supabase.co'), \
+         patch('sync.executor._SERVICE_KEY', 'fake-service-key'):
+        try:
+            from sync.cli_execute import main
+            main()
+            assert False, '应调用 sys.exit(1)'
+        except SystemExit as e:
+            assert e.code == 1, f'退出码应为 1，实际: {e.code}'
+
+        stdout_text = stdout_buf.getvalue()
+        assert '确认令牌不匹配' in stdout_text, \
+            f'stdout 应包含确认令牌不匹配，实际: {stdout_text!r}'
+
+        # 所有 I/O、Supabase 查询、RPC 未调用
+        mock_isfile.assert_not_called()
+        mock_file.assert_not_called()
+        mock_json_load.assert_not_called()
+        mock_fetch_wh.assert_not_called()
+        mock_fetch_var.assert_not_called()
+        mock_fetch_inv.assert_not_called()
+        mock_rpc.assert_not_called()
+        mock_log.assert_not_called()
+        mock_fb.assert_not_called()
+        mock_verify_inv.assert_not_called()
+        mock_verify_wh.assert_not_called()
+        mock_get.assert_not_called()
+
+
+# =========================================================================
 # 运行
 # =========================================================================
 
@@ -1269,7 +1406,7 @@ if __name__ == '__main__':
     test_s04_p_inventory_dup_key()
     test_s05_quantity_negative()
     test_s06_warehouse_invalid()
-    test_s07_warehouse_country_not_ph()
+    test_s07_country_mismatch()
     test_s08_warehouse_name_illegal()
     test_s09_p_warehouse_name_invalid()
     test_s10_cross_country()
@@ -1303,6 +1440,10 @@ if __name__ == '__main__':
     test_s_extra_rpc_summary_validation_fail()
     test_s_extra_rpc_success_double_fail()
     test_s_extra_sync_log_disabled()
+
+    # P5-SY8B VN 令牌
+    test_s_extra_vn_token_no_dry_run_success()
+    test_s_extra_invalid_token_rejected_before_io()
 
     print()
     print('=' * 60)

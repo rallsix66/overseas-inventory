@@ -89,8 +89,8 @@ def _req(path: str, _retry: int = 2) -> list:
 # =========================================================================
 
 
-def fetch_ph_warehouse():
-    """查询 PH 国家 overseas 类型且 is_active=true 的仓库。
+def fetch_warehouse():
+    """查询目标国家 overseas 类型且 is_active=true 的仓库。
 
     返回单条 dict（id, name, country, type, is_active）。
     无结果、多条结果或 is_active=false 均抛出 RuntimeError。
@@ -111,20 +111,20 @@ def fetch_ph_warehouse():
                 f'未找到 country={WAREHOUSE_COUNTRY} type={WAREHOUSE_TYPE} 的仓库'
             )
         raise RuntimeError(
-            f'已找到 {total} 个 PH overseas 仓库，但全部 is_active=false'
+            f'已找到 {total} 个 {WAREHOUSE_COUNTRY} overseas 仓库，但全部 is_active=false'
         )
 
     if len(active) > 1:
         names = [r.get('name', '?') for r in active]
         raise RuntimeError(
-            f'预期 1 个活跃 PH overseas 仓库，实际 {len(active)} 个: {names}'
+            f'预期 1 个活跃 {WAREHOUSE_COUNTRY} overseas 仓库，实际 {len(active)} 个: {names}'
         )
 
     return active[0]
 
 
-def fetch_ph_variants():
-    """查询所有 country=PH 的 ProductVariant 记录。
+def fetch_variants():
+    """查询所有目标国家的 ProductVariant 记录。
 
     返回 list[dict]，字段含 id, sku, country, name, product_id, match_status。
     """

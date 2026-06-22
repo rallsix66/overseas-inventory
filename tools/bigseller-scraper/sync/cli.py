@@ -57,21 +57,21 @@ def main():
     # 3. 只读查询 Supabase
     print('3. 查询 Supabase（只读）...')
     from .supabase_gateway import (
-        fetch_ph_warehouse,
-        fetch_ph_variants,
+        fetch_warehouse,
+        fetch_variants,
         fetch_inventory_by_warehouse,
     )
 
     try:
-        warehouse = fetch_ph_warehouse()
+        warehouse = fetch_warehouse()
     except RuntimeError as e:
         print(f'   Warehouse 查询失败:\n{e}')
         sys.exit(1)
-    print(f'   PH overseas warehouse: id={warehouse.get("id")}, name="{warehouse.get("name")}", active={warehouse.get("is_active")}')
+    print(f'   {warehouse.get("country")} overseas warehouse: id={warehouse.get("id")}, name="{warehouse.get("name")}", active={warehouse.get("is_active")}')
 
     time.sleep(0.3)
-    variants = fetch_ph_variants()
-    print(f'   PH product_variants: {len(variants)} 条')
+    variants = fetch_variants()
+    print(f'   {warehouse.get("country")} product_variants: {len(variants)} 条')
 
     time.sleep(0.3)
     inventories = fetch_inventory_by_warehouse(warehouse['id'])

@@ -8,7 +8,7 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 
 ## Current Task
 
-`P5-SY5C2` — Sync Feature Module 后端模块：类型补全 + Schema + Repository + SyncService + 依赖工厂 + Server Actions + Mock Provider/Runner（任务包第三次修订完成，待独立复审）
+`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A 现状审查已完成，第二轮返工新增 BigSeller Session 复用不可靠（CRITICAL）+ P5-SY9B Session Health Check 子任务。差距清单更新为 4 CRITICAL / 1 HIGH / 1 MEDIUM / 1 PASS；P5-SY9B~I PENDING。Session Health Check 必须早于真实 Provider / Web Dry Run 生产化。）
 
 ## Completed Tasks
 
@@ -34,6 +34,21 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 - `P5-SY5A` — Migration 00007：sync_run 表与同步运行 RPC（2026-06-14，第五次聚焦返工，独立静态验收通过；59/59 静态契约测试；claim FOR UPDATE 竞态修复 + release NULL exit_code 拒绝）
 - `P5-SY5B` — 认证链修复（2026-06-14，独立验收通过；25/25 单元测试；新增 `getCurrentActiveUser()` / `requireActiveAuth()` / `requireActiveAdmin()`，旧函数行为不变）
 - `P5-SY5C` — Sync Feature Module 骨架（2026-06-14，独立验收通过；129/129 测试；validateJsonValue V5.4.3 / ArtifactProvider 接口 / GC orchestrator / SyncRunner 契约 / 类型契约 + expectTypeOf 精确断言）
+- `P5-SY5C2` — Sync Feature Module 后端实现（2026-06-19，独立验收通过；258/258 测试；types.ts / schema.ts / repository.ts / sync-service.ts / actions.ts / mock-artifact-provider.ts / mock-sync-runner.ts + 7 个测试文件）
+- `P5-SY5D` — Sync 页面与客户端组件（2026-06-19，独立验收通过；263/263 测试；查看详情 Sheet + MockArtifactProvider static 存储 + getCurrentActiveUser 认证链；server-actions.ts / page.tsx / sync-page-content.tsx / loading.tsx / error.tsx）
+- `P5-SY5E` — 侧边栏集成（2026-06-19，独立验收通过；263/263 测试；sidebar-nav.tsx 新增"数据同步"分组 + RefreshCw 图标 + 库存同步入口，phase 0）
+- `P5-SY5F` — Mock E2E 流程验证（2026-06-19，Codex 独立复验通过；281/281 测试；integration.test.ts 18 项集成测试：非确定性序列化 + GC 全管道 + GC 防误删边界 + artifact 生命周期 + 被引用 Dry Run GC 保护 + orphan 反例删除。Repository 接口新增 getActiveRunIds / getRecentlyCompletedRunIds / getReferencedDryRunIds）
+- `P5-SY5G` — 并发锁原子 Claim 测试（2026-06-19，Codex 独立复验通过：D2/F2 确定性 FOR UPDATE 行锁断言确认 — D2 A FOR UPDATE 持有 dry_run → B UPDATE lock_timeout → A 释放 B 成功；F2 B FOR UPDATE 持有 in_progress run → A heartbeat lock_timeout → B 释放 heartbeat 成功；无 expect(true).toBe(true) 或"环境差异不强制断言"通过路径；Current Task References 已更新为核心文件。44/44 并发测试（9 静态校验 + 35 双事务并发），281 非并发测试全通过，lint 0 errors，build 通过；未连接生产 Supabase，未执行生产 Migration 00008/00007）
+- `P5-SY6` — 定时任务与运行环境评估（2026-06-19，Codex 第三次独立设计验收通过；两次返工：4 项聚焦 + 1 项小修；5 方案 × 10 维度对比，推荐两层架构 Vercel Cron + Worker，架构边界/平台事实/手动路径/验证口径全部修正；未实现代码，未连接生产 Supabase，未执行生产 Migration；评估文档 `docs/tasks/archive/p5-sy6-runtime-design.md`）
+- `P5-SY7` — 单仓端到端验收（2026-06-19，Codex 独立复验通过；A~F 全部维度验证通过，6 项已知差距/0 项阻塞项。差距分析文档 `docs/tasks/archive/p5-sy7-gap-analysis.md`。生产 Migration 00006/00007/00008 已执行，P5-SY8 就绪）
+- `P5-SY8A` — VN 只读抓取与 Dry Run 方案（2026-06-19，Codex 独立验收通过；64 行抓取 + Dry Run 通过，输出 `bigseller-inventory-20260619-205955.json`）
+- `P5-SY8B` — VN 越南青林湾仓库真实写入与端到端验收（2026-06-19 DONE + 2026-06-20 Codex 独立验收通过。首次 RPC 提交 64 Variants (country=VN) + 64 Inventory；幂等重跑通过：0 新增，Phase G/I PASS，sync_log status=success/synced_count=64；修复 6 处硬编码 PH→WAREHOUSE_COUNTRY + Migration 00009 通用化 RPC。执行报告 `p5-sy8b-vn-execute-20260619-215055.json`。Codex 返工 4 项全部通过：令牌国家绑定 / Migration 00009 静态契约测试 13/13 / 执行报告时间戳 / 文档同步。160/160 Python 测试，npm lint 0 errors，npm build 通过）
+- `P5-SY8C` — TH 泰国仓（DEE-龙仔厝 ICE 专属）只读抓取与 Dry Run（2026-06-20 DONE，Codex 独立验收通过。A0 仓库改名 + A1 配置切换 + A2 BigSeller 抓取 72 行 + A3 输入校验 + A4 Dry Run（返工：报告身份 token 派生 + Dry Run Phase E 空 DB 兼容）+ A5 全链路国家断言。196/196 Python 测试，13/13 Migration 00009 契约测试，compileall 通过，npm lint 0 errors，npm build 通过。报告区分：130900=stored plan baseline / 133500=CLI execution report。未执行真实写入。）
+- `P5-SY8D` — TH 泰国仓（DEE-龙仔厝 ICE 专属）真实写入与端到端验收（2026-06-20 DONE，Codex 独立验收通过。真实 RPC 写入：72 Variants (country=TH) + 72 Inventory；Phase G/I PASS；sync_log status=success。DB 只读核查：72 Variants 全部 country=TH，72 Inventory 全部链接 TH warehouse。新增 P5-SY8D-TH 令牌 + 令牌—模式绑定 + 执行器层安全门 + finished_at 审计语义修复。两轮 Codex 返工全部通过。228/228 Python 测试（25 CLI + 81 executor + 26 plan + 29 sync_log + 44 verifier + 10 structural + 13 Migration 00009），compileall 通过，npm lint 0 errors，npm build 通过。报告：p5-sy8d-th-dry-run-20260620-140012.json / p5-sy8d-th-execute-20260620-140034.json）
+- `P5-SY8E` — MY 马来西亚仓（喜运达MY仓）只读抓取与 Dry Run 方案（2026-06-20 DONE，Codex 独立验收通过。BigSeller 抓取 48 行，warehouse=喜运达MY仓 (autoid=warehouse_option_4)。DB 仓库 `马来西亚仓`→`喜运达MY仓` 改名已确认。Stored Plan Baseline `p5-sy3a-dry-run-20260620-232838.json`，CLI Dry Run 报告 `p5-sy8e-my-dry-run-20260620-233129.json`，plan_drift_check=PASS。invalid sidecar: 1 行被拒绝（空包 0000）。新增 P5-SY8E-MY 令牌（仅 --dry-run）+ test_my_full_chain_country_assertions（execute_plan_v2 真实执行，逐条验证 RPC p_variants/p_inventory country=MY + Phase G country=eq.MY + Phase I wh_expected.country=MY + SyncLog warehouse_id/status）。Codex 返工完成：MY 全链路国家断言 + 文档同步。234/234 Python 测试（29 CLI + 83 executor + 26 plan + 29 sync_log + 44 verifier + 10 structural + 13 Migration 00009），compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入。）
+- `P5-SY8F` — MY 马来西亚仓（喜运达MY仓）真实写入与端到端验收（2026-06-21 DONE，Codex 独立验收通过。全新 BigSeller 抓取 48 行 + invalid sidecar 1 行（空包 0000）。P5-SY8F-MY 令牌（唯一 MY --no-dry-run 令牌，P5-SY8E-MY 保持仅 --dry-run）；动态错误提示指向正确写入令牌。首次写入：RPC variants_created=48，inventory_inserted=48，warehouse_renamed=true；Phase G PASS（48 SKU 全部一致），Phase I PASS（name=喜运达MY仓，country=MY）；SyncLog status=success。幂等重跑：0 新增 Variant，0 新增 Inventory，48 unchanged；plan_drift_check PASS。写后验证：RPC 摘要内部一致，所有 Variant country=MY，所有 Inventory 关联 MY warehouse_id，started_at/finished_at 非空。239/239 Python 测试（85 executor + 32 CLI + 26 plan + 29 sync_log + 44 verifier + 10 structural + 13 Migration 00009），compileall 通过，npm lint 0 errors，npm build 通过。执行报告：`p5-sy8f-my-execute-20260621-002507.json`（首次）/ `p5-sy8f-my-execute-20260621-002540.json`（重跑）。）
+- `P5-SY8G` — ID 印尼仓（印尼-DEE仓库）只读抓取与 Dry Run 方案（2026-06-21 DONE，Codex 独立复验通过。BigSeller 抓取 35 行 + invalid sidecar 1 行（空包 0000），warehouse=印尼-DEE仓库，autoid=warehouse_option_3。DB 仓库 `印尼仓`→`印尼-DEE仓库` 改名已确认。P5-SY8G-ID 令牌（仅 --dry-run）。Codex 返工 3 项修复通过：1) --no-dry-run 动态提示 P5-SY8H-ID（新增 `_PENDING_WRITE_TOKENS`）；2) `_DRY_RUN_ONLY_TOKENS` 一致性测试改用 ast.parse；3) `_NO_DRY_RUN_EXCLUSIVE_TOKENS` 断言不再被 `except AssertionError: pass` 吞掉。后收口维护：docs/current-state.md 残留状态同步 + Sync GC 测试夹具 finishedAt 时钟控制修复。245/245 Python 测试，256/256 非并发同步测试，compileall/lint/build 通过。未执行真实写入。）
+- `P5-SY8H` — ID 印尼仓（印尼-DEE仓库）真实写入与端到端验收（2026-06-21 DONE，Codex 独立验收通过。P5-SY8H-ID 令牌（--no-dry-run 写令牌）。首次写入：RPC variants_created=35 (country=ID)，inventory_inserted=35，warehouse_renamed=true；Phase G PASS（35 SKU 全一致）；Phase I PASS（name=印尼-DEE仓库，country=ID）；SyncLog success。幂等重跑：0 new variants，0 inventory inserted，35 unchanged；plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试（89 executor + 39 CLI），compileall 通过，npm lint 0 errors，npm build 通过。）
 
 ## Authentication Status
 
@@ -54,9 +69,9 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 | 项目 | 状态 |
 |---|---|
 | Supabase 项目 | `hzlhqyditalumhnxbaim.supabase.co`（Singapore） |
-| 数据表 | 10 张（role, profiles, warehouse, product, product_variant, inventory, shipment, shipment_item, tracking_event, sync_log） |
+| 数据表 | 12 张（role, profiles, warehouse, product, product_variant, inventory, shipment, shipment_item, tracking_event, sync_log, sync_run, sync_warehouse_lock） |
 | RLS | 42 条策略，全部启用 |
-| 函数 | `get_user_role` / `handle_new_user` / `update_updated_at_column` / `create_shipment_transactional` / `batch_match_variants` |
+| 函数 | `get_user_role` / `handle_new_user` / `update_updated_at_column` / `create_shipment_transactional` / `batch_match_variants` / `sync_warehouse_inventory` / `claim_sync_run` / `release_sync_run` / `heartbeat_sync_run` / `cleanup_expired_sync_runs` / `get_sync_runs` / `get_sync_run_detail` / `trg_sync_warehouse_lock_insert` |
 | 触发器 | 5 个 updated_at + 1 个 on_auth_user_created |
 | Seed 数据 | 2 角色（admin/operator）+ 6 仓库（CN/TH/ID/MY/PH/VN） |
 | 类型文件 | `src/types/database.ts`（从 migration DDL 解析生成） |
@@ -97,8 +112,8 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 - 8 个现有 lint warnings — 不影响功能，在最终验收时批量修复
 - `middleware.ts` 迁移至 `proxy.ts` — Next.js 16 弃用警告，当前 middleware 仍正常工作
 - `profiles.is_active` 认证函数已新增（P5-SY5B），旧调用方逐步迁移
-- P5-SY5C 已完成（types / validateJsonValue / ArtifactProvider 接口 / GC orchestrator / SyncRunner 接口 / contract.test.ts）。P5-SY5C2 任务包第三次修订完成（第二次复审未通过 → 7 项修正），待独立复审。
-- 库存历史快照（`inventory_snapshots` 表）— V1 使用覆盖更新
+- P5-SY5C 已完成（types / validateJsonValue / ArtifactProvider 接口 / GC orchestrator / SyncRunner 接口 / contract.test.ts）。P5-SY5C2 独立验收通过。
+- 库存历史快照（`inventory_snapshots` 表）— P5-SY9 暂不新增；BigSeller 已提供趋势/预测数据，后续如需自有趋势再单独评估
 - 自动同步与部署 — 手动执行同步，无 CI/CD
 - 当前使用 Vercel/Next.js 与 Supabase 快速开发；正式部署平台、免费方案和公司内部使用条款待上线前评估
 
@@ -123,7 +138,7 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 
 ### 现存技术债务
 
-- `inventory` 无历史快照（覆盖更新），需要 `inventory_snapshots` 表做趋势
+- `inventory` 仍为当前库存覆盖更新；库存趋势优先复用 BigSeller 可抓取数据，暂不把 `inventory_snapshots` 作为 P5-SY9 范围
 - `stockStatus` 筛选在海外库存中已改为 JS 层全量筛选后分页（MVP 临时方案，数据量大后需数据库 RPC）。其他库存页面待实现时统一处理。
 - `getLowStock()` / `getUnmatched()` 无分页，数据量大时需补
 - ProductVariant 匹配仍依赖人工（`product_variant.match_status = 'unmatched'`）
@@ -139,6 +154,39 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 
 | 日期 | 变更 |
 |---|---|
+| 2026-06-21 | P5-SY9A 第二轮返工（Session 差距补充）：新增 CRITICAL 差距 — BigSeller Session 复用不可靠。`establishBigSellerSession()` headed Chrome 登录成功不等于 `web_bridge.py` headless Chrome 可复用同一 profile。当前无 `verifyBigSellerSession()` 健康检查；0 行时无法区分未登录/验证码/profile 不可用/页面结构异常/表格未加载。新增 P5-SY9B 子任务（BigSeller Session Health Check），原 P5-SY9B~H 重编号为 P5-SY9C~I。Session Health Check 必须早于真实 Provider / Web Dry Run 生产化。仅文档修订，未修改代码。 |
+| 2026-06-21 | P5-SY9A 现状审查完成：27 个核心文件逐行审查（TypeScript sync feature 11 文件 + sync page/component + python-bridge + auth + Python sync 7 文件），输出 6 维度差距清单。CRITICAL: (1) `web_bridge.py` L156 `compare_plans(plan, plan)` 假比较；(2) `syncWarehouse`/`syncAllWarehouses` 自动串联 dry_run→real_write 无审核；(3) `wireRealActions` 仍使用 `MockArtifactProvider` + `mockInputArtifactSource`。HIGH: (4) Python bridge 无 timeout/heartbeat/abort。MEDIUM: (5) `getOverseasWarehouses` 在 server-actions.ts 中直接调用 `supabase.from()`。PASS: (6) Admin/Operator 权限链正确。仅审查未修改代码。 |
+| 2026-06-21 | P5-SY8H DONE — Codex 独立验收通过：ID 印尼仓（印尼-DEE仓库）真实写入与端到端验收完成。P5-SY8H-ID 令牌（--no-dry-run 写令牌）。首次 RPC 写入：35 Variants (country=ID) + 35 Inventory + Warehouse 改名（"印尼仓"→"印尼-DEE仓库"）。Phase G/I PASS，SyncLog success。幂等重跑：0 新增/35 unchanged，plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试（89 executor + 39 CLI），compileall/lint/build 通过。逐仓 P5-SY8A~H 全部完成，随后进入 P5-SY9 生产化任务包。 |
+| 2026-06-21 | P5-SY8G DONE — Codex 独立复验通过：ID 印尼仓只读抓取与 Dry Run 方案完成。BigSeller 抓取 35 行（warehouse=印尼-DEE仓库，autoid=warehouse_option_3）+ invalid sidecar 1 行（空包 0000）。DB 仓库 `印尼仓`→`印尼-DEE仓库` 改名已确认。P5-SY8G-ID 令牌（仅 --dry-run）。Codex 返工 3 项修复通过 + 后收口维护（docs 残留同步 + GC 测试夹具）。Stored Plan Baseline `p5-sy3a-dry-run-20260621-005154.json`，CLI Dry Run 报告 `p5-sy8g-id-dry-run-20260621-005202.json`，plan_drift_check=PASS。245/245 Python 测试，256/256 非并发同步测试，compileall/lint/build 通过。未执行真实写入，P5-SY8H 保持 PENDING。 |
+| 2026-06-21 | P5-SY8F DONE — Codex 独立验收通过：MY 马来西亚仓首次真实写入 — 48 Variants (country=MY) + 48 Inventory + Warehouse 改名（"马来西亚仓"→"喜运达MY仓"）。P5-SY8F-MY 令牌（唯一 MY --no-dry-run 令牌，P5-SY8E-MY 保持仅 --dry-run）。CAPTCHA 检测修复（仅可见元素触发）。全新抓取 48 行 + invalid sidecar 1 行。Stored Plan `p5-sy3a-dry-run-20260621-002437.json`，Dry Run `p5-sy8f-my-dry-run-20260621-002458.json`，首次写入 `p5-sy8f-my-execute-20260621-002507.json`。幂等重跑：0 新增/48 unchanged，`p5-sy8f-my-execute-20260621-002540.json`。Phase G/I PASS，SyncLog success。239/239 Python 测试（85 exec + 32 CLI + 26 plan + 29 sync_log + 44 verifier + 10 structural + 13 Migration 00009），compileall/lint/build 通过。 |
+| 2026-06-20 | P5-SY8E DONE — Codex 独立验收通过：MY 马来西亚仓只读抓取与 Dry Run 方案完成。48 行抓取 + Dry Run PASS + MY 全链路国家断言（test_my_full_chain_country_assertions，execute_plan_v2 真实执行，逐条验证 RPC p_variants/p_inventory country=MY + Phase G country=eq.MY + Phase I wh_expected.country=MY + SyncLog warehouse_id/status）。invalid sidecar: 1 行（空包 0000）。P5-SY8E-MY 令牌（仅 --dry-run）。234/234 Python 测试，compileall/lint/build 通过。文档收口完成。未执行真实写入，P5-SY8F 保持 PENDING。 |
+| 2026-06-20 | P5-SY8E Codex 返工完成（AWAITING_REVIEW 阶段）：新增 MY 全链路国家断言 + invalid sidecar 文档 + 测试基线 233→234。保持 AWAITING_REVIEW，未执行真实写入。以下是返工前的首次执行摘要。 |
+| 2026-06-20 | P5-SY8E 首次执行完成：MY 马来西亚仓只读抓取与 Dry Run。BigSeller 抓取 48 行（warehouse=喜运达MY仓，autoid=warehouse_option_4）。config.py/bigseller_scraper.py 切换至 MY。新增 P5-SY8E-MY 令牌（仅 --dry-run，--no-dry-run 在 I/O 前拒绝）。Stored Plan Baseline `p5-sy3a-dry-run-20260620-232838.json`，CLI Dry Run 报告 `p5-sy8e-my-dry-run-20260620-233129.json`（plan_drift_check=PASS）。DB 仓库名 `马来西亚仓`→`喜运达MY仓` 改名已确认。233/233 Python 测试（28 CLI + 83 executor + 26 plan + 29 sync_log + 44 verifier + 10 structural + 13 Migration 00009），compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入，P5-SY8F 保持 PENDING。 |
+| 2026-06-20 | P5-SY8D DONE — Codex 独立验收通过：两轮返工全部通过（Fix 1 令牌—模式安全门 + Fix 2 finished_at 审计语义 + Fix 3 测试 mock 修复）。executor.py 新增 _DRY_RUN_ONLY_TOKENS 安全门（P5-SY8C-TH 仅 dry_run=True）、finished_at 移至 Phase G/I 通过后、审计失败路径设 result.finished_at。228/228 Python 测试（25 CLI + 81 executor + 26 plan + 29 sync_log + 44 verifier + 10 structural + 13 Migration 00009），compileall 通过，npm lint 0 errors（8 个既有 warnings），npm build 通过。P5-SY8E 保持 PENDING。 |
+| 2026-06-20 | P5-SY8C Codex 独立验收通过：全部 A0–A5 子任务确认，A4 返工（报告身份 token 派生 + Dry Run Phase E 空 DB 兼容）确认。196/196 Python 测试，13/13 Migration 00009 契约测试，compileall/lint/build 通过。报告路径：130900=stored plan baseline / 133500=CLI execution report。P5-SY8C 标记 DONE。P5-SY8D 保持 PENDING/BLOCKED，等待用户明确授权 TH 真实写入。 |
+| 2026-06-20 | P5-SY8C A4 独立验收返工完成：(1) 修复 `cli_execute.py` 报告身份 — `report.task` 和文件名前缀从 confirm token 派生，不再硬编码 'P5-SY3B'/'p5-sy3b'/'p5-sy4c'；(2) 修复 `executor.py` Dry Run Phase E 对空 DB 的兼容；(3) 新增 3 项 report identity 测试（PH/VN/TH）；(4) 重新执行 CLI Dry Run — 新报告 `p5-sy8c-th-dry-run-20260620-133500.json`（与 stored plan baseline 130900 明确区分）。196/196 Python 测试，13/13 Migration 00009 契约测试，compileall/lint/build 通过。未执行真实写入，未开始 P5-SY8D。保持 AWAITING_REVIEW，等待 Codex 独立验收。 |
+| 2026-06-20 | P5-SY8C DONE：TH 泰国仓只读抓取与 Dry Run 全部完成（A0 仓库改名 → A1 配置切换 → A2 BigSeller 抓取 72 行 → A3 输入校验 → A4 Dry Run PASS → A5 全链路验收）。新增 2 项测试：TH full-chain 国家断言 + _TOKEN_COUNTRY_MAP 一致性。193/193 Python 测试（+2 增量），npm lint 0 errors，npm build 通过。3 项写入前强制验收项全部满足。未执行真实写入，未开始 P5-SY8D。停止等待 Codex 独立验收。 |
+| 2026-06-20 | P5-SY8B Codex 独立验收通过：4 项返工全部确认 — 令牌国家绑定 / Migration 00009 静态契约测试 13/13 / 执行报告时间戳 / 文档同步。160/160 Python 测试，npm lint 0 errors，npm build 通过。P5-SY8C 任务包已创建（TH 泰国仓只读抓取与 Dry Run 方案，PENDING 待用户确认目标仓）。未连接生产 Supabase，未执行真实写入。 |
+| 2026-06-20 | P5-SY8B Codex 独立验收返工完成：4 项修复 — (1) 令牌国家绑定：`cli_execute.py` / `executor.py` 中确认令牌绑定目标国家（P5-SY3B-PH→PH, P5-SY8B-VN→VN），不匹配则 fail-fast 在任何 I/O 前；(2) Migration 00009 静态契约测试：新建 `supabase/tests/test_migration_00009_contract.py`（13/13 通过）；(3) 执行报告时间戳：`cli_execute.py` 从 `result_v2` 透传 `started_at`/`finished_at` 到最终 report，新增 1 项测试；(4) 文档同步。160/160 Python 测试（16 cli_integration + 26 plan + 76 executor + 29 sync_log + 13 migration_00009_contract），npm lint 0 errors，npm build 通过。未连接生产 Supabase，未执行真实写入。 |
+| 2026-06-19 | P5-SY8B DONE：VN 真实写入与端到端验收通过。(1) 首次 RPC 提交 64 Variants (country=VN) + 64 Inventory (warehouse_id=c0b661fa...) 成功，但 Phase G 审计因硬编码 `country=eq.PH` 失败 → executor.py 3 处 URL 修复为 `WAREHOUSE_COUNTRY`；(2) Migration 00009 通用化 RPC（移除 4 处硬编码 PH 检查）；(3) 幂等重跑：plan_drift_check=PASS (0 diffs)，0 新增 Variant/Inventory，64 unchanged，Phase G/I PASS，sync_log status=success/synced_count=64；(4) executor.py 另 3 处硬编码 PH（Phase I expected country + variant country 默认值）修复为 `WAREHOUSE_COUNTRY`。`current-task.md` / `current-state.md` / `phase-5-sync.md` 已同步。停止等待 Codex 独立验收，不进入 P5-SY8C。 |
+| 2026-06-19 | P5-SY8B 写入前准备完成：(1) A1 仓库改名已执行 — Supabase `warehouse.name` 从 `越南仓` 改为 `越南青林湾仓库`；(2) `P5-SY8B-VN` 确认令牌已实现 — `cli_execute.py` / `executor.py` 均接受，测试 41/41 通过；(3) 新 P5-SY8B prewrite 基线报告已生成 — `p5-sy8b-vn-prewrite-dry-run-20260619-213335.json`（warehouse_rename_required.action=none, 64/64/0）；(4) plan_drift_check PASS（0 diffs，使用新基线报告）。`current-task.md` / `current-state.md` / `phase-5-sync.md` 已同步。**未执行真实写入。** |
+| 2026-06-19 | P5-SY8A Codex 独立验收通过。P5-SY8A 标记 DONE。`current-task.md` 重写为 P5-SY8B（VN 真实写入与端到端验收，PENDING/BLOCKED，两个阻断决策待用户确认）。`current-state.md` Current Task → P5-SY8B，Next Step 更新。`phase-5-sync.md` P5-SY8A → DONE（Codex 验收通过）。未实现功能代码，未执行真实写入，未开始 P5-SY8B。 |
+| 2026-06-19 | P5-SY8A 执行完成：VN 越南青林湾仓库只读抓取 64 行 + Dry Run 报告生成。BigSeller 显示 `越南青林湾仓库`（autoid=warehouse_option_7），Supabase 存储 `越南仓`（名称不一致已记录）。64/64 行公式验证通过，0 无效 SKU，0 拒绝行。全仓选项清单已记录（8 个 autoid，供后续逐仓扩展）。config.py / bigseller_scraper.py / supabase_gateway.py / cli.py / cli_execute.py 已切换至 VN 仓。Python 测试 183/183 通过。未执行真实写入。 |
+| 2026-06-19 | P5-SY8 第一次 Codex 独立设计审查未通过 → 文档返工完成：修正 GAP-01→GAP-05 编号、修正"等待 SyncService 真实实现"表述为"等待真实 adapter 接入"并明确 SyncService 已存在不重写、拆分 P5-SY8A~H 子任务（每仓两步：只读 Dry Run → 真实写入与验收）、补充 11 项验收标准（7 通用 + 4 架构边界）、补充 P5-SY8A 第一子任务启动条件（VN 越南青林湾仓库，含 6 项启动前确认 + 3 项不执行声明）。`current-task.md`/`current-state.md`/`phase-5-sync.md` 已同步。未实现功能代码，未连接 Supabase，未触发真实写入，未开始 VN 实现。 |
+| 2026-06-19 | P5-SY8 逐仓扩展任务包创建：P5-SY7 → P5-SY8 状态文档收口。`current-task.md` 重写为 P5-SY8 任务包（PENDING，待 Codex 审查）。`current-state.md` Current Task / References / Blockers / Next Step 全部对齐 P5-SY8。数据库供应商隔离约束写入所有相关文档。未实现功能代码，未连接 Supabase，未触发真实写入。 |
+| 2026-06-19 | 生产 Migration 00006/00007/00008 执行完成（通过 Supabase Dashboard SQL Editor）：新增 2 张表（sync_run/sync_warehouse_lock）、sync_log 扩展 5 列、7 个 RPC 函数（sync_warehouse_inventory/claim_sync_run/release_sync_run/heartbeat_sync_run/cleanup_expired_sync_runs/get_sync_runs/get_sync_run_detail）+ trigger 函数。sync_warehouse_lock 补建 5 行（5 个活跃海外仓）。REST API 只读验证全部通过。新增数据库供应商隔离约束（DB Vendor Isolation）。P5-SY8 就绪。 |
+| 2026-06-19 | P5-SY7 Codex 独立复验通过：2 项文档返工修正已确认（B5 Python json.dumps NaN/Infinity 表述 + 未来约束；F4 移除 .claude/rules/security.md 引用）。差距分析 6 已知差距/0 阻塞项不变。P5-SY7 标记 DONE。 |
+| 2026-06-19 | P5-SY6 Codex 第三次独立设计验收通过：全部返工项确认（架构边界/平台事实/手动路径/验证口径/架构安全表述）。评估文档 `docs/tasks/archive/p5-sy6-runtime-design.md`。未实现代码，未连接生产 Supabase，未执行生产 Migration。Current Task → P5-SY7。 |
+| 2026-06-19 | P5-SY6 第二次返工完成（Codex 第二次设计复验差 1 项小修）：修正架构安全表述 — Python CLI 经 executor → Supabase gateway → RPC → DB 约束，不经过 Next.js Server Actions/SyncService；Web UI Mock 经 Server Actions → SyncService → Mock* 组件，不产生真实写入。综合对比表"手动 (CLI)"列"经过 Server Actions/SyncService 编排"从 ✅ 修正为 ❌ 不经过。两条路径当前不是同一条生产架构边界，统一生产入口待 P5-SY6F。评估文档 `docs/tasks/archive/p5-sy6-runtime-design.md`。等待 Codex 第三次独立设计验收。 |
+| 2026-06-19 | P5-SY5G Codex 独立复验通过：D2/F2 确定性 FOR UPDATE 行锁断言确认，无 expect(true).toBe(true) 或"环境差异不强制断言"通过路径。281 非并发测试全通过，lint 0 errors（8 pre-existing warnings），build 通过。未连接生产 Supabase，未执行生产 Migration 00007/00008。Current Task → P5-SY6。 |
+| 2026-06-19 | P5-SY5F Codex 独立复验通过：返工修复经 Codex 独立复验确认通过。GC 防误删三层保护完整（active ∪ recent ∪ referenced），integration.test.ts 18 项集成测试（含被 Real Write 引用的 Dry Run GC 保护 + orphan 反例删除）。281/281 测试，lint 0 errors，build 通过。下一步 P5-SY5G。 |
+| 2026-06-19 | P5-SY5F 独立验收通过：新增 integration.test.ts（16 项集成测试）— 非确定性序列化安全（5）+ GC 全管道（3）+ GC 防误删边界（4）+ artifact 生命周期（4）。279/279 测试，lint 0 errors，build 通过。Codex 指出 GC 防误删缺一项，已返工修复。 |
+| 2026-06-19 | P5-SY5E 独立验收通过：侧边栏新增"数据同步"分组 + RefreshCw 图标 + 库存同步入口（phase 0，Admin/Operator 可见）。263/263 测试，lint 0 errors，build 通过。 |
+| 2026-06-19 | P5-SY5D 独立验收通过：聚焦返工已通过 Codex 独立代码复验。263/263 测试，lint 0 errors，build 通过。 |
+| 2026-06-19 | P5-SY5D 实现完成：顶层 `'use server'` Actions（server-actions.ts）+ Server Component 页面（page.tsx）+ 客户端交互（sync-page-content.tsx）+ loading.tsx / error.tsx。258/258 测试通过，lint 0 errors，build 通过。待独立验收。 |
+| 2026-06-19 | P5-SY5C2 独立验收通过：types.ts / schema.ts / repository.ts / sync-service.ts / actions.ts / mock-artifact-provider.ts / mock-sync-runner.ts + 7 个测试文件（contract / schema / repository / sync-service / actions / mock-artifact-provider / mock-sync-runner）。258/258 测试通过，lint 0 errors，build 通过。 |
+| 2026-06-19 | P5-SY5C2 任务包第五次修订完成（第四次复审未通过 → 4 项修正）：(1) 统一 triggerSync 返回映射 success=(status==='completed')；(2) 统一失败 Artifact 保留规则消除 delete/保留矛盾；(3) Plan Artifact rejected_rows.row 改为 Record<string, JsonValue>；(4) 日期同步。仅修订设计文档，未实现代码。 |
+| 2026-06-19 | P5-SY5C2 任务包第四次修订完成（第三次复审未通过 → 7 项修正）：(1) SyncServiceResult 类型；(2) release 失败 indeterminate 状态；(3) Artifact 保留规则修正；(4) inputArtifact 改为必需；(5) Plan Artifact 精确对齐 plan_generator 实际输出；(6) createSyncActions 仅为工厂；(7) 新增强化测试。仅修订设计文档，未实现代码。 |
 | 2026-06-14 | P5-SY5 V5.4.1 第九次修订完成：第八次独立设计验收聚焦返工未通过，V5.4.1 覆盖全部 3 项返工要求 — (1) 调整 claim_sync_run 验证顺序：dry_run_run_id PERFORM 验证移至 advisory lock + FOR UPDATE 之后、任何 UPDATE/INSERT 之前，锁保护区内消除 TOCTOU 窗口，更新 SQL 草案和 P5-SY5G 测试；(2) 修复 GC 时间模型：cutoff 直接使用 `now - 7 days`（移除错误的 max()），恢复 getRecentlyCompletedRunIds(now-60min) 双层保护（Layer 1: 7 天存储截止 + Layer 2: 60 分钟业务保护），禁止 artifact.createdAt 推导 sync_run.finished_at（独立时间戳）；(3) 定义 JsonValue 运行时验证器：validateJsonValue() 递归拒绝 undefined/function/Symbol/BigInt/NaN/Infinity/toJSON/自定义原型，prepare() 先验证再 stringify，新增 ~12 项 validateJsonValue 测试和 GC 防误删边界测试。修订 D27 为"GC cutoff 固定为审计保留期 + 双层保护"，新增 D28（validateJsonValue 运行时验证）。仅修改设计和状态文档，未实现代码。等待第九次独立设计验收。 |
 | 2026-06-14 | P5-SY5A Migration 00007 第二次聚焦返工完成：修复 8 项缺陷 — (1) claim_sync_run IS DISTINCT FROM 'admin' 拒绝 NULL role + triggered_by 绑定 auth.uid()；(2) 查询 RPC 脱敏矩阵：禁止 input_artifact_hash/plan_artifact_hash/lease_expires_at/heartbeat_at/原始 triggered_by UUID，Admin 返回 display_name，Operator 返回脱敏邮箱 + controlled result_summary + Chinese 失败摘要；(3) failed_requires_fields 增加 finished_at IS NOT NULL；(4) cleanup 仅遍历过期 in_progress warehouse；(5) sync_log.exit_code 移除 DEFAULT 1 + CHECK (IS NULL OR IN (0,1,2))；(6) release v_pre_wh_id/v_post_wh_id 独立变量 + warehouse lock 行存在校验；(7) get_sync_runs p_limit 显式拒绝 + jsonb_agg ORDER BY；(8) 强化契约测试 32→47 项。未执行 Migration，未连接 Supabase。等待 P5-SY5A 独立静态验收。 |
 | 2026-06-14 | P5-SY5A Migration 00007 第一次聚焦返工完成：补齐 sync_run 5 列（triggered_by/triggered_from/heartbeat_at/result_summary/created_at）；release_sync_run 锁后 SELECT sync_run FOR UPDATE + 终态重校验；get_sync_runs CTE ORDER BY + LIMIT before jsonb_agg；claim_sync_run 全部锁后 clock_timestamp()；sync_log FK/CHECK/DEFAULT 约束；修复 dry_run_run_id SELECT INTO 重复写入。静态 SQL 契约测试 32/32 通过。等待独立静态验收。 |
@@ -220,7 +268,7 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 
 ## Current Build Status
 
-✅ 通过 — `npm run lint`（0 errors, 8 pre-existing warnings）+ `npm run build` + `npm run test`（129/129）均通过；P5-SY5C 独立验收通过，P5-SY5C2 任务包第三次修订完成待独立复审。
+✅ 最近已知通过 — P5-SY8H 完成时质量门通过。P5-SY9 当前仅创建任务包，尚未执行新代码变更。实施 P5-SY9 后必须重新运行 `npm run test`、`npm run lint`、`npm run build` 与 Python tests；生产 Web 同步上线前还必须覆盖 Dry Run 绑定、生产无 Mock、heartbeat/timeout、批量审核写入和权限测试。
 
 ## Known Limitations
 
@@ -234,15 +282,29 @@ Phase 5 — 海外库存同步（首仓数据来源确认）
 - `supabase/migrations/00003_tighten_variant_rls.sql` — 删除 operator_update_variant_match 策略，收紧 ProductVariant RLS ✅ 已执行
 - `supabase/migrations/00004_batch_match_variants.sql` — SECURITY INVOKER + admin 校验 + 函数内去重 + FOR UPDATE + count 验证 + REVOKE/GRANT ✅ 已执行
 - `supabase/migrations/00005_fix_shipment_rpc.sql` — DROP 旧版 10 参数函数 + SECURITY INVOKER + 角色校验 + p_items 输入校验 + auth.uid() + REVOKE/GRANT ✅ 已执行
+- `supabase/migrations/00006_sync_warehouse_inventory.sql` — 事务型海外库存同步 RPC（674 行，SECURITY INVOKER + search_path='' + REVOKE/GRANT）✅ 已执行（2026-06-19）
+- `supabase/migrations/00007_sync_run.sql` — sync_run 表 + sync_warehouse_lock 表 + sync_log 扩展 5 列 + 6 个 SECURITY DEFINER RPC + 11 CHECK + 补建 + 权限收口（1392 行）✅ 已执行（2026-06-19）
+- `supabase/migrations/00008_sync_run_for_update_dry_run.sql` — claim_sync_run Step 6 FOR UPDATE on dry_run 行，关闭 TOCTOU 窗口（244 行）✅ 已执行（2026-06-19）
+- `supabase/migrations/00009_generalize_sync_warehouse_country.sql` — CREATE OR REPLACE sync_warehouse_inventory RPC，移除 4 处硬编码 PH 检查，改为动态校验（~500 行）✅ 已执行（2026-06-19）
+
+## Database Vendor Isolation（新增约束）
+
+用户确认后续可能切换国内数据库厂商。当前 Supabase/PostgreSQL 为落地层，但业务层不得新增 Supabase 直接绑定：
+
+- **允许**：Migration 使用 Supabase/PostgreSQL 专用语法（属于落地层）
+- **禁止**：P5-SY8 及后续业务代码新增页面/组件/业务逻辑直接依赖 Supabase SDK
+- **边界**：UI / Server Actions / SyncService 只依赖接口；数据库实现藏在 Repository / adapter 层
+- **命名**：若需要新增真实数据库访问实现，命名为 Supabase/Postgres adapter（如 `SupabaseSyncRepository`），而不是把 Supabase 调用写进通用 SyncService
+- **未来切换**：替换 adapter/migration 层，业务层契约不变
+- **Python CLI 现状**：现有 `SUPABASE_SERVICE_ROLE_KEY` + Supabase REST 路径继续作为已知差距（GAP-01），不在本次扩散
 
 ## Current Blockers
 
-无阻塞项。P5-SY5C2 任务包第三次修订完成，待独立复审。
+P5-SY9 当前阻断生产 Web 真实写入：BigSeller Session 复用不可靠、Dry Run 真实绑定未完成、Web 自动真实写入必须改为审核后二次确认、生产路径不得混入 Mock、heartbeat/timeout 尚需完善。Supabase 可继续作为当前生产数据库，但新增代码必须保持 Repository/Adapter 隔离，避免未来切换国内 PostgreSQL 兼容库时伤筋动骨。
 
 ## Next Step
 
-等待 P5-SY5C2 任务包独立复审。复审通过后开始实现。
-禁止直接进入 P5-SY5D/E 或开始实现代码。
+P5-SY9A 现状审查已完成（27 个核心文件逐行审查，7 维度差距清单含 BigSeller Session 复用不可靠），等待 Codex 独立复验。P5-SY9B（BigSeller Session Health Check）~ P5-SY9I 仍为 PENDING，验收通过前不得开始实现。Web 真实写入不得上线。
 
 ## P5-SY3A Dry Run 结果摘要（返工后）
 
@@ -595,22 +657,30 @@ BigSeller 实际 VXE 结构：
 
 ## Current Task References
 
-当前 P5-SY5C2 按需读取：
+当前 P5-SY9 任务包（PENDING — 任务包已重写为完整生产化设计稿，含 8 个子任务 P5-SY9A~H，等待 Codex 独立设计审查）。逐仓 P5-SY8A~H 已完成，下一阶段聚焦生产可用 Web 同步入口、批量 Dry Run 审核、批量真实写入和同步历史。
 
-- `docs/tasks/current-task.md`：当前唯一执行范围、验收与停止条件
-- `src/features/sync/types.ts`：JsonValue / PreparedArtifact / Artifact / ArtifactCandidate / SyncRunner 类型
-- `src/features/sync/validate-json-value.ts`：validateJsonValue V5.4.3 运行时验证器
-- `src/features/sync/artifact-provider.ts`：ArtifactProvider 接口契约
-- `src/features/sync/gc-orchestrator.ts`：GC orchestrator 纯函数
-- `src/features/sync/sync-runner.ts`：SyncRunner 接口
-- `src/lib/auth.ts`：`getCurrentActiveUser()` / `requireActiveAuth()` / `requireActiveAdmin()`
-- `src/features/sync/schema.ts`：Zod 参数校验（本 Task 创建）
-- `src/features/sync/repository.ts`：Repository 接口 + Mock 实现（本 Task 创建）
-- `src/features/sync/sync-service.ts`：SyncService 编排（本 Task 创建）
-- `src/features/sync/actions.ts`：Server Actions（本 Task 创建）
-- `docs/tasks/archive/p5-sy5-design.md`：手动同步入口完整架构设计（V5.4.3）
+**本任务包核心文件：**
+- `docs/tasks/current-task.md`：P5-SY9 任务包（生产化方向、子任务拆分、验收标准）
 - `docs/tasks/phase-5-sync.md`：海外库存同步任务顺序
+- `src/app/dashboard/sync/`：Sync 页面与客户端组件（P5-SY9 需生产化）
+- `src/features/sync/server-actions.ts`：Web 同步 Server Actions wiring（P5-SY9 需修复生产边界）
+- `src/features/sync/actions.ts`：Sync action 编排（Dry Run / Real Write 绑定）
+- `src/features/sync/sync-service.ts`：SyncService 生命周期编排
+- `src/features/sync/real-sync-runner.ts`：真实 Runner / Python bridge 调用
+- `src/features/sync/supabase-repository.ts`：当前 Supabase Repository 实现
+- `src/lib/python-bridge.ts`：Python 子进程桥接与后续 timeout/abort 边界
+- `tools/bigseller-scraper/sync/`：CLI 可信基线与 Python 同步链路
+
+**P5-SY9 核心方向：**
+- Supabase 继续作为当前生产数据库，但保持 Repository/Adapter 隔离。
+- Web “同步全部海外仓”只能先生成批量 Dry Run 预览。
+- 用户审核每仓计划后，勾选 ready 仓库并二次确认，系统内部绑定对应 Dry Run 执行真实写入。
+- 用户不需要手填 confirm token、Dry Run ID、hash、路径或 CLI 参数。
+- 真实写入必须逐仓独立 claim/release/sync_log，单仓失败不影响其他仓。
+- 当前任务不新增 `inventory_snapshots`，BigSeller 趋势数据后续按需脚本读取。
+
+**说明：** P5-SY9 尚未实现功能代码。验收通过前不得宣称 Web 同步可生产使用，也不得开放普通网页按钮直接自动真实写入。
 
 ## Last Updated
 
-2026-06-14（P5-SY5C 独立验收通过，129/129 测试；P5-SY5C2 任务包第三次修订完成待独立复审）
+2026-06-21（P5-SY9A 现状审查完成 — 6 维度差距清单已输出，P5-SY9B~H 实施入口文件与测试范围已明确。等待 Codex 独立验收。）

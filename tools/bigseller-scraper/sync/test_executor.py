@@ -15,6 +15,10 @@ from sync.executor import (
     execute_plan_v2,
 )
 
+# monkey-patch: 所有 executor 测试数据均使用 PH country
+import sync.config
+sync.config.WAREHOUSE_COUNTRY = 'PH'
+
 PASS = 0
 FAIL = 0
 
@@ -994,10 +998,58 @@ def test_full_happy_path():
         assert result['phase_i_verified'] is True
         assert result['rpc_summary'] == MOCK_RPC_RESULT
 
+        # finished_at 在 Phase G/I 全部通过后设置，非空
+        assert result['finished_at'] is not None, \
+            'finished_at 应在 Phase G/I 通过后设置'
+        assert len(result['finished_at']) > 0, \
+            'finished_at 不应为空字符串'
+
         # 验证 success log 被调用
         success_call = mock_log.call_args
         assert success_call[1]['status'] == 'success'
         assert success_call[1]['error_message'] is None
+
+        # result.finished_at 与 SyncLog.finished_at 必须使用同一值
+        assert success_call[1]['finished_at'] == result['finished_at'], (
+            f'SyncLog.finished_at ({success_call[1]["finished_at"]}) '
+            f'!= result.finished_at ({result["finished_at"]})'
+        )
+
+
+@test("成功路径调用顺序: sync_log 写入在 Phase G/I 查询之后")
+def test_success_path_call_order_sync_log_after_audit():
+    """使用 MagicMock 追踪调用顺序：_write_sync_log 在所有 _get 查询之后被调用。"""
+    import sync.executor as ex
+    from unittest.mock import patch, MagicMock
+
+    mock_rpc = MagicMock(return_value=MOCK_RPC_RESULT)
+    mock_log = MagicMock(return_value={'id': 'log-order'})
+
+    def _get_logic(path):
+        if 'inventory' in path:
+            return MOCK_INVENTORY_LIST
+        if 'warehouse' in path:
+            return [MOCK_WAREHOUSE]
+        return MOCK_VARIANT_LIST
+
+    mock_get = MagicMock(side_effect=_get_logic)
+
+    with patch('sync.executor._call_sync_rpc', mock_rpc), \
+         patch('sync.executor._get', mock_get), \
+         patch('sync.executor.verify_inventory_post_write', return_value=[]), \
+         patch('sync.executor.verify_warehouse_final_state', return_value=[]), \
+         patch('sync.executor._write_sync_log', mock_log), \
+         patch('sync.executor._save_fallback_log'):
+
+        result = ex.execute_plan_v2(SIMPLE_PLAN, sync_log_enabled=True,
+                                    last_sync_at=SYNC_AT)
+        assert result['sync_log_written'] is True
+
+    # result.finished_at 与 SyncLog.finished_at 必须使用同一值
+    log_call_finished = mock_log.call_args[1]['finished_at']
+    assert log_call_finished is not None, 'SyncLog.finished_at 不应为 None'
+    assert log_call_finished == result['finished_at'], \
+        f'SyncLog.finished_at ({log_call_finished}) != result.finished_at ({result["finished_at"]})'
 
 
 @test("RPC 成功 + success log 连续失败 → fallback，模拟 CLI exit 2")
@@ -1081,6 +1133,59 @@ def test_audit_failure_exit_1():
         assert mock_log.called
         assert mock_log.call_args[1]['status'] == 'failed'
         assert 'post-commit audit failed' in str(mock_log.call_args[1].get('error_message', '')).lower()
+
+        # 审计失败时 sync_log.finished_at 非空（由 _record_audit_failure 设置）
+        assert mock_log.call_args[1]['finished_at'] is not None, \
+            '审计失败时 SyncLog.finished_at 不应为 None'
+        assert len(mock_log.call_args[1]['finished_at']) > 0, \
+            '审计失败时 SyncLog.finished_at 不应为空'
+
+
+@test("审计失败: result.finished_at 设置为失败时间，SyncLog.finished_at 使用同一值")
+def test_audit_failure_sets_result_finished_at():
+    """审计失败时 _record_audit_failure 设置 result.finished_at，
+    SyncLog.finished_at 必须与此值一致。"""
+    import sync.executor as ex
+    # 使用副作用捕获 result 返回值（即使抛异常，内部 result dict 已被修改）
+    captured_result = []
+
+    def _audit_failure_wrapper(plan, sync_log_enabled, last_sync_at):
+        try:
+            return ex.execute_plan_v2_original(plan, sync_log_enabled=sync_log_enabled,
+                                               last_sync_at=last_sync_at)
+        except RuntimeError:
+            # 无法获取 result dict，通过 mock_log 间接验证
+            raise
+
+    with patch('sync.executor._call_sync_rpc') as mock_rpc, \
+         patch('sync.executor._get') as mock_get, \
+         patch('sync.executor.verify_inventory_post_write') as mock_verify_inv, \
+         patch('sync.executor._write_sync_log') as mock_log, \
+         patch('sync.executor._save_fallback_log') as mock_fb:
+        mock_rpc.return_value = MOCK_RPC_RESULT
+        mock_log.return_value = {'id': 'log-audit-fail'}
+        mock_get.side_effect = lambda path: (
+            MOCK_INVENTORY_LIST if 'inventory' in path else MOCK_VARIANT_LIST
+        )
+        mock_verify_inv.return_value = [
+            'SKU WM0005: expected 1500, got 9999'
+        ]
+
+        try:
+            ex.execute_plan_v2(SIMPLE_PLAN, sync_log_enabled=True,
+                               last_sync_at=SYNC_AT)
+            assert False, '应抛出 RuntimeError'
+        except RuntimeError:
+            pass
+
+    # 审计失败时应写入了 failed sync_log
+    assert mock_log.called
+    call_kwargs = mock_log.call_args[1]
+    assert call_kwargs['status'] == 'failed'
+    # finished_at 非空
+    log_finished = call_kwargs['finished_at']
+    assert log_finished is not None, '审计失败时 SyncLog.finished_at 不应为 None'
+    assert len(log_finished) > 0, '审计失败时 SyncLog.finished_at 不应为空'
 
 
 # =========================================================================
@@ -2238,6 +2343,312 @@ def test_sync_log_list_multi_record_retry_then_raise():
 
 
 # =========================================================================
+# P5-SY8 令牌—模式强制绑定测试 (execute_plan)
+# =========================================================================
+
+@test("execute_plan: P5-SY8C-TH + dry_run=False 在任何 I/O 前被拒绝，Path.exists/open/_get 均未调用")
+def test_execute_plan_p5_sy8c_th_rejects_no_dry_run_before_io():
+    """P5-SY8C-TH 令牌仅支持 dry_run=True。使用 dry_run=False 时
+    必须在 Path.exists、open、_get、_post、_patch 之前拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'TH'), \
+         patch('pathlib.Path.exists') as mock_exists, \
+         patch('builtins.open') as mock_open, \
+         patch('sync.executor._get') as mock_get, \
+         patch('sync.executor._post') as mock_post, \
+         patch('sync.executor._patch') as mock_patch:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8C-TH',
+                dry_run=False,
+            )
+            assert False, '应抛出 RuntimeError'
+        except RuntimeError as e:
+            assert 'P5-SY8C-TH' in str(e)
+            assert ('dry_run' in str(e).lower() or
+                    '只读' in str(e) or
+                    '不得执行真实写入' in str(e))
+            assert 'P5-SY8D-TH' in str(e)
+
+        mock_exists.assert_not_called()
+        mock_open.assert_not_called()
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+        mock_patch.assert_not_called()
+
+
+@test("execute_plan: P5-SY8C-TH + dry_run=True 正常通过模式检查")
+def test_execute_plan_p5_sy8c_th_accepts_dry_run():
+    """P5-SY8C-TH + dry_run=True 不应被模式检查拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'TH'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8C-TH',
+                dry_run=True,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert 'P5-SY8C-TH 仅支持' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+@test("execute_plan: P5-SY8D-TH + dry_run=False 正常通过所有安全门（允许真实写入）")
+def test_execute_plan_p5_sy8d_th_accepts_no_dry_run():
+    """P5-SY8D-TH 是唯一可执行 --no-dry-run 的 TH 令牌。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'TH'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8D-TH',
+                dry_run=False,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert '仅支持 dry_run=True' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+@test("execute_plan: P5-SY8E-MY + dry_run=False 在任何 I/O 前被拒绝，Path.exists/open/_get 均未调用")
+def test_execute_plan_p5_sy8e_my_rejects_no_dry_run_before_io():
+    """P5-SY8E-MY 令牌仅支持 --dry-run。使用 --no-dry-run 时必须
+    在 Path.exists、open、_get 之前拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'MY'), \
+         patch('pathlib.Path.exists') as mock_exists, \
+         patch('builtins.open') as mock_open, \
+         patch('sync.executor._get') as mock_get, \
+         patch('sync.executor._post') as mock_post, \
+         patch('sync.executor._patch') as mock_patch:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8E-MY',
+                dry_run=False,
+            )
+            assert False, '应抛出 RuntimeError'
+        except RuntimeError as e:
+            assert 'P5-SY8E-MY' in str(e)
+            assert ('dry_run' in str(e).lower() or
+                    '只读' in str(e) or
+                    '不得执行真实写入' in str(e))
+
+        mock_exists.assert_not_called()
+        mock_open.assert_not_called()
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+        mock_patch.assert_not_called()
+
+
+@test("execute_plan: P5-SY8E-MY + dry_run=True 正常通过模式检查")
+def test_execute_plan_p5_sy8e_my_accepts_dry_run():
+    """P5-SY8E-MY + dry_run=True 不应被模式检查拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'MY'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8E-MY',
+                dry_run=True,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert 'P5-SY8E-MY 仅支持' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+@test("execute_plan: P5-SY8F-MY + dry_run=False 正常通过所有安全门（允许真实写入）")
+def test_execute_plan_p5_sy8f_my_accepts_no_dry_run():
+    """P5-SY8F-MY 是唯一可执行 --no-dry-run 的 MY 令牌。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'MY'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8F-MY',
+                dry_run=False,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert '仅支持 dry_run=True' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+@test("execute_plan: P5-SY8F-MY + dry_run=True 正常通过模式检查")
+def test_execute_plan_p5_sy8f_my_accepts_dry_run():
+    """P5-SY8F-MY + dry_run=True 不应被模式检查拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'MY'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8F-MY',
+                dry_run=True,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert 'P5-SY8F-MY 仅支持' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+@test("execute_plan: P5-SY8G-ID + dry_run=False 在任何 I/O 前被拒绝，Path.exists/open/_get 均未调用")
+def test_execute_plan_p5_sy8g_id_rejects_no_dry_run_before_io():
+    """P5-SY8G-ID 令牌仅支持 --dry-run。使用 --no-dry-run 时必须
+    在 Path.exists、open、_get 之前拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'ID'), \
+         patch('pathlib.Path.exists') as mock_exists, \
+         patch('builtins.open') as mock_open, \
+         patch('sync.executor._get') as mock_get, \
+         patch('sync.executor._post') as mock_post, \
+         patch('sync.executor._patch') as mock_patch:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8G-ID',
+                dry_run=False,
+            )
+            assert False, '应抛出 RuntimeError'
+        except RuntimeError as e:
+            assert 'P5-SY8G-ID' in str(e)
+            assert 'P5-SY8H-ID' in str(e), \
+                f'错误消息应提示 P5-SY8H-ID 为待发布写令牌，实际: {e}'
+            assert ('dry_run' in str(e).lower() or
+                    '只读' in str(e) or
+                    '不得执行真实写入' in str(e))
+
+        mock_exists.assert_not_called()
+        mock_open.assert_not_called()
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+        mock_patch.assert_not_called()
+
+
+@test("execute_plan: P5-SY8G-ID + dry_run=True 正常通过模式检查")
+def test_execute_plan_p5_sy8g_id_accepts_dry_run():
+    """P5-SY8G-ID + dry_run=True 不应被模式检查拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'ID'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8G-ID',
+                dry_run=True,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert 'P5-SY8G-ID 仅支持' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+@test("execute_plan: P5-SY8H-ID + dry_run=False 正常通过所有安全门（允许真实写入）")
+def test_execute_plan_p5_sy8h_id_accepts_no_dry_run():
+    """P5-SY8H-ID 是唯一可执行 --no-dry-run 的 ID 令牌。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'ID'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8H-ID',
+                dry_run=False,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert '仅支持 dry_run=True' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+@test("execute_plan: P5-SY8H-ID + dry_run=True 正常通过模式检查")
+def test_execute_plan_p5_sy8h_id_accepts_dry_run():
+    """P5-SY8H-ID + dry_run=True 不应被模式检查拒绝。"""
+    import sync.executor as ex
+    from unittest.mock import patch
+
+    with patch('sync.config.WAREHOUSE_COUNTRY', 'ID'), \
+         patch('pathlib.Path.exists', return_value=False) as mock_exists, \
+         patch('builtins.open') as mock_open:
+        try:
+            ex.execute_plan(
+                '/fake/report.json',
+                confirm='P5-SY8H-ID',
+                dry_run=True,
+            )
+            assert False, '后续 Path.exists 应触发错误（文件不存在）'
+        except RuntimeError as e:
+            assert 'P5-SY8H-ID 仅支持' not in str(e), \
+                f'不应触发模式拒绝: {e}'
+            assert '不存在' in str(e) or 'not exist' in str(e).lower()
+
+        mock_exists.assert_called()
+        mock_open.assert_not_called()
+
+
+# =========================================================================
 # 运行
 # =========================================================================
 
@@ -2301,9 +2712,11 @@ if __name__ == '__main__':
     test_sync_log_retry_succeeds()
     test_sync_log_consecutive_fail_saves_fallback()
     test_full_happy_path()
+    test_success_path_call_order_sync_log_after_audit()
     test_rpc_success_sync_log_fail_exit_2()
     test_rpc_failure_exit_1()
     test_audit_failure_exit_1()
+    test_audit_failure_sets_result_finished_at()
 
     # P5-SY4C 返工新增测试
     test_urlerror_no_retry()
@@ -2343,6 +2756,19 @@ if __name__ == '__main__':
     test_sync_log_id_number_retry_then_raise()
     test_sync_log_warehouse_id_number_retry_then_raise()
     test_sync_log_list_multi_record_retry_then_raise()
+
+    # P5-SY8 令牌—模式强制绑定 (execute_plan)
+    test_execute_plan_p5_sy8c_th_rejects_no_dry_run_before_io()
+    test_execute_plan_p5_sy8c_th_accepts_dry_run()
+    test_execute_plan_p5_sy8d_th_accepts_no_dry_run()
+    test_execute_plan_p5_sy8e_my_rejects_no_dry_run_before_io()
+    test_execute_plan_p5_sy8e_my_accepts_dry_run()
+    test_execute_plan_p5_sy8f_my_accepts_no_dry_run()
+    test_execute_plan_p5_sy8f_my_accepts_dry_run()
+    test_execute_plan_p5_sy8g_id_rejects_no_dry_run_before_io()
+    test_execute_plan_p5_sy8g_id_accepts_dry_run()
+    test_execute_plan_p5_sy8h_id_accepts_no_dry_run()
+    test_execute_plan_p5_sy8h_id_accepts_dry_run()
 
     print()
     print('=' * 60)

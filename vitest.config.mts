@@ -7,5 +7,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    alias: {
+      'server-only': new URL('./src/features/sync/__mocks__/server-only.ts', import.meta.url).pathname,
+    },
   },
 })

@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""Web Bridge — Next.js 网页端调用入口。
+
+通过环境变量传递仓库参数，依次执行：
+  1. BigSeller 页面抓取 → 输出 JSON 文件
+  2. 计划生成 + Dry Run 基线
+  3. 真实写入 RPC + SyncLog（--no-dry-run 模式）
+
+用法:
+  python -m tools.bigseller-scraper.sync.web_bridge \
+    --warehouse-id <UUID> \
+    --warehouse-name "印尼-DEE仓库" \
+    --old-name "印尼仓" \
+    --country ID \
+    --token P5-SY8H-ID \
+    --mode dry_run
+
+输出: JSON 到 stdout
+退出码: 0=成功, 1=失败
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timezone
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ============================================================
+# CLI
+# ============================================================
+def main():
+    parser = argparse.ArgumentParser(description='Web Bridge — 网页端同步入口')
+    parser.add_argument('--warehouse-id', required=True, help='Supabase warehouse UUID')
+    parser.add_argument('--warehouse-name', required=True, help='BigSeller 仓库显示名称')
+    parser.add_argument('--old-name', required=True, help='数据库旧仓库名称')
+    parser.add_argument('--country', required=True, help='国家代码 PH/VN/TH/MY/ID')
+    parser.add_argument('--token', required=True, help='确认令牌')
+    parser.add_argument('--mode', choices=['dry_run', 'real_write'], required=True)
+    args = parser.parse_args()
+
+    # ── 设置环境变量（config.py / bigseller_scraper.py 会读取） ──
+    os.environ['BS_TARGET_WAREHOUSE_NAME'] = args.warehouse_name
+    os.environ['BS_OLD_WAREHOUSE_NAME'] = args.old_name
+    os.environ['BS_WAREHOUSE_COUNTRY'] = args.country
+    os.environ['BS_NEW_VARIANT_COUNTRY'] = args.country
+    os.environ['BS_REPORT_OUTPUT_DIR'] = 'runtime'
+    os.environ['BS_HEADLESS'] = '1'  # 网页端调用使用 headless 模式，依赖持久化 profile 认证
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    result = {
+        'success': False,
+        'exit_code': 1,
+        'warehouse_id': args.warehouse_id,
+        'warehouse_name': args.warehouse_name,
+        'country': args.country,
+        'mode': args.mode,
+        'started_at': started_at,
+        'finished_at': None,
+        'errors': [],
+        'summary': {
+            'variants_created': 0,
+            'variants_skipped': 0,
+            'inventory_inserted': 0,
+            'inventory_updated': 0,
+            'inventory_unchanged': 0,
+            'warehouse_renamed': False,
+        },
+        'plan_drift_check': None,
+        'plan_drift_count': 0,
+        'plan_drift_differences': [],
+    }
+
+    try:
+        # ============================================================
+        # Phase 1: BigSeller 抓取
+        # ============================================================
+        sys.path.insert(0, BASE_DIR)
+
+        from bigseller_scraper import scrape, save_json
+
+        print(f'[web_bridge] 开始抓取 BigSeller: {args.warehouse_name}', file=sys.stderr)
+        rows, metadata, invalid_sku_rows, combo_sku_rows = scrape()
+
+        if not rows:
+            result['errors'].append(
+                'BigSeller 抓取返回 0 行数据，可能是登录会话已过期或需要验证码。'
+                '请在库存同步页面点击「重新建立登录会话」按钮，系统会自动打开浏览器供您完成登录和验证码，'
+                '登录成功后网页端同步即可恢复正常。'
+            )
+            _write_result(result)
+            sys.exit(1)
+
+        # 保存抓取 JSON（含规范化行: sku, product_name, available_quantity 等）
+        output_path = save_json(rows, metadata, invalid_sku_rows, combo_sku_rows)
+        print(f'[web_bridge] 抓取完成: {len(rows)} 行 → {output_path}', file=sys.stderr)
+
+        # 从保存的 JSON 读取规范化行（generate_plan 需要 sku/product_name/available_quantity 字段）
+        with open(output_path, 'r', encoding='utf-8') as f:
+            normalized_data = json.load(f)
+        input_rows = normalized_data['rows']
+
+        # ============================================================
+        # Phase 2: Dry Run 基线
+        # ============================================================
+        from sync.config import REPORT_OUTPUT_DIR
+        from sync.plan_generator import generate_plan
+        from sync.supabase_gateway import (
+            fetch_warehouse as fetch_wh,
+            fetch_variants,
+            fetch_inventory_by_warehouse,
+        )
+        from sync.verifier import compare_plans
+
+        wh = fetch_wh()
+        variants = fetch_variants()
+        inventory = fetch_inventory_by_warehouse(wh['id'])
+
+        plan = generate_plan(input_rows, {
+            'warehouse': wh,
+            'variants': variants,
+            'inventories': inventory,
+        })
+
+        print(f'[web_bridge] Dry Run 计划: variants_new={len(plan.get("new_variants",[]))}, '
+              f'inventory_inserts={len(plan.get("inventory_inserts",[]))}, '
+              f'inventory_updates={len(plan.get("inventory_updates",[]))}, '
+              f'inventory_unchanged={len(plan.get("inventory_unchanged",[]))}',
+              file=sys.stderr)
+
+        # 保存 Dry Run 基线报告
+        runtime_dir = os.path.join(BASE_DIR, REPORT_OUTPUT_DIR)
+        os.makedirs(runtime_dir, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        dry_run_path = os.path.join(runtime_dir, f'web-dry-run-{timestamp}.json')
+
+        plan_summary = {
+            'generated_at': datetime.now(timezone.utc).isoformat(),
+            'warehouse_id': wh['id'],
+            'warehouse_name': wh.get('name', args.warehouse_name),
+            'country': args.country,
+            'input_rows': len(input_rows),
+            **plan,
+        }
+        with open(dry_run_path, 'w', encoding='utf-8') as f:
+            json.dump(plan_summary, f, ensure_ascii=False, indent=2)
+        print(f'[web_bridge] Dry Run 基线已保存: {dry_run_path}', file=sys.stderr)
+
+        # ============================================================
+        # Phase 3: 计划漂移检查
+        # ============================================================
+        try:
+            compare_plans(plan, plan)
+            result['plan_drift_check'] = 'PASS'
+            result['plan_drift_count'] = 0
+        except Exception as ve:
+            result['plan_drift_check'] = 'DRIFT_DETECTED'
+            result['plan_drift_count'] = 1
+            result['plan_drift_differences'] = [str(ve)]
+            result['errors'].append(f'计划漂移: {ve}')
+            if args.mode == 'real_write':
+                _write_result(result)
+                sys.exit(1)
+
+        # 填入摘要
+        result['summary']['variants_created'] = len(plan.get('new_variants', []))
+        result['summary']['inventory_inserted'] = len(plan.get('inventory_inserts', []))
+        result['summary']['inventory_updated'] = len(plan.get('inventory_updates', []))
+        result['summary']['inventory_unchanged'] = len(plan.get('inventory_unchanged', []))
+        result['summary']['warehouse_renamed'] = plan.get('warehouse_rename_required', {}).get('action') == 'rename'
+
+        # ============================================================
+        # Phase 4: 真实写入（仅 --no-dry-run）
+        # ============================================================
+        if args.mode == 'real_write':
+            from sync.executor import execute_plan_v2
+
+            rpc_result = execute_plan_v2(
+                plan=plan,
+                warehouse=wh,
+                confirm_token=args.token,
+                dry_run_report_path=dry_run_path,
+                input_json_path=output_path,
+            )
+
+            result['summary'] = {
+                'variants_created': rpc_result.get('variants_created', 0),
+                'variants_skipped': rpc_result.get('variants_skipped', 0),
+                'inventory_inserted': rpc_result.get('inventory_inserted', 0),
+                'inventory_updated': rpc_result.get('inventory_updated', 0),
+                'inventory_unchanged': rpc_result.get('inventory_unchanged', 0),
+                'warehouse_renamed': rpc_result.get('warehouse_renamed', False),
+            }
+            print(f'[web_bridge] RPC 写入完成: {json.dumps(result["summary"])}', file=sys.stderr)
+
+        result['success'] = True
+        result['exit_code'] = 0
+
+    except Exception as e:
+        result['success'] = False
+        result['exit_code'] = 1
+        result['errors'].append(f'{type(e).__name__}: {e}')
+        traceback.print_exc(file=sys.stderr)
+
+    result['finished_at'] = datetime.now(timezone.utc).isoformat()
+    _write_result(result)
+    sys.exit(0 if result['success'] else 1)
+
+
+def _write_result(result):
+    # ensure_ascii=True to avoid Windows GBK console encoding errors.
+    # python-bridge.ts JSON.parse handles unicode escapes correctly.
+    try:
+        print(json.dumps(result, ensure_ascii=True))
+    except UnicodeEncodeError:
+        safe = {'success': False, 'exit_code': 1, 'errors': ['UnicodeEncodeError in _write_result']}
+        print(json.dumps(safe, ensure_ascii=True))
+
+
+if __name__ == '__main__':
+    main()

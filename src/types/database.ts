@@ -324,6 +324,78 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_run: {
+        Row: {
+          id: string
+          warehouse_id: string
+          mode: string
+          status: string
+          triggered_by: string
+          triggered_from: string
+          started_at: string
+          finished_at: string | null
+          heartbeat_at: string | null
+          created_at: string
+          exit_code: number | null
+          error_message: string | null
+          result_summary: Record<string, unknown> | null
+          plan_drift_check: string | null
+          plan_drift_count: number | null
+          plan_drift_differences: unknown[] | null
+          dry_run_run_id: string | null
+          input_artifact_hash: string | null
+          plan_artifact_hash: string | null
+          locked_by: string | null
+          lease_expires_at: string | null
+        }
+        Insert: {
+          id?: string
+          warehouse_id: string
+          mode: string
+          status?: string
+          triggered_by: string
+          triggered_from: string
+          started_at?: string
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          created_at?: string
+          exit_code?: number | null
+          error_message?: string | null
+          result_summary?: Record<string, unknown> | null
+          plan_drift_check?: string | null
+          plan_drift_count?: number | null
+          plan_drift_differences?: unknown[] | null
+          dry_run_run_id?: string | null
+          input_artifact_hash?: string | null
+          plan_artifact_hash?: string | null
+          locked_by?: string | null
+          lease_expires_at?: string | null
+        }
+        Update: {
+          id?: string
+          warehouse_id?: string
+          mode?: string
+          status?: string
+          triggered_by?: string
+          triggered_from?: string
+          started_at?: string
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          created_at?: string
+          exit_code?: number | null
+          error_message?: string | null
+          result_summary?: Record<string, unknown> | null
+          plan_drift_check?: string | null
+          plan_drift_count?: number | null
+          plan_drift_differences?: unknown[] | null
+          dry_run_run_id?: string | null
+          input_artifact_hash?: string | null
+          plan_artifact_hash?: string | null
+          locked_by?: string | null
+          lease_expires_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {}
     Functions: {
@@ -345,6 +417,50 @@ export type Database = {
           p_items: Array<{ variant_id: string; quantity: number }>
         }
         Returns: string
+      }
+      claim_sync_run: {
+        Args: {
+          p_warehouse_id: string
+          p_mode: string
+          p_run_id: string
+          p_lease_duration: number
+          p_triggered_by: string
+          p_triggered_from: string
+          p_dry_run_run_id?: string | null
+          p_input_artifact_hash?: string | null
+          p_plan_artifact_hash?: string | null
+        }
+        Returns: string | null
+      }
+      release_sync_run: {
+        Args: {
+          p_run_id: string
+          p_status: string
+          p_exit_code: number
+          p_error_message?: string | null
+          p_result_summary?: Record<string, unknown> | null
+          p_plan_drift_check?: string | null
+          p_plan_drift_count?: number | null
+          p_plan_drift_differences?: unknown[] | null
+          p_plan_artifact_hash?: string | null
+        }
+        Returns: undefined
+      }
+      heartbeat_sync_run: {
+        Args: { p_run_id: string; p_lease_duration: number }
+        Returns: undefined
+      }
+      get_sync_runs: {
+        Args: { p_warehouse_id?: string | null; p_limit: number }
+        Returns: unknown
+      }
+      get_sync_run_detail: {
+        Args: { p_run_id: string }
+        Returns: unknown | null
+      }
+      cleanup_expired_sync_runs: {
+        Args: Record<string, never>
+        Returns: number
       }
     }
     Enums: {}

@@ -16,6 +16,7 @@ import {
   Ship,
   Users,
   ChevronDown,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -58,6 +59,13 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Ship,
     items: [
       { href: '/dashboard/shipments', label: '在途管理', icon: Ship, phase: '3' },
+    ],
+  },
+  {
+    label: '数据同步',
+    icon: RefreshCw,
+    items: [
+      { href: '/dashboard/sync', label: '库存同步', icon: RefreshCw, phase: '0' },
     ],
   },
 ];

@@ -1,4 +1,4 @@
-// Sync Feature Module — 类型定义
+// Sync Feature Module — 类型定义 (P5-SY5C2 V5.8)
 
 /** 严格的 JSON 值类型。禁止函数、Symbol、undefined、自定义原型、toJSON 方法。 */
 export type JsonValue =
@@ -42,17 +42,35 @@ export interface SyncRunnerCapabilities {
   supportedModes: Array<'dry_run' | 'real_write'>;
 }
 
-/** 同步执行参数 */
-export interface SyncExecuteParams {
-  runId: string; // sync_run.id，由调用方（SyncService）在 claim 成功后传入
+// ─── SyncExecuteParams — mode 判别联合 ─────────────────────────────
+
+/** Dry Run 分支：禁止 confirmToken / boundPlanArtifact */
+export interface SyncExecuteParamsDryRun {
+  runId: string;
   warehouseId: string;
-  mode: 'dry_run' | 'real_write';
-  confirmToken: string; // 必须为 'P5-SY3B-PH'
-  triggeredBy: string; // 触发者 user.id（审计用）
-  signal?: AbortSignal; // 取消/超时信号（若 Runner 支持）
-  inputArtifact?: JsonValue; // 输入快照内容（严格 JsonValue）
-  boundPlanArtifact?: JsonValue; // 绑定的计划内容（仅 real_write，用于漂移对比）
+  mode: 'dry_run';
+  triggeredBy: string;
+  signal?: AbortSignal;
+  inputArtifact: JsonValue; // Runner 接收 normalizedContent（必需）
+  // 禁止: confirmToken, boundPlanArtifact
 }
+
+/** Real Write 分支：强制 confirmToken + dryRunRunId + boundPlanArtifact */
+export interface SyncExecuteParamsRealWrite {
+  runId: string;
+  warehouseId: string;
+  mode: 'real_write';
+  confirmToken: string; // 必须 'P5-SY3B-PH'
+  triggeredBy: string;
+  dryRunRunId: string; // 绑定 Dry Run ID
+  signal?: AbortSignal;
+  inputArtifact: JsonValue; // 当前 input normalizedContent（必需）
+  boundPlanArtifact: JsonValue; // verified bound plan content（必须）
+}
+
+export type SyncExecuteParams = SyncExecuteParamsDryRun | SyncExecuteParamsRealWrite;
+
+// ─── SyncExecuteResult ────────────────────────────────────────────
 
 /** 同步执行结果摘要（完整版，仅服务端内部使用，不直接返回客户端） */
 export interface SyncExecuteResult {
@@ -81,4 +99,105 @@ export interface SyncExecuteResult {
   startedAt: string;
   finishedAt: string;
   durationMs: number;
+  /** Dry Run 执行完成后 Runner 输出的 Plan Artifact。
+   *  仅 dry_run 模式且 exitCode=0 时必须存在。
+   *  real_write 模式必须为 undefined（使用绑定的 Dry Run plan）。
+   *  结构严格匹配 plan_generator.generate_plan() 输出。 */
+  planArtifact?: JsonValue;
 }
+
+// ─── SyncServiceInput — mode 判别联合 ─────────────────────────────
+
+export interface SyncServiceInputDryRun {
+  warehouseId: string;
+  mode: 'dry_run';
+  inputArtifact: JsonValue; // 必须；缺失在 claim 前失败
+  triggeredBy: string;
+  signal?: AbortSignal;
+}
+
+export interface SyncServiceInputRealWrite {
+  warehouseId: string;
+  mode: 'real_write';
+  inputArtifact: JsonValue; // 必须（当前 input）
+  dryRunRunId: string; // 必须
+  confirmToken: string; // 必须
+  triggeredBy: string;
+  signal?: AbortSignal;
+}
+
+export type SyncServiceInput = SyncServiceInputDryRun | SyncServiceInputRealWrite;
+
+// ─── SyncServiceResult — executeSync 返回值 ────────────────────────
+
+export interface SyncServiceResult {
+  /** 本次运行 ID（预生成，无论成功失败均存在） */
+  runId: string;
+  /** 运行终态：completed=审计写入成功, failed=RPC/存储/校验失败, indeterminate=业务成功但审计写入失败 */
+  status: 'completed' | 'failed' | 'indeterminate';
+  /** Runner 输出。仅在 runner 实际执行后存在；claim 前失败时为 undefined。
+   *  status='completed' 时 runnerResult 必须存在且 success=true。
+   *  status='indeterminate' 时 runnerResult 存在（业务已成功）但 release 失败。 */
+  runnerResult?: SyncExecuteResult;
+  /** 失败原因（status='failed' 时存在；status='indeterminate' 时说明 release 失败原因） */
+  error?: string;
+  /** 仅 status='indeterminate' 时供调用方决策：artifact 保留情况摘要 */
+  artifactDisposition?: {
+    inputRetained: boolean;
+    planRetained: boolean;
+    reason: string;
+  };
+}
+
+// ─── 查询 RPC 精确返回类型 ────────────────────────────────────────
+
+/** Admin 视图 — get_sync_runs 单条记录 */
+export interface SyncRunAdminRow {
+  id: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  mode: 'dry_run' | 'real_write';
+  status: 'in_progress' | 'completed' | 'failed';
+  display_name: string;
+  triggered_from: 'web' | 'cli';
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+  exit_code: number | null;
+  error_message: string | null;
+  result_summary: Record<string, unknown> | null;
+  plan_drift_check: 'PASS' | 'DRIFT_DETECTED' | null;
+  plan_drift_count: number | null;
+  dry_run_run_id: string | null;
+}
+
+/** Operator 视图 — get_sync_runs 单条记录（脱敏） */
+export interface SyncRunOperatorRow {
+  id: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  mode: 'dry_run' | 'real_write';
+  status: 'in_progress' | 'completed' | 'failed';
+  triggered_by_email: string | null;
+  triggered_from: 'web' | 'cli';
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+  plan_drift_check: 'PASS' | 'DRIFT_DETECTED' | null;
+  plan_drift_count: number | null;
+  result_summary: { variantsCreated: unknown; inventoryUpdated: unknown } | null;
+  failure_summary: string | null;
+}
+
+/** get_sync_runs 返回类型 — JSON 数组 */
+export type SyncRunsResponse = SyncRunAdminRow[] | SyncRunOperatorRow[];
+
+/** get_sync_run_detail Admin 视图 — 比列表多 plan_drift_differences */
+export interface SyncRunDetailAdmin extends SyncRunAdminRow {
+  plan_drift_differences: string[] | null;
+}
+
+/** get_sync_run_detail Operator 视图 — 不含 plan_drift_differences */
+export type SyncRunDetailOperator = SyncRunOperatorRow;
+
+export type SyncRunDetailResponse = SyncRunDetailAdmin | SyncRunDetailOperator | null;

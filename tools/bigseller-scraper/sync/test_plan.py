@@ -10,6 +10,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sync.input_validator import validate_json, ValidationError
 from sync.plan_generator import generate_plan, _plan_warehouse_rename
 
+# monkey-patch: 模块级 import 的值需要直接替换
+import sync.plan_generator
+sync.plan_generator.TARGET_WAREHOUSE_NAME = '菲律宾-新创启辰自建仓'
+sync.plan_generator.OLD_WAREHOUSE_NAME = '菲律宾仓'
+sync.plan_generator.WAREHOUSE_COUNTRY = 'PH'
+sync.plan_generator.NEW_VARIANT_COUNTRY = 'PH'
+import sync.input_validator
+sync.input_validator.TARGET_WAREHOUSE_NAME = '菲律宾-新创启辰自建仓'
+
 PASS = 0
 FAIL = 0
 

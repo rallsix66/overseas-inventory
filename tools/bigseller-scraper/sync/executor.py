@@ -31,6 +31,7 @@ from typing import Optional
 from .config import (
     TARGET_WAREHOUSE_NAME,
     OLD_WAREHOUSE_NAME,
+    WAREHOUSE_COUNTRY,
 )
 from .verifier import verify_inventory_post_write, verify_warehouse_final_state
 
@@ -204,7 +205,7 @@ def execute_plan(
 
     Args:
         dry_run_report_path: P5-SY3A dry run 报告 JSON 路径
-        confirm: 确认令牌，必须等于 P5-SY3B-PH
+        confirm: 确认令牌，必须等于 P5-SY3B-PH 或 P5-SY8B-VN
         dry_run: True 时仅执行只读查询和分类，不写入
 
     Returns:
@@ -213,11 +214,50 @@ def execute_plan(
     Raises:
         RuntimeError: confirm 令牌不匹配或查询/写入失败
     """
+    from .config import WAREHOUSE_COUNTRY
+
+    _TOKEN_COUNTRY_MAP = {
+        'P5-SY3B-PH': 'PH',
+        'P5-SY8B-VN': 'VN',
+        'P5-SY8C-TH': 'TH',
+        'P5-SY8D-TH': 'TH',
+        'P5-SY8E-MY': 'MY',
+        'P5-SY8F-MY': 'MY',
+        'P5-SY8G-ID': 'ID',
+        'P5-SY8H-ID': 'ID',
+    }
+
+    _DRY_RUN_ONLY_TOKENS = {'P5-SY8C-TH', 'P5-SY8E-MY', 'P5-SY8G-ID'}
+    _PENDING_WRITE_TOKENS = {}
+
     # 0. 安全门
-    if confirm != 'P5-SY3B-PH':
+    token_country = _TOKEN_COUNTRY_MAP.get(confirm)
+    if token_country is None:
+        expected = [t for t, c in _TOKEN_COUNTRY_MAP.items() if c == WAREHOUSE_COUNTRY]
         raise RuntimeError(
-            f'确认令牌不匹配: 收到 "{confirm}"，期望 "P5-SY3B-PH"。'
-            f'必须显式传入 --confirm P5-SY3B-PH 才能执行写入。'
+            f'确认令牌未知: 收到 "{confirm}"。'
+            f'当前 WAREHOUSE_COUNTRY={WAREHOUSE_COUNTRY}，期望令牌: {expected}。'
+            f'必须显式传入 --confirm <TOKEN> 才能执行写入。'
+        )
+
+    if token_country != WAREHOUSE_COUNTRY:
+        expected = [t for t, c in _TOKEN_COUNTRY_MAP.items() if c == WAREHOUSE_COUNTRY]
+        raise RuntimeError(
+            f'令牌国家与当前 WAREHOUSE_COUNTRY 不一致: '
+            f'收到 "{confirm}" (绑定国家: {token_country})，'
+            f'当前 WAREHOUSE_COUNTRY={WAREHOUSE_COUNTRY}，期望令牌: {expected}。'
+            f'必须显式传入 --confirm <TOKEN> 才能执行写入。'
+        )
+
+    if confirm in _DRY_RUN_ONLY_TOKENS and not dry_run:
+        write_tokens = [t for t, c in _TOKEN_COUNTRY_MAP.items() if c == WAREHOUSE_COUNTRY and t not in _DRY_RUN_ONLY_TOKENS]
+        if not write_tokens:
+            write_tokens = _PENDING_WRITE_TOKENS.get(WAREHOUSE_COUNTRY, [])
+        write_hint = ' 或 '.join(write_tokens) if write_tokens else 'N/A'
+        raise RuntimeError(
+            f'令牌 {confirm} 仅支持 dry_run=True（只读抓取与 Dry Run）。'
+            f'该令牌绑定为只读方案专用，不得执行真实写入。'
+            f'如需真实写入，请使用 {write_hint} 令牌。'
         )
 
     # 1. 加载 Dry Run 报告
@@ -277,7 +317,7 @@ def execute_plan(
     result = {
         'started_at': datetime.now().astimezone().isoformat(timespec='seconds'),
         'dry_run': dry_run,
-        'confirm_token': 'P5-SY3B-PH',
+        'confirm_token': confirm,
         'warehouse_id': warehouse_id,
         'warehouse_name_before': None,
         'variants_before': 0,
@@ -309,15 +349,15 @@ def execute_plan(
     result['warehouse_name_before'] = wh_current.get('name')
     print(f'[A1] Warehouse: id={warehouse_id}, name="{wh_current.get("name")}"')
 
-    # A2. 查询现有 PH variants
+    # A2. 查询现有 overseas variants
     existing_variants = _get(
         'product_variant'
         '?select=id,sku,country,name,product_id,match_status'
-        f'&country=eq.PH'
+        f'&country=eq.{WAREHOUSE_COUNTRY}'
     )
     result['variants_before'] = len(existing_variants)
     existing_sku_map = {v['sku']: v for v in existing_variants}
-    print(f'[A2] 现有 PH variants: {len(existing_variants)} 条')
+    print(f'[A2] 现有 {WAREHOUSE_COUNTRY} variants: {len(existing_variants)} 条')
 
     time.sleep(0.3)
 
@@ -350,7 +390,7 @@ def execute_plan(
         else:
             to_create.append({
                 'sku': sku,
-                'country': nv.get('country', 'PH'),
+                'country': nv.get('country', WAREHOUSE_COUNTRY),
                 'name': nv['name'],
                 'product_id': None,
                 'match_status': 'unmatched',
@@ -410,18 +450,29 @@ def execute_plan(
         sku = item['sku']
         variant_id = variant_id_by_sku.get(sku)
         if not variant_id:
-            missing_variant_errors.append(
-                f'SKU "{sku}": 找不到 variant_id，无法创建 Inventory'
-            )
-            continue
-        inventory_rows.append({
-            'variant_id': variant_id,
-            'warehouse_id': warehouse_id,
-            'quantity': int(item['new_quantity']),
-            'last_sync_at': now_iso,
-        })
+            if dry_run:
+                # Dry Run 模式：DB 无 variant 时使用占位 UUID，
+                # 新 Variant 在非 Dry Run 中才会创建，Dry Run 仅验证计划结构
+                inventory_rows.append({
+                    'variant_id': '00000000-0000-0000-0000-000000000000',
+                    'warehouse_id': warehouse_id,
+                    'quantity': int(item['new_quantity']),
+                    'last_sync_at': now_iso,
+                })
+            else:
+                missing_variant_errors.append(
+                    f'SKU "{sku}": 找不到 variant_id，无法创建 Inventory'
+                )
+                continue
+        else:
+            inventory_rows.append({
+                'variant_id': variant_id,
+                'warehouse_id': warehouse_id,
+                'quantity': int(item['new_quantity']),
+                'last_sync_at': now_iso,
+            })
 
-    # Phase E fail-fast: 任一 SKU 找不到 variant_id 立即终止
+    # Phase E fail-fast: 非 Dry Run 下任一 SKU 找不到 variant_id 立即终止
     if missing_variant_errors:
         error_detail = '\n'.join(f'  - {e}' for e in missing_variant_errors)
         raise RuntimeError(
@@ -512,7 +563,7 @@ def execute_plan(
         current_variants = _get(
             'product_variant'
             '?select=id,sku,country'
-            f'&country=eq.PH'
+            f'&country=eq.{WAREHOUSE_COUNTRY}'
         )
         current_variant_map = {v['sku']: v['id'] for v in current_variants}
 
@@ -584,7 +635,7 @@ def execute_plan(
         wh_expected = {
             'id': warehouse_id,
             'name': TARGET_WAREHOUSE_NAME,
-            'country': 'PH',
+            'country': WAREHOUSE_COUNTRY,
             'type': 'overseas',
             'is_active': True,
         }
@@ -647,7 +698,7 @@ def classify_variants(
         else:
             to_create.append({
                 'sku': sku,
-                'country': nv.get('country', 'PH'),
+                'country': nv.get('country', WAREHOUSE_COUNTRY),
                 'name': nv.get('name', ''),
                 'product_id': None,
                 'match_status': 'unmatched',
@@ -1327,8 +1378,8 @@ def execute_plan_v2(
     print(f'[execute_plan_v2] RPC 返回: {json.dumps(rpc_result)}')
     print(f'[execute_plan_v2] RPC 摘要校验通过')
 
-    finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
-    result['finished_at'] = finished_at
+    # finished_at 将在 Phase G/I 审计全部通过后设置（成功路径），
+    # 或在审计失败时由 _record_audit_failure 设置为失败时间。
 
     # =====================================================================
     # 3. Phase G: 写后 Inventory 只读审计
@@ -1339,6 +1390,7 @@ def execute_plan_v2(
 
         所有审计失败（查询异常、验证差异）均通过此函数记录。
         error_message 必须包含 'post-commit audit failed'。
+        设置 result.finished_at 为失败发生时间。
 
         Returns:
             full_msg — 调用方必须用此返回值构造 RuntimeError，
@@ -1347,10 +1399,11 @@ def execute_plan_v2(
         full_msg = f'post-commit audit failed ({phase_label}): {error_msg}'
         result['errors'].append(full_msg)
 
+        now_iso = datetime.now().astimezone().isoformat(timespec='seconds')
+        result['finished_at'] = now_iso
+
         if not sync_log_enabled:
             return full_msg
-
-        now_iso = datetime.now().astimezone().isoformat(timespec='seconds')
         try:
             _write_sync_log(
                 warehouse_id=warehouse_id,
@@ -1411,7 +1464,7 @@ def execute_plan_v2(
         current_variants = _get(
             'product_variant'
             '?select=id,sku,country'
-            f'&country=eq.PH'
+            f'&country=eq.{WAREHOUSE_COUNTRY}'
         )
         current_variant_map = {v['sku']: v['id'] for v in current_variants}
 
@@ -1451,7 +1504,7 @@ def execute_plan_v2(
         wh_expected = {
             'id': warehouse_id,
             'name': TARGET_WAREHOUSE_NAME,
-            'country': 'PH',
+            'country': WAREHOUSE_COUNTRY,
             'type': 'overseas',
             'is_active': True,
         }
@@ -1485,6 +1538,10 @@ def execute_plan_v2(
             f'查询或验证异常: {type(e).__name__}: {e}',
             'post-commit audit',
         )) from e
+
+    # Phase G/I 审计全部通过后设置 finished_at
+    finished_at = datetime.now().astimezone().isoformat(timespec='seconds')
+    result['finished_at'] = finished_at
 
     # =====================================================================
     # 5. 记录 sync_log success

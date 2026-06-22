@@ -44,5 +44,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Python cache
+__pycache__/
+
 # BigSeller scraper local session and captured data
 tools/bigseller-scraper/runtime/
+
+# Claude Code local pgdata
+.claude/pgdata-p5-sy5g/

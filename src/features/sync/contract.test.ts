@@ -1,36 +1,58 @@
-// Sync Feature Module — 类型契约测试
+// Sync Feature Module — 类型契约测试 (P5-SY5C2 V5.8)
 //
-// 验证 SyncExecuteParams / SyncExecuteResult / SyncRunnerCapabilities
-// 的字段存在性和严格类型约束。
+// 验证 discriminator union、SyncServiceResult、SyncServiceInput、
+// SyncRunAdminRow/OperatorRow、PreparedArtifact/Artifact 等类型。
 
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import type {
   JsonValue,
   SyncExecuteParams,
+  SyncExecuteParamsDryRun,
+  SyncExecuteParamsRealWrite,
   SyncExecuteResult,
   SyncRunnerCapabilities,
+  SyncServiceInput,
+  SyncServiceInputDryRun,
+  SyncServiceInputRealWrite,
+  SyncServiceResult,
+  SyncRunAdminRow,
+  SyncRunOperatorRow,
+  PreparedArtifact,
+  Artifact,
+  ArtifactCandidate,
 } from './types';
-import type { SyncRunner } from './sync-runner';
 
-// ─── Helper: compile-time type assertion ──────────────────────────
-// These tests verify that the types compile correctly. Since TypeScript
-// types are erased at runtime, we validate structural conformance.
+// ─── Helpers ────────────────────────────────────────────────────────
 
-/** Construct a valid SyncExecuteParams to verify the type compiles */
-function validExecuteParams(
-  overrides?: Partial<SyncExecuteParams>,
-): SyncExecuteParams {
+function validExecuteParamsDryRun(
+  overrides?: Partial<SyncExecuteParamsDryRun>,
+): SyncExecuteParamsDryRun {
   return {
     runId: '550e8400-e29b-41d4-a716-446655440000',
     warehouseId: 'adc5ec45-cd98-42a8-a1d1-26600e80d481',
     mode: 'dry_run',
-    confirmToken: 'P5-SY3B-PH',
     triggeredBy: 'user-uuid',
+    inputArtifact: { skus: ['A', 'B'] },
     ...overrides,
   };
 }
 
-/** Construct a valid SyncExecuteResult to verify the type compiles */
+function validExecuteParamsRealWrite(
+  overrides?: Partial<SyncExecuteParamsRealWrite>,
+): SyncExecuteParamsRealWrite {
+  return {
+    runId: '550e8400-e29b-41d4-a716-446655440000',
+    warehouseId: 'adc5ec45-cd98-42a8-a1d1-26600e80d481',
+    mode: 'real_write',
+    confirmToken: 'P5-SY3B-PH',
+    triggeredBy: 'user-uuid',
+    dryRunRunId: '660e8400-e29b-41d4-a716-446655440001',
+    inputArtifact: { skus: ['C'] },
+    boundPlanArtifact: { plan: 'data' },
+    ...overrides,
+  };
+}
+
 function validExecuteResult(
   overrides?: Partial<SyncExecuteResult>,
 ): SyncExecuteResult {
@@ -52,8 +74,8 @@ function validExecuteResult(
     planDriftCount: 0,
     planDriftDifferences: [],
     errors: [],
-    startedAt: '2026-06-14T12:00:00Z',
-    finishedAt: '2026-06-14T12:05:00Z',
+    startedAt: '2026-06-19T12:00:00Z',
+    finishedAt: '2026-06-19T12:05:00Z',
     durationMs: 300000,
     ...overrides,
   };
@@ -71,48 +93,52 @@ function validRunnerCapabilities(
   };
 }
 
-// ─── SyncExecuteParams ────────────────────────────────────────────
+// ─── SyncExecuteParams discriminator union ──────────────────────────
 
-describe('SyncExecuteParams contract', () => {
-  it('has required fields', () => {
-    const params = validExecuteParams();
+describe('SyncExecuteParams — discriminator union', () => {
+  it('SyncExecuteParamsDryRun has required fields (no confirmToken/boundPlanArtifact)', () => {
+    const params = validExecuteParamsDryRun();
     expect(params.runId).toBeDefined();
     expect(params.warehouseId).toBeDefined();
-    expect(params.mode).toBeDefined();
-    expect(params.confirmToken).toBeDefined();
-    expect(params.triggeredBy).toBeDefined();
-  });
-
-  it('accepts dry_run mode', () => {
-    const params = validExecuteParams({ mode: 'dry_run' });
     expect(params.mode).toBe('dry_run');
+    expect(params.triggeredBy).toBeDefined();
+    expect(params.inputArtifact).toEqual({ skus: ['A', 'B'] });
+    // confirmToken / boundPlanArtifact / dryRunRunId MUST NOT exist on DryRun
+    expect('confirmToken' in params).toBe(false);
+    expect('boundPlanArtifact' in params).toBe(false);
+    expect('dryRunRunId' in params).toBe(false);
   });
 
-  it('accepts real_write mode', () => {
-    const params = validExecuteParams({ mode: 'real_write' });
+  it('SyncExecuteParamsRealWrite has confirmToken + dryRunRunId + boundPlanArtifact', () => {
+    const params = validExecuteParamsRealWrite();
     expect(params.mode).toBe('real_write');
+    expect(params.confirmToken).toBe('P5-SY3B-PH');
+    expect(params.dryRunRunId).toBeDefined();
+    expect(params.boundPlanArtifact).toEqual({ plan: 'data' });
+    expect(params.inputArtifact).toEqual({ skus: ['C'] });
   });
 
-  it('accepts optional signal', () => {
+  it('SyncExecuteParamsDryRun accepts optional signal', () => {
     const controller = new AbortController();
-    const params = validExecuteParams({ signal: controller.signal });
+    const params = validExecuteParamsDryRun({ signal: controller.signal });
     expect(params.signal).toBe(controller.signal);
   });
 
-  it('accepts inputArtifact as JsonValue', () => {
-    const artifact: JsonValue = { skus: ['A', 'B'] };
-    const params = validExecuteParams({ inputArtifact: artifact });
-    expect(params.inputArtifact).toEqual(artifact);
+  it('SyncExecuteParamsRealWrite accepts optional signal', () => {
+    const controller = new AbortController();
+    const params = validExecuteParamsRealWrite({ signal: controller.signal });
+    expect(params.signal).toBe(controller.signal);
   });
 
-  it('accepts boundPlanArtifact as JsonValue', () => {
-    const plan: JsonValue = { plan: 'data' };
-    const params = validExecuteParams({ boundPlanArtifact: plan });
-    expect(params.boundPlanArtifact).toEqual(plan);
+  it('both branches assignable to SyncExecuteParams', () => {
+    const dry: SyncExecuteParams = validExecuteParamsDryRun();
+    const rw: SyncExecuteParams = validExecuteParamsRealWrite();
+    expect(dry.mode).toBe('dry_run');
+    expect(rw.mode).toBe('real_write');
   });
 });
 
-// ─── SyncExecuteResult ────────────────────────────────────────────
+// ─── SyncExecuteResult ──────────────────────────────────────────────
 
 describe('SyncExecuteResult contract', () => {
   it('has exitCode 0 for success', () => {
@@ -186,9 +212,16 @@ describe('SyncExecuteResult contract', () => {
     const result = validExecuteResult({ errors: ['error 1', 'error 2'] });
     expect(result.errors).toEqual(['error 1', 'error 2']);
   });
+
+  it('has optional planArtifact', () => {
+    const result = validExecuteResult({
+      planArtifact: { warehouse_rename_required: null, new_variants: [] },
+    });
+    expect(result.planArtifact).toBeDefined();
+  });
 });
 
-// ─── SyncRunnerCapabilities ───────────────────────────────────────
+// ─── SyncRunnerCapabilities ─────────────────────────────────────────
 
 describe('SyncRunnerCapabilities contract', () => {
   it('has all required fields', () => {
@@ -210,7 +243,212 @@ describe('SyncRunnerCapabilities contract', () => {
   });
 });
 
-// ─── Precise type assertions (compile-time) ───────────────────────
+// ─── SyncServiceInput discriminator union ───────────────────────────
+
+describe('SyncServiceInput — discriminator union', () => {
+  it('SyncServiceInputDryRun has mode, warehouseId, inputArtifact, triggeredBy', () => {
+    const input: SyncServiceInputDryRun = {
+      warehouseId: 'wh-1',
+      mode: 'dry_run',
+      inputArtifact: { skus: ['A'] },
+      triggeredBy: 'user-1',
+    };
+    expect(input.mode).toBe('dry_run');
+    expect('confirmToken' in input).toBe(false);
+    expect('dryRunRunId' in input).toBe(false);
+  });
+
+  it('SyncServiceInputRealWrite has confirmToken + dryRunRunId', () => {
+    const input: SyncServiceInputRealWrite = {
+      warehouseId: 'wh-1',
+      mode: 'real_write',
+      inputArtifact: { skus: ['B'] },
+      dryRunRunId: 'dry-1',
+      confirmToken: 'P5-SY3B-PH',
+      triggeredBy: 'user-1',
+    };
+    expect(input.mode).toBe('real_write');
+    expect(input.confirmToken).toBe('P5-SY3B-PH');
+    expect(input.dryRunRunId).toBe('dry-1');
+  });
+
+  it('both branches assignable to SyncServiceInput', () => {
+    const dry: SyncServiceInput = {
+      warehouseId: 'wh-1',
+      mode: 'dry_run',
+      inputArtifact: {},
+      triggeredBy: 'u',
+    };
+    const rw: SyncServiceInput = {
+      warehouseId: 'wh-1',
+      mode: 'real_write',
+      inputArtifact: {},
+      dryRunRunId: 'd',
+      confirmToken: 'P5-SY3B-PH',
+      triggeredBy: 'u',
+    };
+    expect(dry.mode).toBe('dry_run');
+    expect(rw.mode).toBe('real_write');
+  });
+});
+
+// ─── SyncServiceResult ──────────────────────────────────────────────
+
+describe('SyncServiceResult contract', () => {
+  it('completed: runId, status, runnerResult (success=true)', () => {
+    const result: SyncServiceResult = {
+      runId: 'run-1',
+      status: 'completed',
+      runnerResult: validExecuteResult({ exitCode: 0, success: true }),
+    };
+    expect(result.runId).toBe('run-1');
+    expect(result.status).toBe('completed');
+    expect(result.runnerResult).toBeDefined();
+    expect(result.error).toBeUndefined();
+  });
+
+  it('failed: runId, status, error (no runnerResult)', () => {
+    const result: SyncServiceResult = {
+      runId: 'run-2',
+      status: 'failed',
+      error: 'claim 失败',
+    };
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('claim 失败');
+    expect(result.runnerResult).toBeUndefined();
+  });
+
+  it('indeterminate: runId, status, runnerResult, error, artifactDisposition', () => {
+    const result: SyncServiceResult = {
+      runId: 'run-3',
+      status: 'indeterminate',
+      runnerResult: validExecuteResult({ exitCode: 0, success: true }),
+      error: 'release completed 失败',
+      artifactDisposition: {
+        inputRetained: true,
+        planRetained: false,
+        reason: '审计写入失败：运行状态落库失败',
+      },
+    };
+    expect(result.status).toBe('indeterminate');
+    expect(result.runnerResult).toBeDefined();
+    expect(result.error).toBeDefined();
+    expect(result.artifactDisposition?.inputRetained).toBe(true);
+    expect(result.artifactDisposition?.planRetained).toBe(false);
+  });
+});
+
+// ─── SyncRunAdminRow / SyncRunOperatorRow ───────────────────────────
+
+describe('SyncRunAdminRow contract', () => {
+  it('has admin-specific fields', () => {
+    const row: SyncRunAdminRow = {
+      id: 'run-1',
+      warehouse_id: 'wh-1',
+      warehouse_name: 'PH Warehouse',
+      mode: 'dry_run',
+      status: 'completed',
+      display_name: 'Admin User',
+      triggered_from: 'web',
+      started_at: '2026-06-19T12:00:00Z',
+      finished_at: '2026-06-19T12:05:00Z',
+      created_at: '2026-06-19T12:00:00Z',
+      exit_code: 0,
+      error_message: null,
+      result_summary: null,
+      plan_drift_check: 'PASS',
+      plan_drift_count: 0,
+      dry_run_run_id: null,
+    };
+    expect(row.exit_code).toBe(0);
+    expect(row.error_message).toBeNull();
+    expect(row.display_name).toBe('Admin User');
+    expect(row.dry_run_run_id).toBeNull();
+  });
+});
+
+describe('SyncRunOperatorRow contract', () => {
+  it('has operator-specific fields (no exit_code, has triggered_by_email, failure_summary)', () => {
+    const row: SyncRunOperatorRow = {
+      id: 'run-1',
+      warehouse_id: 'wh-1',
+      warehouse_name: 'PH Warehouse',
+      mode: 'dry_run',
+      status: 'completed',
+      triggered_by_email: 'u***@example.com',
+      triggered_from: 'web',
+      started_at: '2026-06-19T12:00:00Z',
+      finished_at: '2026-06-19T12:05:00Z',
+      created_at: '2026-06-19T12:00:00Z',
+      plan_drift_check: 'PASS',
+      plan_drift_count: 0,
+      result_summary: null,
+      failure_summary: null,
+    };
+    expect(row.triggered_by_email).toBe('u***@example.com');
+    expect(row.failure_summary).toBeNull();
+    // Operator row MUST NOT have exit_code
+    expect('exit_code' in row).toBe(false);
+    expect('error_message' in row).toBe(false);
+    expect('display_name' in row).toBe(false);
+  });
+});
+
+// ─── PreparedArtifact / Artifact ────────────────────────────────────
+
+describe('PreparedArtifact contract', () => {
+  it('has bytes, hash, normalizedContent', () => {
+    const pa: PreparedArtifact = {
+      bytes: new Uint8Array([1, 2, 3]),
+      hash: 'abc123',
+      normalizedContent: { key: 'value' },
+    };
+    expect(pa.bytes).toBeInstanceOf(Uint8Array);
+    expect(typeof pa.hash).toBe('string');
+    expect(pa.normalizedContent).toEqual({ key: 'value' });
+  });
+});
+
+describe('Artifact contract', () => {
+  it('has runId, type, content, hash, storedAt', () => {
+    const art: Artifact = {
+      runId: 'run-1',
+      type: 'input',
+      content: { sku: 'WM0001' },
+      hash: 'def456',
+      storedAt: '2026-06-19T12:00:00Z',
+    };
+    expect(art.runId).toBe('run-1');
+    expect(art.type).toBe('input');
+    expect(typeof art.storedAt).toBe('string');
+  });
+
+  it('type is input | plan', () => {
+    const input: Artifact = {
+      runId: 'r1', type: 'input', content: {}, hash: 'h', storedAt: 's',
+    };
+    const plan: Artifact = {
+      runId: 'r1', type: 'plan', content: {}, hash: 'h', storedAt: 's',
+    };
+    expect(input.type).toBe('input');
+    expect(plan.type).toBe('plan');
+  });
+});
+
+describe('ArtifactCandidate contract', () => {
+  it('has runId, type, createdAt', () => {
+    const candidate: ArtifactCandidate = {
+      runId: 'run-1',
+      type: 'input',
+      createdAt: new Date('2026-06-19T12:00:00Z'),
+    };
+    expect(candidate.runId).toBe('run-1');
+    expect(candidate.type).toBe('input');
+    expect(candidate.createdAt).toBeInstanceOf(Date);
+  });
+});
+
+// ─── Precise type assertions (compile-time) ─────────────────────────
 
 describe('SyncExecuteResult — precise types', () => {
   it('exitCode is exactly 0 | 1 | 2', () => {
@@ -231,12 +469,16 @@ describe('SyncExecuteParams — precise types', () => {
     expectTypeOf<SyncExecuteParams['mode']>().toEqualTypeOf<'dry_run' | 'real_write'>();
   });
 
-  it('inputArtifact is JsonValue | undefined', () => {
-    expectTypeOf<SyncExecuteParams['inputArtifact']>().toEqualTypeOf<JsonValue | undefined>();
+  it('SyncExecuteParamsDryRun has inputArtifact as JsonValue (required)', () => {
+    expectTypeOf<SyncExecuteParamsDryRun['inputArtifact']>().toEqualTypeOf<JsonValue>();
   });
 
-  it('boundPlanArtifact is JsonValue | undefined', () => {
-    expectTypeOf<SyncExecuteParams['boundPlanArtifact']>().toEqualTypeOf<JsonValue | undefined>();
+  it('SyncExecuteParamsRealWrite has boundPlanArtifact as JsonValue (required)', () => {
+    expectTypeOf<SyncExecuteParamsRealWrite['boundPlanArtifact']>().toEqualTypeOf<JsonValue>();
+  });
+
+  it('SyncExecuteParamsRealWrite has confirmToken as string (required)', () => {
+    expectTypeOf<SyncExecuteParamsRealWrite['confirmToken']>().toEqualTypeOf<string>();
   });
 });
 
@@ -246,22 +488,14 @@ describe('SyncRunnerCapabilities — precise types', () => {
   });
 });
 
-describe('SyncRunner — precise types', () => {
-  it('execute returns Promise<SyncExecuteResult>', () => {
-    expectTypeOf<SyncRunner['execute']>().toEqualTypeOf<(params: SyncExecuteParams) => Promise<SyncExecuteResult>>();
-  });
-
-  it('capabilities returns Promise<SyncRunnerCapabilities>', () => {
-    expectTypeOf<SyncRunner['capabilities']>().toEqualTypeOf<() => Promise<SyncRunnerCapabilities>>();
+describe('SyncServiceResult — precise types', () => {
+  it('status is completed | failed | indeterminate', () => {
+    expectTypeOf<SyncServiceResult['status']>().toEqualTypeOf<'completed' | 'failed' | 'indeterminate'>();
   });
 });
 
-// ─── SyncRunner interface shape ───────────────────────────────────
-
-describe('SyncRunner interface shape', () => {
-  it('is defined (interface exists)', () => {
-    // TypeScript compile-time check — at runtime we verify the
-    // module exports the type via import resolution
-    expect(true).toBe(true);
+describe('ArtifactCandidate — precise types', () => {
+  it('type is input | plan', () => {
+    expectTypeOf<ArtifactCandidate['type']>().toEqualTypeOf<'input' | 'plan'>();
   });
 });

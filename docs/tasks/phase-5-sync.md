@@ -13,12 +13,35 @@
 | P5-SY4C | Executor 适配 RPC 与 SyncLog 写入 | P5-SY4B | DONE |
 | P5-SY4D | 同步失败模式测试覆盖 | P5-SY4C | DONE (独立验收通过) |
 | P5-SY4E | CLI 集成与 Dry Run 验证 | P5-SY4D | DONE (独立验收通过) |
-| P5-SY5 | 手动同步入口（含子任务） | P5-SY4E | IN_PROGRESS（P5-SY5A DONE，P5-SY5B DONE，P5-SY5C DONE，P5-SY5C2 待开始） |
-| P5-SY6 | 定时任务与运行环境评估 | P5-SY5 | BLOCKED |
-| P5-SY7 | 单仓端到端验收 | P5-SY6 | BLOCKED |
-| P5-SY8 | 逐仓扩展 | P5-SY7 | BLOCKED |
+| P5-SY5 | 手动同步入口（含子任务） | P5-SY4E | DONE（全部子任务 P5-SY5A~G DONE） |
+| P5-SY6 | 定时任务与运行环境评估 | P5-SY5 | DONE（Codex 第三次独立设计验收通过） |
+| P5-SY7 | 单仓端到端验收 | P5-SY6 | DONE（Codex 独立复验通过；6 已知差距/0 阻塞项） |
+| P5-SY8 | 逐仓扩展（总任务包） | P5-SY7 | DONE（Codex 独立设计复审通过；子任务 P5-SY8A~H 已拆分；Migration 00006/00007/00008 已执行） |
+| P5-SY8A | VN 只读抓取与 Dry Run 方案 | P5-SY8 | DONE（Codex 独立验收通过；64 行抓取 + Dry Run 通过） |
+| P5-SY8B | VN 真实写入与端到端验收 | P5-SY8A | DONE（Codex 独立验收通过：160/160 测试，npm lint 0 errors，npm build 通过。首次 RPC 提交成功：64 Variants + 64 Inventory；Migration 00009 通用化 RPC；6 处硬编码 PH→WAREHOUSE_COUNTRY；幂等重跑通过。Codex 返工 4 项全部确认：令牌国家绑定 / Migration 00009 静态契约测试 / 执行报告时间戳 / 文档同步） |
+| P5-SY8C | TH 只读抓取与 Dry Run 方案 | P5-SY8B | DONE（Codex 独立验收通过。A0 仓库改名 → A1 配置切换 → A2 BigSeller 抓取 72 行 → A3 输入校验 → A4 Dry Run（返工：报告身份 token 派生 + 全新 CLI 执行报告）→ A5 全链路验收。196/196 Python 测试 + 13/13 Migration 00009 契约测试，3 项写入前强制验收项全部满足。报告区分：130900=stored plan baseline / 133500=CLI execution report。未执行真实写入） |
+| P5-SY8D | TH 真实写入与端到端验收 | P5-SY8C | DONE（Codex 独立验收通过。RPC 写入成功：72 Variants + 72 Inventory；Phase G/I PASS；sync_log status=success。两轮 Codex 返工通过：令牌—模式安全门 + finished_at 审计语义 + 测试 mock 修复。令牌绑定：P5-SY8C-TH 仅 --dry-run，P5-SY8D-TH 唯一可 --no-dry-run。228/228 Python 测试，compileall 通过，npm lint 0 errors，npm build 通过。） |
+| P5-SY8E | MY 只读抓取与 Dry Run 方案 | P5-SY8D | DONE（Codex 独立验收通过。BigSeller 抓取 48 行（warehouse=喜运达MY仓，autoid=warehouse_option_4）。DB 仓库 `马来西亚仓`→`喜运达MY仓` 改名已确认。Stored Plan Baseline `p5-sy3a-dry-run-20260620-232838.json`，CLI Dry Run 报告 `p5-sy8e-my-dry-run-20260620-233129.json`，plan_drift_check=PASS。invalid sidecar: 1 行（空包 0000）。新增 P5-SY8E-MY 令牌（仅 --dry-run）+ test_my_full_chain_country_assertions（execute_plan_v2 真实执行，逐条验证 RPC p_variants/p_inventory country=MY + Phase G country=eq.MY + Phase I wh_expected.country=MY + SyncLog warehouse_id/status）。234/234 Python 测试，compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入。） |
+| P5-SY8F | MY 真实写入与端到端验收 | P5-SY8E | DONE（Codex 独立验收通过。全新抓取 48 行 + invalid sidecar 1 行。首次写入：48 Variants + 48 Inventory + Warehouse 改名；幂等重跑：0 新增/48 unchanged。Phase G/I PASS，SyncLog success。239/239 Python 测试，compileall/lint/build 通过。） |
+| P5-SY8G | ID 只读抓取与 Dry Run 方案 | P5-SY8F | DONE（Codex 独立复验通过。BigSeller 抓取 35 行，warehouse=印尼-DEE仓库，autoid=warehouse_option_3。DB 仓库 `印尼仓`→`印尼-DEE仓库` 改名已确认。P5-SY8G-ID 令牌（仅 --dry-run）。Codex 返工 3 项修复通过：1) --no-dry-run 动态提示 P5-SY8H-ID（新增 `_PENDING_WRITE_TOKENS`）；2) `_DRY_RUN_ONLY_TOKENS` 一致性测试改用 ast.parse 完整解析 3 token；3) `_NO_DRY_RUN_EXCLUSIVE_TOKENS` 一致性断言不再被 `except AssertionError: pass` 吞掉。245/245 Python 测试，compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入。） |
+| P5-SY8H | ID 真实写入与端到端验收 | P5-SY8G | DONE（Codex 独立验收通过。首次 RPC 写入 35 Variants (country=ID) + 35 Inventory + Warehouse 改名 "印尼仓"→"印尼-DEE仓库"；Phase G/I PASS，SyncLog success。幂等重跑：0 新增/35 unchanged，plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试，compileall/lint/build 通过。） |
+| P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | IN_PROGRESS（P5-SY9A AWAITING_REVIEW：现状审查完成，7 维度差距清单已输出 — 4 CRITICAL（含 BigSeller Session 复用不可靠）/ 1 HIGH / 1 MEDIUM / 1 PASS。P5-SY9B~I PENDING。本轮仅审查 + 第二轮返工补充 Session 差距（未修改代码）。） |
 
-同步必须先完成一个仓库的端到端闭环，再逐仓扩展。禁止一次实现五个国家抓取。
+P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许批量处理全部启用海外仓，但必须先批量 Dry Run、页面审核、二次确认后再逐仓真实写入；禁止普通按钮直接自动真实写入。
+
+## P5-SY9 子任务拆分（生产化）
+
+| Sub-Task ID | 任务 | 依赖 | 类型 |
+|---|---|---|---|
+| **P5-SY9A** | 现状审查与任务包落地：梳理 Web sync 与 CLI 差距，确认生产化验收标准 | P5-SY8H | AWAITING_REVIEW（7 维度差距清单已输出，含 BigSeller Session 复用不可靠；P5-SY9B~I 入口文件已明确） |
+| **P5-SY9B** | BigSeller Session Health Check：新增 `verifyBigSellerSession()` Server Action，headless 只读检查 profile 可用性，返回中文状态，unhealthy 时禁用 Dry Run | P5-SY9A | PENDING |
+| **P5-SY9C** | 真实 ArtifactProvider / InputArtifactSource / Production wiring：替换生产 Mock，证明生产路径无 Mock | P5-SY9B | PENDING |
+| **P5-SY9D** | 单仓 Web Dry Run -> 审核 -> Real Write 绑定：用户无需手填 token/runId/hash，Real Write 绑定已通过 Dry Run | P5-SY9C | PENDING |
+| **P5-SY9E** | heartbeat / timeout / 子进程控制：同步期间续租，超时可终止，失败正确落库 | P5-SY9D | PENDING |
+| **P5-SY9F** | 批量全部海外仓 Dry Run：每仓独立 sync_run，展示审核总览 | P5-SY9E | PENDING |
+| **P5-SY9G** | 批量审核后真实写入：勾选 ready 仓库，强确认后逐仓写入，单仓失败不影响其他仓 | P5-SY9F | PENDING |
+| **P5-SY9H** | 页面体验与运营可用性收口：当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | PENDING |
+| **P5-SY9I** | 独立验收与生产启用：测试、lint/build、Python tests、Codex 独立审查 | P5-SY9H | PENDING |
 
 ## P5-SY5 子任务拆分（V5.4 修订）
 
@@ -27,8 +50,8 @@
 | **P5-SY5A** | Migration 00007（第五次聚焦返工完成，59/59 静态契约测试，独立静态验收通过）| P5-SY5 | DONE |
 | **P5-SY5B** | 认证链修复：`getCurrentActiveUser()` / `requireActiveAuth()` / `requireActiveAdmin()` | P5-SY5A | DONE（独立验收通过，25/25） |
 | **P5-SY5C** | Sync Feature Module 骨架（含 ArtifactProvider 接口：`prepare()` 先 validateJsonValue 后 stringify，返回 `{ bytes, hash, normalizedContent }` + `store(PreparedArtifact)` + `listCandidates()` + `deleteMany()`；validateJsonValue 运行时验证器递归拒绝 undefined/function/Symbol/BigInt/NaN/Infinity/toJSON/自定义原型 + V5.4.2 增强：WeakSet 循环引用检测、Reflect.ownKeys 拒绝 Symbol 键、拒绝稀疏数组/数组额外属性/accessor-getter、禁止 any + V5.4.3 增强：仅接受规范数组索引（String(index)===key, index<length）拒绝伪数字 "01"/"4294967295"、拒绝 Array 子类（prototype !== Array.prototype）、拒绝数组 toJSON、拒绝不可枚举属性（enumerable===false）、使用 descriptor.value 读取值、WeakSet try/finally 删除（祖先链—共享引用通过/真循环拒绝）；GC orchestrator 直接 cutoff `now - 7 days` + 恢复 getRecentlyCompletedRunIds(now-60min) 双层保护；更新后的 SyncRunner 接口（inputArtifact/boundPlanArtifact 类型 JsonValue）+ 预生成 runId + 先 claim 后 store 生命周期） | P5-SY5A, P5-SY5B | DONE（独立验收通过，129/129） |
-| **P5-SY5C2** | 类型补全 + Schema + Repository + SyncService + 依赖工厂 + Server Actions + Mock Provider/Runner | P5-SY5C | 后端模块（任务包第三次修订完成，待独立复审） |
-| **P5-SY5D** | Sync 页面与客户端组件 | P5-SY5C2 | 前端页面 |
-| **P5-SY5E** | 侧边栏集成 | P5-SY5C2 | 前端导航 |
-| **P5-SY5F** | MockSyncRunner + MockArtifactProvider + 端到端流程验证（含 validateJsonValue ~24 场景：V5.4.1 基础 ~12 场景 NaN/Infinity/嵌套 undefined/toJSON/自定义原型/函数/Symbol/BigInt/正常值 round-trip + V5.4.2 新增 ~4 场景 Symbol 键/循环引用/稀疏数组/getter 属性 + V5.4.3 新增 ~8 场景 非规范索引"01"/"4294967295"/不可枚举属性/Array 子类/数组自身 toJSON/数组继承 toJSON/共享对象引用通过/真正循环祖先链拒绝；prepare() normalizedContent round-trip + store hash 一致性 + 非确定性序列化安全 + claim 失败无 artifact + store 失败 release failed + GC orchestrator 双层保护（7 天 cutoff + getRecentlyCompletedRunIds 60 分钟保护）+ 防误删 in_progress/被引用 artifact + GC 防误删"artifact 超 7 天但 Dry Run 刚完成"边界测试 + 终态 exit_code 约束 + Runner JsonValue 类型验证，共 ~46 场景） | P5-SY5D | 集成测试 |
-| **P5-SY5G** | 并发锁原子 claim 测试（必须真实 PostgreSQL 双事务并发，含 claim dry_run_run_id 验证执行顺序测试（验证在锁后执行）+ claim-vs-release deadlock 验证 + claim-vs-cleanup deadlock 验证 + Real Write claim 原子 dry_run_run_id 验证 + TOCTOU 边界 + 时钟边界 59:59 vs 60:00 + GC vs claim 并发安全 + GC 防误删边界（artifact 超 7 天但 Dry Run 刚完成 + artifact.createdAt 与 finished_at 独立验证）+ lease_duration 边界测试 + **V5.5: heartbeat 与新 claim 并发时，成功续租的运行不得被回收（FOR UPDATE 行锁阻止并发 UPDATE，验证 claim 在锁后读到的 lease_expires_at 为最新值）** + **V5.5: 仓库停用与 claim 并发 — 锁等待期间仓库被停用（warehouse.is_active=false）后，不得创建新 sync_run**，Mock 不算通过） | P5-SY5A, P5-SY5F | 安全测试 |
+| **P5-SY5C2** | 类型补全 + Schema + Repository + SyncService + 依赖工厂 + Server Actions + Mock Provider/Runner | P5-SY5C | DONE（独立验收通过，258/258） |
+| **P5-SY5D** | Sync 页面与客户端组件 | P5-SY5C2 | DONE（独立验收通过，263/263） |
+| **P5-SY5E** | 侧边栏集成 | P5-SY5D | DONE（独立验收通过，263/263） |
+| **P5-SY5F** | MockSyncRunner + MockArtifactProvider + 端到端流程验证（含 validateJsonValue ~24 场景：V5.4.1 基础 ~12 场景 NaN/Infinity/嵌套 undefined/toJSON/自定义原型/函数/Symbol/BigInt/正常值 round-trip + V5.4.2 新增 ~4 场景 Symbol 键/循环引用/稀疏数组/getter 属性 + V5.4.3 新增 ~8 场景 非规范索引"01"/"4294967295"/不可枚举属性/Array 子类/数组自身 toJSON/数组继承 toJSON/共享对象引用通过/真正循环祖先链拒绝；prepare() normalizedContent round-trip + store hash 一致性 + 非确定性序列化安全 + claim 失败无 artifact + store 失败 release failed + GC orchestrator 双层保护（7 天 cutoff + getRecentlyCompletedRunIds 60 分钟保护）+ 防误删 in_progress/被引用 artifact + GC 防误删"artifact 超 7 天但 Dry Run 刚完成"边界测试 + 被 Real Write 引用的 Dry Run artifact GC 保护 + 未被引用 orphan 反例删除 + 终态 exit_code 约束 + Runner JsonValue 类型验证；Repository 接口新增 getActiveRunIds / getRecentlyCompletedRunIds / getReferencedDryRunIds，共 ~46+2 场景） | P5-SY5D | DONE（Codex 独立复验通过，281/281） |
+| **P5-SY5G** | 并发锁原子 claim 测试（Codex 独立复验通过：D2/F2 确定性 FOR UPDATE 行锁断言确认，无弱断言通过路径；281 非并发测试全通过，lint 0 errors，build 通过；未连接生产 Supabase，未执行生产 Migration 00008/00007） | P5-SY5A, P5-SY5F | DONE（Codex 独立复验通过） |

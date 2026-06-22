@@ -1,0 +1,448 @@
+// Sync Feature Module — SyncService (P5-SY5C2 V5.8)
+//
+// 编排同步执行完整生命周期：claim → artifact store → runner execute → release。
+// 返回 SyncServiceResult（非 SyncExecuteResult），区分 completed / failed / indeterminate。
+
+import 'server-only';
+
+import type { SyncRepository } from './repository';
+import type { ArtifactProvider } from './artifact-provider';
+import type { SyncRunner } from './sync-runner';
+import type {
+  SyncServiceInput,
+  SyncServiceInputDryRun,
+  SyncServiceInputRealWrite,
+  SyncExecuteParamsDryRun,
+  SyncExecuteParamsRealWrite,
+  SyncServiceResult,
+  JsonValue,
+  SyncExecuteResult,
+} from './types';
+import { validateJsonValue } from './validate-json-value';
+
+export interface SyncServiceDeps {
+  repository: SyncRepository;
+  artifactProvider: ArtifactProvider;
+  runner: SyncRunner;
+}
+
+const LEASE_DURATION = 300; // 5 minutes
+
+function makeFailed(
+  runId: string,
+  error: string,
+): SyncServiceResult {
+  return { runId, status: 'failed', error };
+}
+
+function makeIndeterminate(
+  runId: string,
+  runnerResult: SyncExecuteResult,
+  error: string,
+  inputRetained: boolean,
+  planRetained: boolean,
+  reason: string,
+): SyncServiceResult {
+  return {
+    runId,
+    status: 'indeterminate',
+    runnerResult,
+    error,
+    artifactDisposition: { inputRetained, planRetained, reason },
+  };
+}
+
+function makeCompleted(
+  runId: string,
+  runnerResult: SyncExecuteResult,
+): SyncServiceResult {
+  return { runId, status: 'completed', runnerResult };
+}
+
+// ─── Factory ──────────────────────────────────────────────────────
+
+export function createSyncService(deps: SyncServiceDeps) {
+  // Production guard: reject mock instances
+  if (process.env.NODE_ENV === 'production') {
+    const ap = deps.artifactProvider as unknown as Record<string, unknown>;
+    const rn = deps.runner as unknown as Record<string, unknown>;
+    if (ap.__mock__ === true || rn.__mock__ === true) {
+      throw new Error('生产环境禁止使用 Mock ArtifactProvider / MockSyncRunner');
+    }
+  }
+
+  return {
+    async executeSync(input: SyncServiceInput): Promise<SyncServiceResult> {
+      const { repository, artifactProvider, runner } = deps;
+      const runId = crypto.randomUUID();
+
+      // ─── 1. Validate & prepare inputArtifact ───────────────────
+      let inputPrepared;
+      try {
+        validateJsonValue(input.inputArtifact);
+        inputPrepared = artifactProvider.prepare(input.inputArtifact);
+      } catch (err) {
+        return makeFailed(runId, `inputArtifact 验证/准备失败: ${(err as Error).message}`);
+      }
+
+      // ─── 2. Dry Run ──────────────────────────────────────────
+      if (input.mode === 'dry_run') {
+        return executeDryRun(
+          runId,
+          input,
+          inputPrepared.hash,
+          inputPrepared.normalizedContent,
+          repository,
+          artifactProvider,
+          runner,
+        );
+      }
+
+      // ─── 3. Real Write ───────────────────────────────────────
+      if (input.mode === 'real_write') {
+        return executeRealWrite(
+          runId,
+          input,
+          inputPrepared.hash,
+          inputPrepared.normalizedContent,
+          repository,
+          artifactProvider,
+          runner,
+        );
+      }
+
+      return makeFailed(runId, `未知 mode: ${(input as SyncServiceInput).mode}`);
+    },
+  };
+}
+
+export type SyncService = ReturnType<typeof createSyncService>;
+
+// ─── Dry Run lifecycle ────────────────────────────────────────────
+
+async function executeDryRun(
+  runId: string,
+  input: SyncServiceInputDryRun,
+  inputHash: string,
+  inputNormalized: JsonValue,
+  repo: SyncRepository,
+  artifactProvider: ArtifactProvider,
+  runner: SyncRunner,
+): Promise<SyncServiceResult> {
+  // a. claim
+  const claimed = await repo.claimSyncRun({
+    runId,
+    warehouseId: input.warehouseId,
+    mode: 'dry_run',
+    leaseDuration: LEASE_DURATION,
+    triggeredBy: input.triggeredBy,
+    triggeredFrom: 'web',
+    inputArtifactHash: inputHash,
+  });
+
+  if (!claimed) {
+    return makeFailed(runId, '仓库被占用或无可回收槽位');
+  }
+
+  // b. store input
+  try {
+    await artifactProvider.store(runId, 'input', {
+      bytes: new TextEncoder().encode(JSON.stringify(inputNormalized)),
+      hash: inputHash,
+      normalizedContent: inputNormalized,
+    });
+  } catch (err) {
+    // input store 失败 → release failed + delete partial input
+    await repo.releaseSyncRun({
+      runId,
+      status: 'failed',
+      exitCode: 1,
+      errorMessage: `input artifact 存储失败: ${(err as Error).message}`,
+    }).catch(() => {});
+    await artifactProvider.delete(runId, 'input').catch(() => {});
+    return makeFailed(runId, `input artifact 存储失败: ${(err as Error).message}`);
+  }
+
+  // c. execute runner
+  const dryParams: SyncExecuteParamsDryRun = {
+    runId,
+    warehouseId: input.warehouseId,
+    mode: 'dry_run',
+    triggeredBy: input.triggeredBy,
+    signal: input.signal,
+    inputArtifact: inputNormalized,
+  };
+
+  let result: SyncExecuteResult;
+  try {
+    result = await runner.execute(dryParams);
+  } catch (err) {
+    // Runner 抛错
+    const errorMsg = `Runner 执行失败: ${(err as Error).message}`;
+    try {
+      await repo.releaseSyncRun({
+        runId,
+        status: 'failed',
+        exitCode: 1,
+        errorMessage: errorMsg,
+      });
+      // release 成功 — input 保留由 7 天 GC 清理
+      return makeFailed(runId, errorMsg);
+    } catch {
+      // release 自身失败 — 全部 artifact 保留
+      return makeIndeterminate(runId, result!, errorMsg, true, false,
+        'release failed 自身失败：全部 artifact 保留');
+    }
+  }
+
+  // d. exitCode === 0
+  if (result.exitCode === 0) {
+    // planArtifact must exist
+    if (!result.planArtifact) {
+      try {
+        await repo.releaseSyncRun({
+          runId,
+          status: 'failed',
+          exitCode: 1,
+          errorMessage: 'Dry Run exitCode=0 但 planArtifact 缺失',
+        });
+      } catch { /* ignore */ }
+      await artifactProvider.delete(runId, 'input').catch(() => {});
+      return makeFailed(runId, 'Dry Run exitCode=0 但 planArtifact 缺失');
+    }
+
+    // validate and prepare plan
+    let planPrepared;
+    try {
+      validateJsonValue(result.planArtifact);
+      planPrepared = artifactProvider.prepare(result.planArtifact);
+    } catch (err) {
+      try {
+        await repo.releaseSyncRun({
+          runId,
+          status: 'failed',
+          exitCode: 1,
+          errorMessage: `planArtifact 验证/准备失败: ${(err as Error).message}`,
+        });
+      } catch { /* ignore */ }
+      await artifactProvider.delete(runId, 'input').catch(() => {});
+      return makeFailed(runId, `planArtifact 验证/准备失败: ${(err as Error).message}`);
+    }
+
+    // store plan
+    try {
+      await artifactProvider.store(runId, 'plan', planPrepared);
+    } catch (err) {
+      // plan store 失败 → delete partial plan + delete input
+      await repo.releaseSyncRun({
+        runId,
+        status: 'failed',
+        exitCode: 1,
+        errorMessage: `plan artifact 存储失败: ${(err as Error).message}`,
+      }).catch(() => {});
+      await artifactProvider.delete(runId, 'plan').catch(() => {});
+      await artifactProvider.delete(runId, 'input').catch(() => {});
+      return makeFailed(runId, `plan artifact 存储失败: ${(err as Error).message}`);
+    }
+
+    // release completed
+    try {
+      await repo.releaseSyncRun({
+        runId,
+        status: 'completed',
+        exitCode: 0,
+        resultSummary: result.summary as Record<string, unknown>,
+        planDriftCheck: result.planDriftCheck,
+        planDriftCount: result.planDriftCount,
+        planDriftDifferences: result.planDriftDifferences,
+        planArtifactHash: planPrepared.hash,
+      });
+      return makeCompleted(runId, result);
+    } catch (err) {
+      // release completed 失败 — delete plan, keep input
+      await artifactProvider.delete(runId, 'plan').catch(() => {});
+      return makeIndeterminate(
+        runId,
+        result,
+        `运行状态落库失败（release completed 失败）: ${(err as Error).message}`,
+        true,
+        false,
+        'release completed 失败：plan 已删除，input 保留供排查',
+      );
+    }
+  }
+
+  // e. exitCode !== 0
+  try {
+    await repo.releaseSyncRun({
+      runId,
+      status: 'failed',
+      exitCode: result.exitCode,
+      errorMessage: result.errors?.[0] ?? 'Runner 返回非零退出码',
+    });
+    // release 成功 — input 保留由 7 天 GC 清理
+    return { runId, status: 'failed', runnerResult: result, error: result.errors?.[0] };
+  } catch (err) {
+    // release 自身失败 — 全部 artifact 保留
+    return makeIndeterminate(
+      runId,
+      result,
+      `Runner 失败且 release failed 落库失败: ${(err as Error).message}`,
+      true,
+      false,
+      'release failed 自身失败：全部 artifact 保留',
+    );
+  }
+}
+
+// ─── Real Write lifecycle ─────────────────────────────────────────
+
+async function executeRealWrite(
+  runId: string,
+  input: SyncServiceInputRealWrite,
+  inputHash: string,
+  inputNormalized: JsonValue,
+  repo: SyncRepository,
+  artifactProvider: ArtifactProvider,
+  runner: SyncRunner,
+): Promise<SyncServiceResult> {
+  // a. Load bound Dry Run artifacts via ArtifactProvider.get()
+  let planArtifact_dr: { content: JsonValue; hash: string };
+  try {
+    await artifactProvider.get(input.dryRunRunId, 'input'); // verify input exists
+    const planDr = await artifactProvider.get(input.dryRunRunId, 'plan');
+    planArtifact_dr = { content: planDr.content, hash: planDr.hash };
+    // Validate bound plan content
+    validateJsonValue(planArtifact_dr.content);
+  } catch (err) {
+    return makeFailed(runId, `绑定 Dry Run artifact 加载失败: ${(err as Error).message}`);
+  }
+
+  // b. claim with verified hashes
+  const claimed = await repo.claimSyncRun({
+    runId,
+    warehouseId: input.warehouseId,
+    mode: 'real_write',
+    leaseDuration: LEASE_DURATION,
+    triggeredBy: input.triggeredBy,
+    triggeredFrom: 'web',
+    dryRunRunId: input.dryRunRunId,
+    inputArtifactHash: inputHash,
+    planArtifactHash: planArtifact_dr.hash,
+  });
+
+  if (!claimed) {
+    return makeFailed(runId, '仓库被占用或无可回收槽位');
+  }
+
+  // c. store current input
+  try {
+    await artifactProvider.store(runId, 'input', {
+      bytes: new TextEncoder().encode(JSON.stringify(inputNormalized)),
+      hash: inputHash,
+      normalizedContent: inputNormalized,
+    });
+  } catch (err) {
+    // input store 失败 → release failed + delete partial input
+    await repo.releaseSyncRun({
+      runId,
+      status: 'failed',
+      exitCode: 1,
+      errorMessage: `input artifact 存储失败: ${(err as Error).message}`,
+    }).catch(() => {});
+    await artifactProvider.delete(runId, 'input').catch(() => {});
+    return makeFailed(runId, `input artifact 存储失败: ${(err as Error).message}`);
+  }
+
+  // d. execute runner
+  const realParams: SyncExecuteParamsRealWrite = {
+    runId,
+    warehouseId: input.warehouseId,
+    mode: 'real_write',
+    confirmToken: input.confirmToken,
+    triggeredBy: input.triggeredBy,
+    dryRunRunId: input.dryRunRunId,
+    signal: input.signal,
+    inputArtifact: inputNormalized,
+    boundPlanArtifact: planArtifact_dr.content,
+  };
+
+  let result: SyncExecuteResult;
+  try {
+    result = await runner.execute(realParams);
+    // Runner must not output planArtifact in real_write mode
+    if (result.planArtifact !== undefined) {
+      const errorMsg = 'Real Write Runner 不得输出 planArtifact';
+      await repo.releaseSyncRun({
+        runId,
+        status: 'failed',
+        exitCode: 1,
+        errorMessage: errorMsg,
+      }).catch(() => {});
+      await artifactProvider.delete(runId, 'input').catch(() => {});
+      return makeFailed(runId, errorMsg);
+    }
+  } catch (err) {
+    // Runner 抛错
+    const errorMsg = `Runner 执行失败: ${(err as Error).message}`;
+    try {
+      await repo.releaseSyncRun({
+        runId,
+        status: 'failed',
+        exitCode: 1,
+        errorMessage: errorMsg,
+      });
+      return makeFailed(runId, errorMsg);
+    } catch {
+      return makeIndeterminate(runId, result!, errorMsg, true, false,
+        'release failed 自身失败：全部 artifact 保留');
+    }
+  }
+
+  // e. exitCode === 0
+  if (result.exitCode === 0) {
+    try {
+      await repo.releaseSyncRun({
+        runId,
+        status: 'completed',
+        exitCode: 0,
+        resultSummary: result.summary as Record<string, unknown>,
+        planDriftCheck: result.planDriftCheck,
+        planDriftCount: result.planDriftCount,
+        planDriftDifferences: result.planDriftDifferences,
+      });
+      return makeCompleted(runId, result);
+    } catch (err) {
+      // Real Write release completed 失败 — 写入可能已生效
+      return makeIndeterminate(
+        runId,
+        result,
+        `写入结果可能已生效，但运行状态落库失败（release completed 失败）: ${(err as Error).message}`,
+        true,
+        false,
+        'Real Write release completed 失败：写入可能已生效，input 保留',
+      );
+    }
+  }
+
+  // f. exitCode !== 0
+  try {
+    await repo.releaseSyncRun({
+      runId,
+      status: 'failed',
+      exitCode: result.exitCode,
+      errorMessage: result.errors?.[0] ?? 'Runner 返回非零退出码',
+    });
+    // release 成功 — input 保留由 7 天 GC 清理
+    return { runId, status: 'failed', runnerResult: result, error: result.errors?.[0] };
+  } catch (err) {
+    return makeIndeterminate(
+      runId,
+      result,
+      `Runner 失败且 release failed 落库失败: ${(err as Error).message}`,
+      true,
+      false,
+      'release failed 自身失败：全部 artifact 保留',
+    );
+  }
+}

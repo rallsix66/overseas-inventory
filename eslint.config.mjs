@@ -14,8 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Project scripts (plain .cjs, not TypeScript):
     ".claude/scripts/**",
-    // Python test cache
-    ".pytest_cache/**",
+    // Python caches (any level)
+    "**/.pytest_cache/**",
+    "**/__pycache__/**",
   ]),
 ]);
 

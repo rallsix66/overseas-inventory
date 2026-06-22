@@ -48,7 +48,7 @@ RUNTIME_DIR = os.path.join(BASE_DIR, 'runtime')
 
 def main():
     parser = argparse.ArgumentParser(
-        description='P5-SY3B 菲律宾 Inventory 实际写入与新 SKU 创建'
+        description='Inventory 实际写入与新 SKU 创建（多国家海外仓）'
     )
     parser.add_argument(
         '--input-json',
@@ -60,7 +60,7 @@ def main():
         '--dry-run-report',
         required=True,
         metavar='PATH',
-        help='P5-SY3A Dry Run 报告 JSON 路径',
+        help='Dry Run 报告 JSON 路径（来自 P5-SY3A / P5-SY8A）',
     )
     parser.add_argument(
         '--execute',
@@ -72,7 +72,7 @@ def main():
         '--confirm',
         default=None,
         metavar='TOKEN',
-        help='确认令牌（必须为 P5-SY3B-PH）',
+        help='确认令牌（有效值: P5-SY3B-PH | P5-SY8B-VN | P5-SY8C-TH | P5-SY8D-TH | P5-SY8F-MY | P5-SY8G-ID | P5-SY8H-ID）',
     )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
@@ -100,21 +100,51 @@ def main():
         dest='sync_log',
         help='跳过 sync_log 写入（仅 Dry Run 模式允许）',
     )
+    from .config import WAREHOUSE_COUNTRY
+
     args = parser.parse_args()
 
     # =========================================================================
     # 安全门
     # =========================================================================
+    # 令牌必须绑定目标国家：当前 WAREHOUSE_COUNTRY 只允许对应令牌
+    _TOKEN_COUNTRY_MAP = {
+        'P5-SY3B-PH': 'PH',
+        'P5-SY8B-VN': 'VN',
+        'P5-SY8C-TH': 'TH',
+        'P5-SY8D-TH': 'TH',
+        'P5-SY8E-MY': 'MY',
+        'P5-SY8F-MY': 'MY',
+        'P5-SY8G-ID': 'ID',
+        'P5-SY8H-ID': 'ID',
+    }
+
     if not args.execute:
+        expected_token = [t for t, c in _TOKEN_COUNTRY_MAP.items() if c == WAREHOUSE_COUNTRY]
         print('错误: 必须传入 --execute 标志')
-        print('用法: --input-json <path> --dry-run-report <path> --execute --confirm P5-SY3B-PH [--dry-run | --no-dry-run]')
+        print(f'用法: --input-json <path> --dry-run-report <path> --execute --confirm <TOKEN> [--dry-run | --no-dry-run]')
+        print(f'当前 WAREHOUSE_COUNTRY={WAREHOUSE_COUNTRY}，期望令牌: {expected_token}')
         sys.exit(1)
 
-    if args.confirm != 'P5-SY3B-PH':
+    # 1) 令牌是否已知
+    token_country = _TOKEN_COUNTRY_MAP.get(args.confirm)
+    if token_country is None:
+        expected_token = [t for t, c in _TOKEN_COUNTRY_MAP.items() if c == WAREHOUSE_COUNTRY]
         print(f'错误: 确认令牌不匹配')
         print(f'  收到: "{args.confirm}"')
-        print(f'  期望: "P5-SY3B-PH"')
-        print(f'用法: --execute --confirm P5-SY3B-PH')
+        print(f'  当前 WAREHOUSE_COUNTRY={WAREHOUSE_COUNTRY}')
+        print(f'  期望令牌: {expected_token}')
+        print(f'用法: --execute --confirm <TOKEN>')
+        sys.exit(1)
+
+    # 2) 令牌国家必须与当前 WAREHOUSE_COUNTRY 一致
+    if token_country != WAREHOUSE_COUNTRY:
+        expected_token = [t for t, c in _TOKEN_COUNTRY_MAP.items() if c == WAREHOUSE_COUNTRY]
+        print(f'错误: 令牌国家与当前 WAREHOUSE_COUNTRY 不一致')
+        print(f'  收到: "{args.confirm}" (绑定国家: {token_country})')
+        print(f'  当前 WAREHOUSE_COUNTRY={WAREHOUSE_COUNTRY}')
+        print(f'  期望令牌: {expected_token}')
+        print(f'用法: --execute --confirm <TOKEN>')
         sys.exit(1)
 
     is_dry_run = not args.no_dry_run
@@ -125,8 +155,26 @@ def main():
         print('sync_log 是真实写入的强制安全记录，不得跳过。')
         sys.exit(1)
 
+    # P5-SY8D: 令牌—模式强制绑定
+    # P5-SY8C-TH → 仅 --dry-run（拒绝 --no-dry-run）
+    # P5-SY8D-TH → 唯一可执行 --no-dry-run 的令牌（同时允许 --dry-run）
+    # 错误组合必须在任何文件 I/O、查询或 RPC 前拒绝。
+    _DRY_RUN_ONLY_TOKENS = {'P5-SY8C-TH', 'P5-SY8E-MY', 'P5-SY8G-ID'}
+    _NO_DRY_RUN_EXCLUSIVE_TOKENS = {'P5-SY8D-TH', 'P5-SY8F-MY', 'P5-SY8H-ID'}
+    _PENDING_WRITE_TOKENS = {}
+
+    if args.confirm in _DRY_RUN_ONLY_TOKENS and not is_dry_run:
+        write_tokens = [t for t in _NO_DRY_RUN_EXCLUSIVE_TOKENS if _TOKEN_COUNTRY_MAP.get(t) == WAREHOUSE_COUNTRY]
+        if not write_tokens:
+            write_tokens = _PENDING_WRITE_TOKENS.get(WAREHOUSE_COUNTRY, [])
+        write_hint = ' 或 '.join(write_tokens) if write_tokens else 'N/A'
+        print(f'错误: 令牌 {args.confirm} 仅支持 --dry-run 模式（只读抓取与 Dry Run）')
+        print(f'该令牌绑定为只读方案专用，不得执行真实写入。')
+        print(f'如需真实写入，请使用 {write_hint} 令牌。')
+        sys.exit(1)
+
     print('=' * 60)
-    print('P5-SY3B/P5-SY4C 菲律宾 Inventory 写入与 SyncLog')
+    print('Inventory 写入与 SyncLog')
     if is_dry_run:
         if args.dry_run:
             print('*** DRY RUN 模式（--dry-run 显式指定）— 仅查询，不写入 ***')
@@ -134,7 +182,7 @@ def main():
             print('*** DRY RUN 模式（默认）— 仅查询，不写入 ***')
     else:
         print('*** 真实写入模式 (--no-dry-run + RPC 事务 + SyncLog) ***')
-    print(f'确认令牌: P5-SY3B-PH')
+    print(f'确认令牌: {args.confirm}')
     print(f'输入 JSON:  {args.input_json}')
     print(f'Dry Run 报告: {args.dry_run_report}')
     print(f'SyncLog:    {"启用" if args.sync_log else "禁用"}')
@@ -189,22 +237,22 @@ def main():
     # =========================================================================
     print('[步骤 3/4] 重新生成当前计划并比较漂移...')
     from .supabase_gateway import (
-        fetch_ph_warehouse,
-        fetch_ph_variants,
+        fetch_warehouse,
+        fetch_variants,
         fetch_inventory_by_warehouse,
     )
 
     try:
-        warehouse = fetch_ph_warehouse()
+        warehouse = fetch_warehouse()
     except RuntimeError as e:
         print(f'  Warehouse 查询失败:\n{e}')
         sys.exit(1)
-    print(f'  PH overseas warehouse: id={warehouse.get("id")}, '
+    print(f'  {warehouse.get("country")} overseas warehouse: id={warehouse.get("id")}, '
           f'name="{warehouse.get("name")}"')
 
     time.sleep(0.3)
-    variants = fetch_ph_variants()
-    print(f'  PH product_variants: {len(variants)} 条')
+    variants = fetch_variants()
+    print(f'  {warehouse.get("country")} product_variants: {len(variants)} 条')
 
     time.sleep(0.3)
     inventories = fetch_inventory_by_warehouse(warehouse['id'])
@@ -269,7 +317,7 @@ def main():
                 is_dry_run,
                 lambda: execute_plan(
                     args.dry_run_report,
-                    confirm='P5-SY3B-PH',
+                    confirm=args.confirm,
                     dry_run=True,
                 ),
             )
@@ -336,6 +384,8 @@ def main():
         # 转换为统一 result 格式（与旧 execute_plan 输出兼容）
         rpc = result_v2.get('rpc_summary', {})
         result = {
+            'started_at': result_v2.get('started_at'),
+            'finished_at': result_v2.get('finished_at'),
             'warehouse_id': result_v2['warehouse_id'],
             'warehouse_name_before': warehouse.get('name'),
             'warehouse_name_after': TARGET_WAREHOUSE_NAME,
@@ -444,8 +494,9 @@ def main():
     # 保存执行报告（不含密钥）
     # =========================================================================
     report = {
-        'task': 'P5-SY3B' if is_dry_run else 'P5-SY4C',
+        'task': args.confirm,
         'generated_at': datetime.now().astimezone().isoformat(timespec='seconds'),
+        'confirm_token': args.confirm,
         'dry_run': is_dry_run,
         'input_json_source': args.input_json,
         'dry_run_report_source': args.dry_run_report,
@@ -481,7 +532,7 @@ def main():
 
     os.makedirs(RUNTIME_DIR, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-    task_id = 'p5-sy3b' if is_dry_run else 'p5-sy4c'
+    task_id = args.confirm.lower()
     mode = 'dry-run' if is_dry_run else 'execute'
     report_name = f'{task_id}-{mode}-{timestamp}.json'
     report_path = os.path.join(RUNTIME_DIR, report_name)
@@ -491,11 +542,11 @@ def main():
     print(f'\n执行报告已保存: {report_path}')
 
     if is_dry_run:
-        print(f'\n===== P5-SY3B Dry Run 完成 =====')
+        print(f'\n===== Dry Run 完成 =====')
         print(f'未执行任何数据库写入。')
         print(f'确认无误后，重新运行并添加 --no-dry-run 执行真实写入（RPC 事务 + SyncLog）。')
     else:
-        print(f'\n===== P5-SY4C 执行完成 =====')
+        print(f'\n===== 执行完成 ({args.confirm}) =====')
         print(f'Variant: 创建 {result["variants_created"]}, 跳过 {result["variants_skipped"]}')
         print(f'Inventory: 新增 {result["inventory_inserted"]}, 更新 {result["inventory_updated"]}, 不变 {result.get("inventory_unchanged", "?")}')
         print(f'Warehouse 改名: {"是" if result["warehouse_renamed"] else "否/已是目标名称"}')

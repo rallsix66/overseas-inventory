@@ -310,27 +310,178 @@ def scrape():
                 chrome_path = pth
                 break
 
+        headless = os.environ.get('BS_HEADLESS', '0') == '1'
+
+        user_agent = (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/138.0.0.0 Safari/537.36'
+        )
+
+        launch_args = [
+            '--disable-blink-features=AutomationControlled',
+            '--no-sandbox',
+            '--ignore-certificate-errors',
+            '--ignore-ssl-errors',
+            '--disable-features=TranslateUI,OptimizationHints,MediaRouter',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--no-default-browser-check',
+            '--no-first-run',
+            '--disable-default-apps',
+            '--disable-breakpad',
+            '--disable-component-update',
+            '--disable-domain-reliability',
+            '--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process',
+        ]
+
+        if headless:
+            launch_args.extend([
+                '--disable-gpu',
+                '--disable-dev-shm-usage',
+                '--disable-software-rasterizer',
+                '--window-size=1920,1080',
+                '--start-maximized',
+            ])
+
         context = p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_DIR,
-            headless=False,
+            headless=headless,
             executable_path=chrome_path,
-            args=[
-                '--disable-blink-features=AutomationControlled',
-                '--no-sandbox',
-                '--ignore-certificate-errors',
-                '--ignore-ssl-errors',
-            ],
+            args=launch_args,
             ignore_https_errors=True,
             viewport={'width': 1400, 'height': 900},
+            user_agent=user_agent,
         )
+
+        # 注入反检测脚本
+        context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            window.chrome = {
+                runtime: { },
+                loadTimes: function() {},
+                csi: function() {},
+                app: {}
+            };
+            const origQuery = navigator.permissions.query.bind(navigator.permissions);
+            navigator.permissions.query = (params) => {
+                if (params.name === 'notifications') {
+                    return Promise.resolve({ state: Notification.permission, onchange: null });
+                }
+                return origQuery(params);
+            };
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en-US', 'en'] });
+            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+        """)
+
         page = context.new_page()
 
         try:
             page.goto(INVENTORY_URL, wait_until='domcontentloaded', timeout=60000)
             page.wait_for_timeout(4000)
 
+            # 调试：保存初始页面截图和 URL
+            print(f'当前 URL: {page.url}')
+            page.screenshot(path=os.path.join(DEBUG_DIR, 'bigseller_initial.png'))
+            print(f'初始截图已保存: {DEBUG_DIR}/bigseller_initial.png')
+
+            # 仅建立会话模式：在确认登录状态后立即持久化 cookie 并退出
+            # 放在 captcha/login 检测之前，避免误入 captcha/login 等待循环
+            if os.environ.get('BS_SESSION_ONLY', '0') == '1':
+                _session_only_flow(page, context)
+                return [], {'session_only': True, 'warehouse': os.environ.get('BS_TARGET_WAREHOUSE_NAME', '')}, [], []
+
+            # 检测腾讯验证码（滑块拼图），等待手动完成
+            # 仅当 CAPTCHA 元素实际可见（占屏幕空间）才认为需要验证
+            has_captcha = page.evaluate("""() => {
+                const el = document.querySelector('.tencent-captcha-dy__warp')
+                    || document.querySelector('#tCaptchaDyMainWrap')
+                    || document.querySelector('[id^="tcaptcha"]');
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            }""")
+            if has_captcha:
+                if headless:
+                    # Headless 模式：尝试关闭验证码弹窗，表格数据已在 DOM 中
+                    print('检测到验证码弹窗，尝试关闭...')
+                    try:
+                        close_btn = page.query_selector(
+                            '.tencent-captcha-dy__header-close, '
+                            '#tCaptchaDyMainWrap [class*="close"], '
+                            '[id^="tcaptcha"] [class*="close"]'
+                        )
+                        if close_btn:
+                            close_btn.click()
+                            page.wait_for_timeout(2000)
+                    except Exception:
+                        pass
+                    page.keyboard.press('Escape')
+                    page.wait_for_timeout(2000)
+                    still_captcha = page.evaluate("""() => {
+                        const el = document.querySelector('.tencent-captcha-dy__warp')
+                            || document.querySelector('#tCaptchaDyMainWrap')
+                            || document.querySelector('[id^="tcaptcha"]');
+                        if (!el) return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    }""")
+                    if still_captcha:
+                        print('验证码弹窗无法自动关闭，但表格数据已加载，继续抓取...')
+                    else:
+                        print('验证码弹窗已关闭')
+                    page.wait_for_timeout(2000)
+                else:
+                    # Headed 模式：等待用户手动完成验证码
+                    print('=' * 50)
+                    print('检测到安全验证（腾讯滑块拼图），请在浏览器中手动完成验证')
+                    print('脚本将自动检测验证完成，最长等待 5 分钟...')
+                    print('=' * 50)
+                    for i in range(300):
+                        page.wait_for_timeout(1000)
+                        try:
+                            still_captcha = page.evaluate("""() => {
+                                const el = document.querySelector('.tencent-captcha-dy__warp')
+                                    || document.querySelector('#tCaptchaDyMainWrap')
+                                    || document.querySelector('[id^="tcaptcha"]');
+                                if (!el) return false;
+                                const rect = el.getBoundingClientRect();
+                                return rect.width > 0 && rect.height > 0;
+                            }""")
+                        except Exception:
+                            print('验证通过（页面已刷新），继续...')
+                            still_captcha = False
+                        if not still_captcha:
+                            break
+                        if i % 10 == 0 and i > 0:
+                            print(f'  等待中... ({i}秒)')
+                    else:
+                        print('验证超时！请手动刷新页面后重试。')
+                        context.close()
+                        return [], {}, [], []
+                    page.wait_for_timeout(3000)
+
             # 如果跳转到了登录页，等待手动登录（最多等3分钟）
-            if 'login' in page.url.lower() or 'signin' in page.url.lower():
+            is_login_page = (
+                'login' in page.url.lower()
+                or 'signin' in page.url.lower()
+                or page.evaluate("""() => {
+                    return !!(
+                        document.querySelector('input[type="password"]')
+                        && (document.querySelector('input[type="text"]') || document.querySelector('input[type="email"]'))
+                        && !document.querySelector('table.vxe-table--body')
+                    );
+                }""")
+            )
+            if is_login_page:
+                if headless:
+                    print('错误：headless 模式下需要登录，请在库存同步页面点击「重新建立登录会话」按钮，系统会自动打开浏览器供您登录')
+                    page.screenshot(path=os.path.join(DEBUG_DIR, 'bigseller_login.png'))
+                    context.close()
+                    return [], {}, [], []
                 print('=' * 50)
                 print('检测到登录页，请在浏览器中手动登录（邮箱密码+验证码）')
                 print('脚本将自动检测登录完成，最长等待 3 分钟...')
@@ -338,7 +489,21 @@ def scrape():
                 for i in range(180):
                     page.wait_for_timeout(1000)
                     current_url = page.url.lower()
-                    if 'login' not in current_url and 'signin' not in current_url:
+                    still_login = (
+                        'login' in current_url
+                        or 'signin' in current_url
+                    )
+                    if not still_login:
+                        try:
+                            still_login = page.evaluate("""() => {
+                                return !!(
+                                    document.querySelector('input[type="password"]')
+                                    && !document.querySelector('table.vxe-table--body')
+                                );
+                            }""")
+                        except Exception:
+                            still_login = False
+                    if not still_login:
                         print('检测到登录成功，继续...')
                         break
                     if i % 10 == 0 and i > 0:
@@ -352,12 +517,20 @@ def scrape():
 
             # 等表格出现
             try:
-                page.wait_for_selector('table tbody tr', timeout=20000)
+                page.wait_for_selector('table tbody tr', timeout=30000)
             except Exception:
                 page.screenshot(path=os.path.join(DEBUG_DIR, 'bigseller_debug.png'))
-                print(f'ERROR: 等待表格超时，请检查截图 {DEBUG_DIR}')
+                # 保存页面 HTML 和文本用于调试
+                try:
+                    with open(os.path.join(DEBUG_DIR, 'bigseller_page_timeout.html'), 'w', encoding='utf-8') as f:
+                        f.write(page.content())
+                except Exception:
+                    pass
+                # 检查页面 body 文本
+                body_text = page.evaluate("() => document.body ? document.body.innerText.substring(0, 500) : 'NO BODY'")
+                print(f'页面 body 前 500 字符: {body_text}')
                 context.close()
-                return [], {}, []
+                return [], {}, [], []
 
             page.wait_for_timeout(2000)
 
@@ -389,7 +562,7 @@ def scrape():
             # ==================================================================
             # 仓库名称优先 — 先按精确文字定位，autoid 仅作验证后回退
             # ==================================================================
-            TARGET_WAREHOUSE_NAME = '菲律宾-新创启辰自建仓'
+            TARGET_WAREHOUSE_NAME = os.environ.get('BS_TARGET_WAREHOUSE_NAME', '印尼-DEE仓库')
 
             # 1. 点击仓库多选组件 .inp_box 打开下拉
             inp_box = page.query_selector('.inp_box')
@@ -432,30 +605,25 @@ def scrape():
                 print(f'\n按名称定位到目标仓库: autoid="{found_autoid}" text="{TARGET_WAREHOUSE_NAME}"')
                 target_autoids = [found_autoid]
             else:
-                FALLBACK_AUTOID = 'warehouse_option_6'
-                print(f'\nWARNING: 未找到名称匹配 "{TARGET_WAREHOUSE_NAME}" 的仓库，回退到 {FALLBACK_AUTOID}')
-
-                fallback_text = None
+                # 回退：按仓库名关键词子串匹配（VN 仓 autoid 未知，不硬编码）
+                print(f'\nWARNING: 未找到名称精确匹配 "{TARGET_WAREHOUSE_NAME}" 的仓库')
+                FALLBACK_KEYWORD = 'DEE'
+                fallback_match = None
                 for opt in warehouse_options:
-                    if opt['autoid'] == FALLBACK_AUTOID:
-                        fallback_text = opt['text']
+                    if FALLBACK_KEYWORD in opt['text']:
+                        fallback_match = opt
                         break
 
-                if fallback_text is None:
+                if fallback_match is None:
                     raise RuntimeError(
-                        f'仓库定位失败：未找到 autoid="{FALLBACK_AUTOID}" 的仓库选项。'
+                        f'仓库定位失败：未找到名称包含 "{FALLBACK_KEYWORD}" 的仓库选项。'
                         f'页面仓库选项: {[(o["autoid"], o["text"]) for o in warehouse_options]}'
                     )
 
-                if fallback_text != TARGET_WAREHOUSE_NAME:
-                    raise RuntimeError(
-                        f'仓库定位失败：回退 autoid "{FALLBACK_AUTOID}" 的显示文字为 "{fallback_text}"，'
-                        f'与目标仓库名 "{TARGET_WAREHOUSE_NAME}" 不一致。'
-                        f'页面仓库选项: {[(o["autoid"], o["text"]) for o in warehouse_options]}'
-                    )
-
-                print(f'回退 autoid 验证通过: {FALLBACK_AUTOID} = "{fallback_text}"')
-                target_autoids = [FALLBACK_AUTOID]
+                print(f'按关键词 "{FALLBACK_KEYWORD}" 匹配到: autoid="{fallback_match["autoid"]}" text="{fallback_match["text"]}"')
+                print(f'（目标名 "{TARGET_WAREHOUSE_NAME}" 与页面显示 "{fallback_match["text"]}" 不一致，已更新为页面名称）')
+                TARGET_WAREHOUSE_NAME = fallback_match['text']
+                target_autoids = [fallback_match['autoid']]
 
             # 4. 取消所有非目标仓库
             try:
@@ -775,14 +943,181 @@ def scrape():
                 'header_count': header_count,
             }
 
+            _persist_session_cookies(context)
             context.close()
             return unique_rows, metadata, invalid_sku_rows, combo_sku_rows
 
         except Exception as e:
-            page.screenshot(path=os.path.join(DEBUG_DIR, 'bigseller_error.png'))
+            try:
+                page.screenshot(path=os.path.join(DEBUG_DIR, 'bigseller_error.png'))
+            except Exception:
+                pass
             print(f'抓取出错: {e}')
+            try:
+                _persist_session_cookies(context)
+            except Exception:
+                pass
+            try:
+                context.close()
+            except Exception:
+                pass
+            raise
+
+
+def _session_only_flow(page, context):
+    """BS_SESSION_ONLY 模式：检测页面状态，完成登录/验证码后持久化 cookie 并退出。
+
+    三种情况：
+    1. 已在库存页（有表格）→ 立即持久化并关闭
+    2. 登录页 → 等待用户手动登录，然后持久化并关闭
+    3. 验证码 → 等待用户手动完成，然后持久化并关闭
+    """
+    # 情况 1：已在库存页（已有有效登录会话）
+    on_inventory = 'inventory' in page.url.lower()
+    if on_inventory:
+        try:
+            page.wait_for_selector('table tbody tr', timeout=10000)
+            print('[session-only] 已确认登录成功（库存页），正在持久化会话...')
+            _persist_session_cookies(context)
             context.close()
-            raise  # 重新抛出，让 __main__ 处理退出码
+            print('[session-only] 会话持久化完成，浏览器已关闭。')
+            return
+        except Exception:
+            pass  # 表格未出现，继续检查登录页/验证码
+
+    # 情况 2：检查是否需要登录
+    is_login = (
+        'login' in page.url.lower()
+        or 'signin' in page.url.lower()
+        or page.evaluate("""() => {
+            return !!(
+                document.querySelector('input[type="password"]')
+                && (document.querySelector('input[type="text"]') || document.querySelector('input[type="email"]'))
+                && !document.querySelector('table.vxe-table--body')
+            );
+        }""")
+    )
+    if is_login:
+        print('=' * 50)
+        print('[session-only] 检测到登录页，请在浏览器中手动登录（邮箱密码+验证码）')
+        print('登录成功后浏览器将自动关闭并持久化会话，最长等待 3 分钟...')
+        print('=' * 50)
+        for i in range(180):
+            page.wait_for_timeout(1000)
+            current_url = page.url.lower()
+            still_login = (
+                'login' in current_url
+                or 'signin' in current_url
+            )
+            if not still_login:
+                try:
+                    still_login = page.evaluate("""() => {
+                        return !!(
+                            document.querySelector('input[type="password"]')
+                            && !document.querySelector('table.vxe-table--body')
+                        );
+                    }""")
+                except Exception:
+                    still_login = False
+            if not still_login:
+                print('[session-only] 检测到登录成功，正在持久化会话...')
+                break
+            if i % 10 == 0 and i > 0:
+                print(f'  等待中... ({i}秒)')
+        else:
+            print('[session-only] 登录超时，会话未持久化。')
+            context.close()
+            return
+        # 确保在库存页
+        if 'inventory' not in page.url.lower():
+            page.goto(INVENTORY_URL, wait_until='domcontentloaded', timeout=60000)
+        page.wait_for_timeout(4000)
+        _persist_session_cookies(context)
+        context.close()
+        print('[session-only] 会话持久化完成，浏览器已关闭。')
+        return
+
+    # 情况 3：检查验证码
+    has_captcha = page.evaluate("""() => {
+        const el = document.querySelector('.tencent-captcha-dy__warp')
+            || document.querySelector('#tCaptchaDyMainWrap')
+            || document.querySelector('[id^="tcaptcha"]');
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }""")
+    if has_captcha:
+        print('=' * 50)
+        print('[session-only] 检测到安全验证（腾讯滑块拼图），请在浏览器中手动完成验证')
+        print('验证通过后浏览器将自动关闭并持久化会话，最长等待 5 分钟...')
+        print('=' * 50)
+        for i in range(300):
+            page.wait_for_timeout(1000)
+            try:
+                still_captcha = page.evaluate("""() => {
+                    const el = document.querySelector('.tencent-captcha-dy__warp')
+                        || document.querySelector('#tCaptchaDyMainWrap')
+                        || document.querySelector('[id^="tcaptcha"]');
+                    if (!el) return false;
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0;
+                }""")
+            except Exception:
+                print('[session-only] 验证通过（页面已刷新），正在持久化会话...')
+                still_captcha = False
+            if not still_captcha:
+                break
+            if i % 10 == 0 and i > 0:
+                print(f'  等待中... ({i}秒)')
+        else:
+            print('[session-only] 验证超时，会话未持久化。')
+            context.close()
+            return
+        page.wait_for_timeout(3000)
+        _persist_session_cookies(context)
+        context.close()
+        print('[session-only] 会话持久化完成，浏览器已关闭。')
+        return
+
+    # 无法识别的页面状态
+    page.screenshot(path=os.path.join(DEBUG_DIR, 'bigseller_debug.png'))
+    print(f'[session-only] 无法识别的页面状态，URL: {page.url}，截图已保存到 debug 目录')
+    context.close()
+
+
+def _persist_session_cookies(context):
+    """通过 Playwright API 将 BigSeller session cookie 转为持久化。
+
+    Chromium 在退出时会删除所有 is_persistent=0 的 session cookie。
+    此函数必须在 context.close() 之前调用，通过 Playwright cookie API
+    读取当前会话中的所有 BigSeller cookie，将 expires 改为未来时间后
+    重新写入，从而在浏览器关闭后保留登录状态。
+    """
+    import time
+
+    try:
+        cookies = context.cookies()
+    except Exception:
+        print('[session-persist] 无法获取 cookies，跳过持久化')
+        return
+
+    future = int(time.time()) + 90 * 24 * 3600  # +90 天
+    modified = 0
+
+    for c in cookies:
+        domain = c.get('domain', '')
+        if 'bigseller' in domain and c.get('expires', 0) <= 0:
+            c['expires'] = future
+            modified += 1
+
+    if modified > 0:
+        try:
+            context.add_cookies(cookies)
+            print(f'[session-persist] 已将 {modified} 个 BigSeller session cookie 转为持久化（过期=+90天）')
+        except Exception as e:
+            print(f'[session-persist] add_cookies 失败: {e}')
+    else:
+        print('[session-persist] 无需转换（所有 BigSeller cookie 已是持久化状态）')
 
 
 def save_json(rows, metadata=None, invalid_sku_rows=None, combo_sku_rows=None):
@@ -809,9 +1144,13 @@ def save_json(rows, metadata=None, invalid_sku_rows=None, combo_sku_rows=None):
     filename = f'bigseller-inventory-{datetime.now().strftime("%Y%m%d-%H%M%S")}.json'
     output_path = os.path.join(OUTPUT_DIR, filename)
 
+    output_warehouse = (
+        (metadata or {}).get('warehouse')
+        or (rows[0].get('warehouse') if rows else '')
+    )
     output = {
         'captured_at': datetime.now().astimezone().isoformat(timespec='seconds'),
-        'warehouse': '菲律宾-新创启辰自建仓',
+        'warehouse': output_warehouse,
         'row_count': len(normalized_rows),
         'rows': normalized_rows,
     }
@@ -964,6 +1303,9 @@ def _row_score(row):
 if __name__ == '__main__':
     try:
         rows, metadata, invalid_sku_rows, combo_sku_rows = scrape()
+        if metadata and metadata.get('session_only'):
+            print('[session-only] 登录会话建立完成，浏览器已关闭。')
+            sys.exit(0)
         if rows:
             save_json(rows, metadata, invalid_sku_rows, combo_sku_rows)
         else:
