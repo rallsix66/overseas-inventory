@@ -56,7 +56,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-- P5-SY9E — 待 Codex 独立验收（返工完成：统一 terminate 管线 + 可注入 heartbeat 间隔 + prepareRunnerContext 异常清理 + SIGTERM→SIGKILL 测试 + real_write 路径覆盖。20 项测试，450/450 非并发同步测试）
+- P5-SY9E — 待 Codex 独立验收（小返工完成：externalSignal 已 aborted 立即转发 + capabilities 抛错 release 失败 → indeterminate + 3 项测试。23 项 P5-SY9E 测试，453/453 非并发同步测试）
 
 ## Authentication Status
 

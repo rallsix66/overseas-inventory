@@ -216,6 +216,35 @@ describe('P5-SY9E — timeout / abort', () => {
 
     expect(result.status).toBe('completed');
   });
+
+  it('外部 signal 已 aborted + runner maxTimeoutMs > 0 → 立即 failed（不等 timeout）', async () => {
+    const repo = new MockRepository('admin');
+    const runner = new MockSyncRunner();
+    // runner 支持 timeout（会创建 ctrl），但外部 signal 已 aborted
+    runner._setCapabilities({ supportsTimeout: true, maxTimeoutMs: 60_000 });
+    runner.delayMs = 5_000; // 长延迟 — 但 signal 已 abort，runner 应立即检测
+
+    const ctrl = new AbortController();
+    ctrl.abort('外部取消');
+
+    const deps = makeDeps({ repo, runner });
+    const svc = createSyncService(deps);
+
+    const start = Date.now();
+    const result = await svc.executeSync({
+      warehouseId: WH_ID,
+      mode: 'dry_run',
+      inputArtifact: DRY_INPUT,
+      triggeredBy: TRIGGERED_BY,
+      signal: ctrl.signal,
+    });
+    const elapsed = Date.now() - start;
+
+    // 应该快速失败（signal 已 abort → runner 立即检测），不等 60s timeout
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('同步被取消');
+    expect(elapsed).toBeLessThan(1000); // 远小于 60s
+  });
 });
 
 // ─── 3. prepareRunnerContext 异常清理 ───────────────────────────
@@ -300,6 +329,75 @@ describe('P5-SY9E — prepareRunnerContext 异常清理', () => {
     expect(releaseSpy).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'failed', exitCode: 1 }),
     );
+  });
+
+  it('dry_run: capabilities() 抛错 + releaseSyncRun() 也抛错 → indeterminate', async () => {
+    const repo = new MockRepository('admin');
+    const runner = new MockSyncRunner();
+    runner.shouldThrowCapabilities = true;
+
+    // releaseSyncRun 也抛错
+    const releaseSpy = vi.spyOn(repo, 'releaseSyncRun');
+    releaseSpy.mockRejectedValue(new Error('模拟 release 网络故障'));
+
+    const deps = makeDeps({ repo, runner, heartbeatIntervalMs: 20 });
+    const svc = createSyncService(deps);
+
+    const result = await svc.executeSync({
+      warehouseId: WH_ID,
+      mode: 'dry_run',
+      inputArtifact: DRY_INPUT,
+      triggeredBy: TRIGGERED_BY,
+    });
+
+    // 已 claim 但 release 失败 → indeterminate
+    expect(result.status).toBe('indeterminate');
+    expect(result.error).toContain('已 claim');
+    expect(result.error).toContain('release failed 落库失败');
+    expect(result.error).toContain('依赖 lease 过期回收');
+    expect(result.artifactDisposition).toBeDefined();
+    expect(result.artifactDisposition!.inputRetained).toBe(true);
+  });
+
+  it('real_write: capabilities() 抛错 + releaseSyncRun() 也抛错 → indeterminate', async () => {
+    const repo = new MockRepository('admin');
+    const runner = new MockSyncRunner();
+    runner.shouldThrowCapabilities = true;
+
+    // 准备 Dry Run artifact
+    const ap = new MockArtifactProvider();
+    const planPrep = ap.prepare({
+      country: 'VN', new_variants: [], inventory_inserts: [],
+      inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {},
+    });
+    await ap.store('dr-bound', 'input', ap.prepare({ skus: ['X'] }));
+    await ap.store('dr-bound', 'plan', planPrep);
+
+    const releaseSpy = vi.spyOn(repo, 'releaseSyncRun');
+    releaseSpy.mockRejectedValue(new Error('模拟 release 网络故障'));
+
+    const deps: SyncServiceDeps = {
+      repository: repo,
+      artifactProvider: ap,
+      runner,
+      heartbeatIntervalMs: 20,
+    };
+    const svc = createSyncService(deps);
+
+    const result = await svc.executeSync({
+      warehouseId: WH_ID,
+      mode: 'real_write',
+      inputArtifact: DRY_INPUT,
+      dryRunRunId: 'dr-bound',
+      confirmToken: 'P5-SY3B-PH',
+      triggeredBy: TRIGGERED_BY,
+    });
+
+    // 已 claim 但 release 失败 → indeterminate
+    expect(result.status).toBe('indeterminate');
+    expect(result.error).toContain('已 claim');
+    expect(result.error).toContain('依赖 lease 过期回收');
+    expect(result.artifactDisposition).toBeDefined();
   });
 });
 

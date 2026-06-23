@@ -165,9 +165,14 @@ async function prepareRunnerContext(
 
     // 外部 signal 也转发到同一个 controller
     if (externalSignal) {
-      const onAbort = () => ctrl.abort();
-      externalSignal.addEventListener('abort', onAbort, { once: true });
-      cleanups.push(() => externalSignal.removeEventListener('abort', onAbort));
+      if (externalSignal.aborted) {
+        // 已提前 aborted → 立即转发，不等 timeout
+        ctrl.abort(externalSignal.reason);
+      } else {
+        const onAbort = () => ctrl.abort();
+        externalSignal.addEventListener('abort', onAbort, { once: true });
+        cleanups.push(() => externalSignal.removeEventListener('abort', onAbort));
+      }
     }
   } else if (externalSignal) {
     signal = externalSignal;
@@ -237,7 +242,18 @@ async function executeDryRun(
     const errorMsg = `Runner 能力查询失败: ${(err as Error).message}`;
     try {
       await repo.releaseSyncRun({ runId, status: 'failed', exitCode: 1, errorMessage: errorMsg });
-    } catch { /* release 失败 — 依赖 lease 过期回收 */ }
+    } catch {
+      // release 自身失败 — 已 claim 但无法落库，依赖 lease 过期回收
+      return {
+        runId,
+        status: 'indeterminate',
+        error: `已 claim，但 release failed 落库失败: ${errorMsg}。依赖 lease 过期回收`,
+        artifactDisposition: {
+          inputRetained: true, planRetained: false,
+          reason: 'capabilities 查询失败 + release 失败：input retained',
+        },
+      };
+    }
     return makeFailed(runId, errorMsg);
   }
 
@@ -450,7 +466,18 @@ async function executeRealWrite(
     const errorMsg = `Runner 能力查询失败: ${(err as Error).message}`;
     try {
       await repo.releaseSyncRun({ runId, status: 'failed', exitCode: 1, errorMessage: errorMsg });
-    } catch { /* release 失败 — 依赖 lease 过期回收 */ }
+    } catch {
+      // release 自身失败 — 已 claim 但无法落库，依赖 lease 过期回收
+      return {
+        runId,
+        status: 'indeterminate',
+        error: `已 claim，但 release failed 落库失败: ${errorMsg}。依赖 lease 过期回收`,
+        artifactDisposition: {
+          inputRetained: true, planRetained: false,
+          reason: 'capabilities 查询失败 + release 失败：input retained',
+        },
+      };
+    }
     return makeFailed(runId, errorMsg);
   }
 
