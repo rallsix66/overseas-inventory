@@ -19,7 +19,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -291,6 +291,37 @@ export async function confirmRealWrite(
   if (result.success) {
     revalidatePath('/dashboard/inventory/overseas');
   }
+  return result;
+}
+
+// ─── P5-SY9F: 批量全部海外仓 Dry Run ────────────────────────────
+
+export async function triggerBatchDryRun(): Promise<BatchDryRunResult> {
+  await requireActiveAdmin();
+
+  // ── Session health guard (P5-SY9B) ──────────────────────────
+  const health = await verifyBigSellerSession();
+  if (health.status !== 'healthy') {
+    return {
+      results: [],
+      allSucceeded: false,
+      successCount: 0,
+      failedCount: 0,
+      blockedCount: 0,
+      blockReason: `BigSeller 登录会话不可用：${health.message}`,
+    };
+  }
+
+  const warehouses = await getCachedOverseasWarehouses();
+  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
+  const result = await actions.triggerBatchDryRun(
+    warehouses.map((w) => ({ id: w.id, name: w.name, country: w.country })),
+  );
+
+  if (result.results.some((r) => r.status === 'ready')) {
+    revalidatePath('/dashboard/inventory/overseas');
+  }
+
   return result;
 }
 

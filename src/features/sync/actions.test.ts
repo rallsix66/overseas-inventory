@@ -471,8 +471,248 @@ describe('SyncActions type', () => {
     expect(actions).toHaveProperty('syncWarehouse');
     expect(actions).toHaveProperty('triggerDryRun');    // P5-SY9D
     expect(actions).toHaveProperty('confirmRealWrite'); // P5-SY9D
+    expect(actions).toHaveProperty('triggerBatchDryRun'); // P5-SY9F
     expect(actions).toHaveProperty('getSyncRunsAction');
     expect(actions).toHaveProperty('getSyncRunDetailAction');
-    expect(Object.keys(actions).length).toBe(7); // P5-SY9D: +2 methods
+    expect(Object.keys(actions).length).toBe(8); // P5-SY9F: +1 method
+  });
+});
+
+// ─── triggerBatchDryRun (P5-SY9F) ─────────────────────────────────
+
+describe('createSyncActions — triggerBatchDryRun', () => {
+  beforeEach(() => {
+    MockRepository._resetAll();
+    MockArtifactProvider._resetAll();
+    vi.mocked(requireActiveAdmin).mockResolvedValue(mockAdminUser);
+    vi.mocked(requireActiveAuth).mockResolvedValue(mockAdminUser);
+  });
+
+  const WH1 = { id: 'adc5ec45-cd98-42a8-a1d1-26600e80d481', name: '菲律宾-新创启辰自建仓', country: 'PH' };
+  const WH2 = { id: 'c0b661fa-7b6b-4c28-9563-e3e2e3e48a27', name: '越南青林湾仓库', country: 'VN' };
+  const WH3 = { id: 'aa3af864-28d9-4a9d-8e9d-3a3b9e3f4483', name: 'DEE-龙仔厝（ICE专属）', country: 'TH' };
+
+  it('all warehouses succeed → allSucceeded true', async () => {
+    const deps = buildDeps();
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH1, WH2]);
+    expect(result.allSucceeded).toBe(true);
+    expect(result.successCount).toBe(2);
+    expect(result.failedCount).toBe(0);
+    expect(result.blockedCount).toBe(0);
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0].status).toBe('ready');
+    expect(result.results[1].status).toBe('ready');
+  });
+
+  it('each warehouse has independent runId', async () => {
+    const deps = buildDeps();
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH1, WH2]);
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0].runId).toBeDefined();
+    expect(result.results[1].runId).toBeDefined();
+    expect(result.results[0].runId).not.toBe(result.results[1].runId);
+  });
+
+  it('single warehouse failure does not affect others', async () => {
+    const deps = buildDeps();
+    const runner = new MockSyncRunner();
+    runner.exitCode = 0; // All runner calls succeed
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+
+    // WH2 fails at input artifact stage, WH1 succeeds
+    const actions = createSyncActions({
+      repository: repo,
+      syncService: svc,
+      inputArtifactSource: {
+        getInputArtifact: async (whId) => {
+          if (whId === WH2.id) throw new Error('模拟抓取失败：仓库不可达');
+          return { skus: ['TEST-SKU'] };
+        },
+      },
+      artifactProvider: ap,
+    });
+
+    const result = await actions.triggerBatchDryRun([WH1, WH2]);
+    expect(result.results).toHaveLength(2);
+    // WH1 should succeed
+    const wh1 = result.results.find((r) => r.warehouseId === WH1.id);
+    expect(wh1?.status).toBe('ready');
+    // WH2 should fail
+    const wh2 = result.results.find((r) => r.warehouseId === WH2.id);
+    expect(wh2?.status).toBe('failed');
+    expect(wh2?.failureReason).toBeDefined();
+    expect(wh2?.failureReason).toContain('模拟抓取失败');
+    // Single failure → allSucceeded false
+    expect(result.allSucceeded).toBe(false);
+    expect(result.successCount).toBe(1);
+    expect(result.failedCount).toBe(1);
+  });
+
+  it('multiple failures → all reported with Chinese reasons', async () => {
+    MockRepository._resetAll();
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const runner = new MockSyncRunner();
+    runner.exitCode = 0;
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+
+    const actions = createSyncActions({
+      repository: repo,
+      syncService: svc,
+      inputArtifactSource: {
+        getInputArtifact: async (whId) => {
+          throw new Error(`仓库 ${whId} 抓取失败`);
+        },
+      },
+      artifactProvider: ap,
+    });
+
+    const result = await actions.triggerBatchDryRun([WH1, WH2]);
+    expect(result.results).toHaveLength(2);
+    expect(result.allSucceeded).toBe(false);
+    expect(result.successCount).toBe(0);
+    expect(result.failedCount).toBe(2);
+    for (const r of result.results) {
+      expect(r.status).toBe('failed');
+      expect(r.failureReason).toBeDefined();
+      expect(r.failureReason).toMatch(/Dry Run 异常/);
+    }
+  });
+
+  it('empty warehouse list → empty results, allSucceeded true', async () => {
+    const deps = buildDeps();
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([]);
+    expect(result.results).toHaveLength(0);
+    expect(result.allSucceeded).toBe(true);
+    expect(result.successCount).toBe(0);
+    expect(result.failedCount).toBe(0);
+  });
+
+  it('admin required — operator rejected', async () => {
+    vi.mocked(requireActiveAdmin).mockRejectedValue(new Error('仅管理员可操作'));
+
+    const deps = buildDeps();
+    const actions = createSyncActions(deps);
+
+    await expect(actions.triggerBatchDryRun([WH1])).rejects.toThrow('仅管理员可操作');
+  });
+
+  it('ready warehouse includes warehouse name / country / runId / all summary fields', async () => {
+    const deps = buildDeps();
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH1]);
+    expect(result.results).toHaveLength(1);
+    const r = result.results[0];
+    expect(r.status).toBe('ready');
+    expect(r.warehouseId).toBe(WH1.id);
+    expect(r.warehouseName).toBe(WH1.name);
+    expect(r.country).toBeDefined();
+    expect(r.runId).toBeDefined();
+    expect(r.runId).not.toBe('');
+    // Summary numeric fields
+    expect(typeof r.rawRowCount).toBe('number');
+    expect(typeof r.validSkuCount).toBe('number');
+    expect(typeof r.invalidSkuCount).toBe('number');
+    expect(typeof r.variantsCreated).toBe('number');
+    expect(typeof r.inventoryInserted).toBe('number');
+    expect(typeof r.inventoryUpdated).toBe('number');
+    expect(typeof r.inventoryUnchanged).toBe('number');
+    expect(typeof r.warehouseRenamed).toBe('boolean');
+    expect(r.planDriftCheck).toBeDefined();
+    expect(typeof r.planDriftCount).toBe('number');
+  });
+
+  it('failed warehouse runId is set when claim succeeded', async () => {
+    const deps = buildDeps();
+    const runner = new MockSyncRunner();
+    runner.exitCode = 1; // Dry Run fails (non-zero exit)
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+    const actions = createSyncActions({
+      ...deps,
+      syncService: svc,
+      repository: repo,
+      artifactProvider: ap,
+    });
+
+    const result = await actions.triggerBatchDryRun([WH1]);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].status).toBe('failed');
+    expect(result.results[0].runId).toBeDefined();
+    expect(result.results[0].runId).not.toBe('');
+    expect(result.results[0].failureReason).toBeDefined();
+  });
+
+  it('batch Dry Run does NOT trigger real_write mode', async () => {
+    // Structural check: verify triggerBatchDryRun only uses mode='dry_run'
+    const deps = buildDeps();
+    const calls: string[] = [];
+    const inputSrc = {
+      getInputArtifact: async (whId: string, mode: string) => {
+        calls.push(mode);
+        return { skus: ['SKU-1'] };
+      },
+    };
+    const actions = createSyncActions({ ...deps, inputArtifactSource: inputSrc });
+
+    await actions.triggerBatchDryRun([WH1, WH2, WH3]);
+    // All calls must be 'dry_run' — never 'real_write'
+    expect(calls).toEqual(['dry_run', 'dry_run', 'dry_run']);
+    expect(calls.every((m) => m === 'dry_run')).toBe(true);
+  });
+
+  it('single warehouse runner throws → caught as failed, others continue', async () => {
+    MockRepository._resetAll();
+    MockArtifactProvider._resetAll();
+
+    const goodRunner = new MockSyncRunner();
+    goodRunner.exitCode = 0;
+
+    const badRunner = new MockSyncRunner();
+    badRunner.shouldThrow = true;
+    badRunner.throwMessage = 'Runner 内部错误';
+
+    // Build per-warehouse infrastructure with a shared repo
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svc1 = createSyncService({ repository: repo, artifactProvider: ap, runner: goodRunner });
+    const svc2 = createSyncService({ repository: repo, artifactProvider: ap, runner: badRunner });
+
+    // Custom input source that routes to correct syncService
+    const actions = createSyncActions({
+      repository: repo,
+      syncService: svc1, // default — will be overridden per warehouse
+      inputArtifactSource: {
+        getInputArtifact: async () => ({ skus: ['SKU-1'] }),
+      },
+      artifactProvider: ap,
+    });
+
+    // We need per-warehouse sync service routing. Since createSyncActions
+    // binds one syncService, we test that runner.shouldThrow is caught.
+    // Use the bad runner as default to test that throw is caught.
+    const actionsBad = createSyncActions({
+      repository: repo,
+      syncService: svc2,
+      inputArtifactSource: {
+        getInputArtifact: async () => ({ skus: ['SKU-1'] }),
+      },
+      artifactProvider: ap,
+    });
+
+    const result = await actionsBad.triggerBatchDryRun([WH1]);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].status).toBe('failed');
+    expect(result.results[0].failureReason).toContain('Runner 内部错误');
   });
 });

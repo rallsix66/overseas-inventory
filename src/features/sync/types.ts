@@ -283,3 +283,38 @@ export interface ConfirmRealWriteResult {
   error?: string;
   dryRunRunId: string;
 }
+
+// ─── P5-SY9F: 批量 Dry Run ────────────────────────────────────
+
+/** 批量 Dry Run 单仓审核结果 */
+export interface BatchDryRunItemResult {
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  runId: string;
+  /** ready=Dry Run 成功可进入审核, failed=执行失败, blocked=被全局阻断（如 session unhealthy） */
+  status: 'ready' | 'failed' | 'blocked';
+  rawRowCount: number;
+  validSkuCount: number;
+  invalidSkuCount: number;
+  variantsCreated: number;
+  inventoryInserted: number;
+  inventoryUpdated: number;
+  inventoryUnchanged: number;
+  warehouseRenamed: boolean;
+  planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
+  planDriftCount: number;
+  /** 失败/阻断原因（中文），仅 status 为 failed 或 blocked 时存在 */
+  failureReason?: string;
+}
+
+/** 批量 Dry Run 总览结果 */
+export interface BatchDryRunResult {
+  results: BatchDryRunItemResult[];
+  allSucceeded: boolean;
+  successCount: number;
+  failedCount: number;
+  blockedCount: number;
+  /** 全局阻断原因（如 session unhealthy），此时 results 为空 */
+  blockReason?: string;
+}

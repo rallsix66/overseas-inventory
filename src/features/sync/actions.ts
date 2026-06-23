@@ -9,7 +9,7 @@ import 'server-only';
 import type { SyncRepository } from './repository';
 import type { SyncService } from './sync-service';
 import type { ArtifactProvider } from './artifact-provider';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
+import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchDryRunItemResult } from './types';
 import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema } from './schema';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 
@@ -537,6 +537,106 @@ export function createSyncActions(deps: SyncActionsDeps) {
           dryRunRunId,
         };
       }
+    },
+
+    // ─── P5-SY9F: 批量全部海外仓 Dry Run ───────────────────────
+
+    async triggerBatchDryRun(
+      warehouses: Array<{ id: string; name: string; country: string }>,
+    ): Promise<BatchDryRunResult> {
+      const user = await requireActiveAdmin();
+      const triggeredBy = user.id;
+
+      const results: BatchDryRunItemResult[] = [];
+
+      for (const wh of warehouses) {
+        try {
+          syncWarehouseSchema.parse({ warehouseId: wh.id });
+
+          const inputArtifact = await deps.inputArtifactSource.getInputArtifact(
+            wh.id,
+            'dry_run',
+          );
+
+          const dryRunResult = await deps.syncService.executeSync({
+            warehouseId: wh.id,
+            mode: 'dry_run',
+            inputArtifact,
+            triggeredBy,
+          });
+
+          if (dryRunResult.status !== 'completed') {
+            results.push({
+              warehouseId: wh.id,
+              warehouseName: wh.name,
+              country: wh.country,
+              runId: dryRunResult.runId,
+              status: 'failed',
+              rawRowCount: 0,
+              validSkuCount: 0,
+              invalidSkuCount: 0,
+              variantsCreated: 0,
+              inventoryInserted: 0,
+              inventoryUpdated: 0,
+              inventoryUnchanged: 0,
+              warehouseRenamed: false,
+              planDriftCheck: null,
+              planDriftCount: 0,
+              failureReason: dryRunResult.error || 'Dry Run 失败',
+            });
+            continue;
+          }
+
+          const summary = dryRunResult.runnerResult?.summary;
+          const planContent = dryRunResult.runnerResult?.planArtifact as Record<string, unknown> | undefined;
+          const scraperMeta = dryRunResult.runnerResult?.scraperMeta;
+
+          results.push({
+            warehouseId: wh.id,
+            warehouseName: wh.name,
+            country: (planContent?.country as string) || wh.country,
+            runId: dryRunResult.runId,
+            status: 'ready',
+            rawRowCount: scraperMeta?.rawRowCount ?? 0,
+            validSkuCount: scraperMeta?.validSkuCount ?? 0,
+            invalidSkuCount: scraperMeta?.invalidSkuCount ?? 0,
+            variantsCreated: summary?.variantsCreated ?? 0,
+            inventoryInserted: summary?.inventoryInserted ?? 0,
+            inventoryUpdated: summary?.inventoryUpdated ?? 0,
+            inventoryUnchanged: summary?.inventoryUnchanged ?? 0,
+            warehouseRenamed: summary?.warehouseRenamed ?? false,
+            planDriftCheck: dryRunResult.runnerResult?.planDriftCheck ?? 'PASS',
+            planDriftCount: dryRunResult.runnerResult?.planDriftCount ?? 0,
+          });
+        } catch (err) {
+          results.push({
+            warehouseId: wh.id,
+            warehouseName: wh.name,
+            country: wh.country,
+            runId: '',
+            status: 'failed',
+            rawRowCount: 0,
+            validSkuCount: 0,
+            invalidSkuCount: 0,
+            variantsCreated: 0,
+            inventoryInserted: 0,
+            inventoryUpdated: 0,
+            inventoryUnchanged: 0,
+            warehouseRenamed: false,
+            planDriftCheck: null,
+            planDriftCount: 0,
+            failureReason: `Dry Run 异常: ${(err as Error).message}`,
+          });
+        }
+      }
+
+      return {
+        results,
+        allSucceeded: results.every((r) => r.status === 'ready'),
+        successCount: results.filter((r) => r.status === 'ready').length,
+        failedCount: results.filter((r) => r.status === 'failed').length,
+        blockedCount: results.filter((r) => r.status === 'blocked').length,
+      };
     },
 
     async syncWarehouse(
