@@ -100,11 +100,17 @@ export class MockSyncRunner implements SyncRunner {
   /** P5-SY9E: 覆盖 capabilities（用于 timeout 测试） */
   private _capsOverride: Partial<SyncRunnerCapabilities> = {};
 
+  /** P5-SY9E rework: capabilities() 抛错（测试 prepareRunnerContext 异常清理） */
+  shouldThrowCapabilities = false;
+
   _setCapabilities(caps: Partial<SyncRunnerCapabilities>): void {
     this._capsOverride = caps;
   }
 
   async capabilities(): Promise<SyncRunnerCapabilities> {
+    if (this.shouldThrowCapabilities) {
+      throw new Error('Mock capabilities 查询失败');
+    }
     return {
       supportsCancel: this._capsOverride.supportsCancel ?? false,
       supportsTimeout: this._capsOverride.supportsTimeout ?? false,

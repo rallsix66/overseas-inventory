@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~D 均为 DONE；P5-SY9E 实现完成 AWAITING_REVIEW；P5-SY9F~I PENDING。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled。）
+`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~D 均为 DONE；P5-SY9E 返工完成 AWAITING_REVIEW；P5-SY9F~I PENDING。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled。）
 
 ## Completed Tasks
 
@@ -56,7 +56,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-- P5-SY9E — 待 Codex 独立验收（heartbeat 续租 + timeout/abort 子进程控制 + 失败落库 + 并发锁测试。15 项新增测试，445/445 非并发同步测试，Python 85/85，lint/build 通过）
+- P5-SY9E — 待 Codex 独立验收（返工完成：统一 terminate 管线 + 可注入 heartbeat 间隔 + prepareRunnerContext 异常清理 + SIGTERM→SIGKILL 测试 + real_write 路径覆盖。20 项测试，450/450 非并发同步测试）
 
 ## Authentication Status
 
@@ -162,6 +162,7 @@ Phase 5 — 海外仓库存同步生产化
 
 | 日期 | 变更 |
 |---|---|
+| 2026-06-23 | P5-SY9E 返工完成（AWAITING_REVIEW，等待 Codex 独立验收）：4 项修复 — (1) python-bridge.ts 统一 terminate(reason) 管线：timeout 和 AbortSignal 均走 SIGTERM → 5s grace → SIGKILL（settled 标志幂等）；close/error 时清理所有 timers + abort listener；返回中文错误；不再使用 proc.killed 判断；(2) SyncServiceDeps 新增 heartbeatIntervalMs 可注入参数（生产默认 LEASE_DURATION/3 ≈ 100s），测试设 20ms 实现真实 heartbeat 触发断言；(3) prepareRunnerContext 异常时清理 heartbeat + release failed，dry_run/real_write 双路径覆盖；(4) MockSyncRunner 新增 shouldThrowCapabilities。新增 5 项测试：注入 20ms 间隔 → heartbeat 真实触发 ≥1 次 + heartbeat 抛错仍完成 + SIGTERM→SIGKILL mock spawn + abort→SIGTERM→SIGKILL + terminate 幂等 + capabilities 抛错清理 dry_run/real_write。20/20 P5-SY9E 测试，450/450 非并发同步测试，Python 85/85，lint 0 errors，build 通过。未连接生产 Supabase，未执行真实写入。 |
 | 2026-06-23 | P5-SY9E 实现完成（AWAITING_REVIEW，等待 Codex 独立验收）：(1) python-bridge.ts 新增 timeoutMs 参数 — 超时后 SIGTERM → 5s grace → SIGKILL；(2) sync-service.ts 新增 heartbeat 续租循环（间隔 LEASE_DURATION/3 ≈ 100s），executeDryRun/executeRealWrite 均启动 heartbeat；新增 prepareRunnerContext — 根据 Runner capabilities.maxTimeoutMs 创建 AbortSignal.timeout；(3) real-sync-runner.ts 传递 capabilities.maxTimeoutMs 到 callPythonBridge；(4) MockSyncRunner 新增 delayMs + signal 检测 + _setCapabilities 用于 timeout/abort 测试；(5) 新增 15 项 P5-SY9E 测试（heartbeat 调用/失败不中断/claim 前不触发 + timeout 创建/不创建 + abort 预触发 + lease 过期回收/heartbeat 续租后不可抢占/invalid heartbeat 拒绝 + schema 边界 + capabilities 类型检查）。445/445 非并发同步测试，Python 85/85 通过，lint 0 errors/10 warnings，build 通过。未连接生产 Supabase，未执行真实写入。 |
 | 2026-06-23 | P5-SY9D Codex 验收通过，标记 DONE。P5-SY9E IN_PROGRESS：heartbeat / timeout / abort / 子进程控制 / 失败落库 / 并发锁测试。 |
 | 2026-06-23 | P5-SY9D rework 第三次返工完成（AWAITING_REVIEW，等待 Codex 独立验收）：3 项修复 — (1) confirmRealWrite country 校验强制化：plan artifact 缺少 country / country 非字符串 / country 空字符串 / 不一致全部阻断；(2) 查询契约除杂：SyncRunAdminRow 移除 input_artifact_hash / plan_artifact_hash，MockRepository getSyncRuns/getSyncRunDetail admin 视图不再返回此二字段；(3) 60 分钟边界修复：ageMs >= DRY_RUN_EXPIRY_MS。新增 6 项测试（country 缺失/非字符串/空字符串阻断 + getSyncRuns/getSyncRunDetail 不含 hash + 恰好 60 分钟阻断）。51/51 P5-SY9D 测试，430/430 非并发同步测试，Python 85/85 通过，lint 0 errors，build 通过。未连接生产 Supabase，未执行真实写入。 |
@@ -707,4 +708,4 @@ BigSeller 实际 VXE 结构：
 
 ## Last Updated
 
-2026-06-23（P5-SY9E 实现完成 AWAITING_REVIEW：heartbeat 续租 + timeout/abort 子进程控制 + 15 项测试。445/445 非并发同步 TS 测试，Python 85/85，lint/build 通过。等待 Codex 独立验收。）
+2026-06-23（P5-SY9E 返工完成 AWAITING_REVIEW：统一 terminate 管线 + 可注入 heartbeat + prepareRunnerContext 清理 + 20 项测试。450/450 非并发同步 TS 测试，Python 85/85，lint/build 通过。等待 Codex 独立验收。）

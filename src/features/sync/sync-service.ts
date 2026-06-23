@@ -24,11 +24,14 @@ export interface SyncServiceDeps {
   repository: SyncRepository;
   artifactProvider: ArtifactProvider;
   runner: SyncRunner;
+  /** P5-SY9E rework: 可注入 heartbeat 间隔（毫秒），供测试使用。
+   *  生产默认 = LEASE_DURATION * 1000 / 3 ≈ 100s。 */
+  heartbeatIntervalMs?: number;
 }
 
 const LEASE_DURATION = 300; // 5 minutes (seconds)
-/** P5-SY9E: heartbeat 间隔 = lease 的 1/3，保证在 lease 过期前至少刷新 2 次 */
-const HEARTBEAT_INTERVAL_MS = Math.floor((LEASE_DURATION * 1000) / 3);
+/** P5-SY9E: 生产默认 heartbeat 间隔 = lease 的 1/3 */
+const DEFAULT_HEARTBEAT_INTERVAL_MS = Math.floor((LEASE_DURATION * 1000) / 3);
 
 function makeFailed(
   runId: string,
@@ -97,6 +100,7 @@ export function createSyncService(deps: SyncServiceDeps) {
           repository,
           artifactProvider,
           runner,
+          deps.heartbeatIntervalMs,
         );
       }
 
@@ -110,6 +114,7 @@ export function createSyncService(deps: SyncServiceDeps) {
           repository,
           artifactProvider,
           runner,
+          deps.heartbeatIntervalMs,
         );
       }
 
@@ -122,16 +127,18 @@ export type SyncService = ReturnType<typeof createSyncService>;
 
 // ─── P5-SY9E: heartbeat + timeout orchestration ──────────────────
 
-/** 启动 heartbeat 定时器。失败仅日志，不中断同步主流程。 */
+/** 启动 heartbeat 定时器。失败仅日志，不中断同步主流程。
+ *  @param intervalMs heartbeat 间隔（毫秒），默认 DEFAULT_HEARTBEAT_INTERVAL_MS */
 function startHeartbeat(
   repo: SyncRepository,
   runId: string,
+  intervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
 ): ReturnType<typeof setInterval> {
   return setInterval(() => {
     repo.heartbeatSyncRun({ runId, leaseDuration: LEASE_DURATION }).catch((err) => {
       console.error(`[heartbeat] sync_run ${runId} 续租失败: ${(err as Error).message}`);
     });
-  }, HEARTBEAT_INTERVAL_MS);
+  }, intervalMs);
 }
 
 interface RunnerContext {
@@ -182,6 +189,7 @@ async function executeDryRun(
   repo: SyncRepository,
   artifactProvider: ArtifactProvider,
   runner: SyncRunner,
+  heartbeatIntervalMs?: number,
 ): Promise<SyncServiceResult> {
   // a. claim
   const claimed = await repo.claimSyncRun({
@@ -217,9 +225,21 @@ async function executeDryRun(
     return makeFailed(runId, `input artifact 存储失败: ${(err as Error).message}`);
   }
 
-  // c. execute runner (P5-SY9E: heartbeat + timeout)
-  const heartbeatId = startHeartbeat(repo, runId);
-  const ctx = await prepareRunnerContext(runner, input.signal);
+  // c. execute runner (P5-SY9E rework: heartbeat + timeout + 异常清理)
+  const heartbeatId = startHeartbeat(repo, runId, heartbeatIntervalMs);
+
+  // P5-SY9E rework: prepareRunnerContext 异常时清理 heartbeat 并 release failed
+  let ctx: Awaited<ReturnType<typeof prepareRunnerContext>>;
+  try {
+    ctx = await prepareRunnerContext(runner, input.signal);
+  } catch (err) {
+    clearInterval(heartbeatId);
+    const errorMsg = `Runner 能力查询失败: ${(err as Error).message}`;
+    try {
+      await repo.releaseSyncRun({ runId, status: 'failed', exitCode: 1, errorMessage: errorMsg });
+    } catch { /* release 失败 — 依赖 lease 过期回收 */ }
+    return makeFailed(runId, errorMsg);
+  }
 
   const dryParams: SyncExecuteParamsDryRun = {
     runId,
@@ -368,6 +388,7 @@ async function executeRealWrite(
   repo: SyncRepository,
   artifactProvider: ArtifactProvider,
   runner: SyncRunner,
+  heartbeatIntervalMs?: number,
 ): Promise<SyncServiceResult> {
   // a. Load bound Dry Run artifacts via ArtifactProvider.get()
   let planArtifact_dr: { content: JsonValue; hash: string };
@@ -417,9 +438,21 @@ async function executeRealWrite(
     return makeFailed(runId, `input artifact 存储失败: ${(err as Error).message}`);
   }
 
-  // d. execute runner (P5-SY9E: heartbeat + timeout)
-  const heartbeatId = startHeartbeat(repo, runId);
-  const ctx = await prepareRunnerContext(runner, input.signal);
+  // d. execute runner (P5-SY9E rework: heartbeat + timeout + 异常清理)
+  const heartbeatId = startHeartbeat(repo, runId, heartbeatIntervalMs);
+
+  // P5-SY9E rework: prepareRunnerContext 异常时清理 heartbeat 并 release failed
+  let ctx: Awaited<ReturnType<typeof prepareRunnerContext>>;
+  try {
+    ctx = await prepareRunnerContext(runner, input.signal);
+  } catch (err) {
+    clearInterval(heartbeatId);
+    const errorMsg = `Runner 能力查询失败: ${(err as Error).message}`;
+    try {
+      await repo.releaseSyncRun({ runId, status: 'failed', exitCode: 1, errorMessage: errorMsg });
+    } catch { /* release 失败 — 依赖 lease 过期回收 */ }
+    return makeFailed(runId, errorMsg);
+  }
 
   const realParams: SyncExecuteParamsRealWrite = {
     runId,

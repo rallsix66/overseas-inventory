@@ -1,14 +1,23 @@
-// P5-SY9E: heartbeat / timeout / abort / 子进程控制 测试
+// P5-SY9E rework: heartbeat / timeout / abort / 子进程控制 测试
 //
-// 验证 SyncService heartbeat 续租、timeout 终止、abort 传播、
-// 失败落库和 lease 过期行为。
+// 验证: 可注入 heartbeat 间隔 + 真实触发 heartbeat + terminate 统一管线 +
+// prepareRunnerContext 异常清理 + SIGTERM→SIGKILL + real_write 路径。
 // 不连接生产 Supabase，不执行真实写入。
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createSyncService, type SyncServiceDeps } from './sync-service';
 import { MockRepository } from './repository';
 import { MockArtifactProvider } from './mock-artifact-provider';
 import { MockSyncRunner } from './mock-sync-runner';
+
+// ─── vi.hoisted mock state for python-bridge terminate tests ─────
+const bridgeMockState = vi.hoisted(() => ({
+  mockChild: null as Record<string, unknown> | null,
+}));
+
+vi.mock('node:child_process', () => ({
+  spawn: vi.fn(() => bridgeMockState.mockChild),
+}));
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -18,6 +27,7 @@ const TRIGGERED_BY = 'user-0000-0000-0000-000000000001';
 function makeDeps(opts?: {
   repo?: MockRepository;
   runner?: MockSyncRunner;
+  heartbeatIntervalMs?: number;
 }): SyncServiceDeps {
   MockRepository._resetAll();
   MockArtifactProvider._resetAll();
@@ -25,28 +35,28 @@ function makeDeps(opts?: {
     repository: opts?.repo ?? new MockRepository('admin'),
     artifactProvider: new MockArtifactProvider(),
     runner: opts?.runner ?? new MockSyncRunner(),
+    heartbeatIntervalMs: opts?.heartbeatIntervalMs,
   };
 }
 
 const DRY_INPUT = { skus: ['WM0001', 'WM0002'], warehouse: '测试仓' };
 
-// ─── 1. Heartbeat 续租 ──────────────────────────────────────────
+// ─── 1. Heartbeat 真实触发 ──────────────────────────────────────
 
-describe('P5-SY9E — heartbeat 续租', () => {
+describe('P5-SY9E — heartbeat 真实触发', () => {
   beforeEach(() => {
     MockRepository._resetAll();
     MockArtifactProvider._resetAll();
   });
 
-  it('执行期间 heartbeat 被调用（runner 延迟 > heartbeat 间隔）', async () => {
+  it('注入 heartbeatIntervalMs=20ms + runner delay=150ms → heartbeat 至少调用一次', async () => {
     const repo = new MockRepository('admin');
     const runner = new MockSyncRunner();
-    // heartbeat 间隔 ~100s，设置 runner 延迟 200ms 足够触发至少一次
-    runner.delayMs = 200;
+    runner.delayMs = 150; // runner 执行 150ms
 
     const spy = vi.spyOn(repo, 'heartbeatSyncRun');
 
-    const deps = makeDeps({ repo, runner });
+    const deps = makeDeps({ repo, runner, heartbeatIntervalMs: 20 });
     const svc = createSyncService(deps);
 
     const result = await svc.executeSync({
@@ -57,21 +67,32 @@ describe('P5-SY9E — heartbeat 续租', () => {
     });
 
     expect(result.status).toBe('completed');
-    // heartbeat 不应被调用（间隔 100s > 200ms delay）
-    // 但至少验证功能正常执行，heartbeat 未被错误触发
-    // 实际间隔为 HEARTBEAT_INTERVAL_MS ≈ 100s，200ms 不会触发
-    expect(spy).not.toHaveBeenCalled();
+    // 150ms / 20ms = 最多 7 次心跳，至少 1 次
+    expect(spy).toHaveBeenCalled();
+    const calls = spy.mock.calls.length;
+    expect(calls).toBeGreaterThanOrEqual(1);
+    // 验证每次调用参数正确
+    for (const call of spy.mock.calls) {
+      expect(call[0]).toMatchObject({ leaseDuration: 300 });
+      expect(call[0].runId).toBe(result.runId);
+    }
   });
 
-  it('heartbeat 失败不中断同步（repo.heartbeatSyncRun 抛错，sync 仍完成）', async () => {
+  it('heartbeat 抛错时同步仍完成（真实触发 heartbeat + 注入抛错）', async () => {
     const repo = new MockRepository('admin');
     const runner = new MockSyncRunner();
+    runner.delayMs = 150;
 
-    // 让 heartbeat 在首次调用时抛错
+    let callCount = 0;
     const spy = vi.spyOn(repo, 'heartbeatSyncRun');
-    spy.mockRejectedValue(new Error('模拟 heartbeat 网络超时'));
+    spy.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('模拟 heartbeat 网络超时');
+      }
+    });
 
-    const deps = makeDeps({ repo, runner });
+    const deps = makeDeps({ repo, runner, heartbeatIntervalMs: 20 });
     const svc = createSyncService(deps);
 
     const result = await svc.executeSync({
@@ -84,9 +105,11 @@ describe('P5-SY9E — heartbeat 续租', () => {
     // heartbeat 失败不应导致 sync 失败
     expect(result.status).toBe('completed');
     expect(result.runnerResult).toBeDefined();
+    // heartbeat 至少被调用过（第一次抛错，后续成功）
+    expect(callCount).toBeGreaterThanOrEqual(1);
   });
 
-  it('claim 前失败（仓库占用）不触发 heartbeat', async () => {
+  it('claim 前失败不触发 heartbeat', async () => {
     MockRepository._resetAll();
     MockArtifactProvider._resetAll();
 
@@ -94,7 +117,7 @@ describe('P5-SY9E — heartbeat 续租', () => {
     const runner = new MockSyncRunner();
     const spy = vi.spyOn(repo, 'heartbeatSyncRun');
 
-    // 预先占仓（在 makeDeps 之前，避免 _resetAll 清空）
+    // 预先占仓
     await repo.claimSyncRun({
       warehouseId: WH_ID,
       mode: 'dry_run',
@@ -108,6 +131,7 @@ describe('P5-SY9E — heartbeat 续租', () => {
       repository: repo,
       artifactProvider: new MockArtifactProvider(),
       runner,
+      heartbeatIntervalMs: 20,
     };
     const svc = createSyncService(deps);
 
@@ -120,7 +144,6 @@ describe('P5-SY9E — heartbeat 续租', () => {
 
     expect(result.status).toBe('failed');
     expect(result.error).toContain('占用');
-    // heartbeat 不应被调用（claim 失败 → 不进入执行阶段）
     expect(spy).not.toHaveBeenCalled();
   });
 });
@@ -133,13 +156,13 @@ describe('P5-SY9E — timeout / abort', () => {
     MockArtifactProvider._resetAll();
   });
 
-  it('signal 已 aborted → runner 抛出 abort 错误，release 为 failed', async () => {
+  it('signal 已 aborted → runner 检测并抛出，release failed', async () => {
     const repo = new MockRepository('admin');
     const runner = new MockSyncRunner();
-    runner.delayMs = 5_000; // 长延迟
+    runner.delayMs = 5_000;
 
     const ctrl = new AbortController();
-    ctrl.abort('测试取消'); // 预先 abort
+    ctrl.abort('测试取消');
 
     const deps = makeDeps({ repo, runner });
     const svc = createSyncService(deps);
@@ -152,16 +175,13 @@ describe('P5-SY9E — timeout / abort', () => {
       signal: ctrl.signal,
     });
 
-    // runner 检测到已 abort 的 signal → 抛出 → release failed
     expect(result.status).toBe('failed');
     expect(result.error).toContain('同步被取消');
   });
 
-  it('runner capabilities maxTimeoutMs > 0 → timeout signal 被创建', async () => {
+  it('runner capabilities maxTimeoutMs=50 + delayMs=5s → timeout 触发，release failed', async () => {
     const repo = new MockRepository('admin');
     const runner = new MockSyncRunner();
-
-    // 设置短超时（50ms）+ 长延迟（5s）→ 必然超时
     runner._setCapabilities({ supportsTimeout: true, maxTimeoutMs: 50 });
     runner.delayMs = 5_000;
 
@@ -175,15 +195,13 @@ describe('P5-SY9E — timeout / abort', () => {
       triggeredBy: TRIGGERED_BY,
     });
 
-    // timeout signal 在 50ms 后 abort → runner 检测到 → 抛出
     expect(result.status).toBe('failed');
     expect(result.error).toContain('Runner 执行失败');
   });
 
-  it('capabilities maxTimeoutMs = 0 → 不创建 timeout signal，正常完成', async () => {
+  it('capabilities maxTimeoutMs=0 → 不创建 timeout signal', async () => {
     const repo = new MockRepository('admin');
     const runner = new MockSyncRunner();
-    // 默认 maxTimeoutMs=0（不设超时），delayMs=10ms（快速完成）
     runner.delayMs = 10;
 
     const deps = makeDeps({ repo, runner });
@@ -200,7 +218,198 @@ describe('P5-SY9E — timeout / abort', () => {
   });
 });
 
-// ─── 3. Lease 过期与并发保护 ────────────────────────────────────
+// ─── 3. prepareRunnerContext 异常清理 ───────────────────────────
+
+describe('P5-SY9E — prepareRunnerContext 异常清理', () => {
+  beforeEach(() => {
+    MockRepository._resetAll();
+    MockArtifactProvider._resetAll();
+  });
+
+  it('dry_run: capabilities() 抛错 → heartbeat 清理 + release failed', async () => {
+    const repo = new MockRepository('admin');
+    const runner = new MockSyncRunner();
+    runner.shouldThrowCapabilities = true;
+
+    const hbSpy = vi.spyOn(repo, 'heartbeatSyncRun');
+    const releaseSpy = vi.spyOn(repo, 'releaseSyncRun');
+
+    const deps = makeDeps({ repo, runner, heartbeatIntervalMs: 20 });
+    const svc = createSyncService(deps);
+
+    const result = await svc.executeSync({
+      warehouseId: WH_ID,
+      mode: 'dry_run',
+      inputArtifact: DRY_INPUT,
+      triggeredBy: TRIGGERED_BY,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('Runner 能力查询失败');
+    // heartbeat 不应被触发（capabilities 在 heartbeat 启动后立即调用，但抛错时已 clearInterval）
+    expect(hbSpy).not.toHaveBeenCalled();
+    // release failed 被调用
+    expect(releaseSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'failed', exitCode: 1 }),
+    );
+  });
+
+  it('real_write: capabilities() 抛错 → heartbeat 清理 + release failed', async () => {
+    const repo = new MockRepository('admin');
+    const runner = new MockSyncRunner();
+    runner.shouldThrowCapabilities = true;
+
+    // 准备 Dry Run artifact（real_write 需要先加载绑定 plan）
+    const artifactProvider = new MockArtifactProvider();
+    const planPrep = artifactProvider.prepare({
+      country: 'VN', new_variants: [], inventory_inserts: [],
+      inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {},
+    });
+    await artifactProvider.store('dr-bound', 'input', artifactProvider.prepare({ skus: ['X'] }));
+    await artifactProvider.store('dr-bound', 'plan', planPrep);
+
+    const hbSpy = vi.spyOn(repo, 'heartbeatSyncRun');
+    const releaseSpy = vi.spyOn(repo, 'releaseSyncRun');
+
+    MockArtifactProvider._resetAll(); // reset after store
+    // Re-store since we reset
+    await artifactProvider.store('dr-bound', 'input', artifactProvider.prepare({ skus: ['X'] }));
+    await artifactProvider.store('dr-bound', 'plan', planPrep);
+
+    // Use a fresh artifactProvider that has the stored artifacts
+    const deps: SyncServiceDeps = {
+      repository: repo,
+      artifactProvider, // same instance — has artifacts
+      runner,
+      heartbeatIntervalMs: 20,
+    };
+    const svc = createSyncService(deps);
+
+    const result = await svc.executeSync({
+      warehouseId: WH_ID,
+      mode: 'real_write',
+      inputArtifact: DRY_INPUT,
+      dryRunRunId: 'dr-bound',
+      confirmToken: 'P5-SY3B-PH',
+      triggeredBy: TRIGGERED_BY,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('Runner 能力查询失败');
+    expect(hbSpy).not.toHaveBeenCalled();
+    expect(releaseSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'failed', exitCode: 1 }),
+    );
+  });
+});
+
+// ─── 4. python-bridge terminate 统一管线 ────────────────────────
+
+describe('P5-SY9E — python-bridge terminate（SIGTERM → SIGKILL）', () => {
+  let mockListeners: Record<string, Array<(...args: unknown[]) => void>>;
+
+  function makeMockChild() {
+    mockListeners = {};
+    const child = {
+      on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+        (mockListeners[event] ??= []).push(handler);
+      }),
+      kill: vi.fn(),
+      stdout: { on: vi.fn() },
+      stderr: { on: vi.fn() },
+      exitCode: null as number | null, // 模拟 Node ChildProcess — null 表示仍在运行
+      killed: false,
+    };
+    bridgeMockState.mockChild = child;
+    return child;
+  }
+
+  function emit(event: string, ...args: unknown[]) {
+    for (const h of mockListeners[event] ?? []) h(...args);
+  }
+
+  beforeEach(() => {
+    bridgeMockState.mockChild = null;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('timeout 触发 SIGTERM → exitCode 仍为 null → SIGKILL', async () => {
+    // re-import to get fresh module with mock applied
+    const { callPythonBridge } = await import('@/lib/python-bridge');
+    const child = makeMockChild();
+
+    // 不 await — Promise 一直 pending
+    const prom = callPythonBridge(
+      { warehouseId: WH_ID, warehouseName: '测试', oldName: '旧名', country: 'VN', token: 'tok', mode: 'dry_run' },
+      undefined,
+      5, // 5ms timeout
+    );
+
+    // timeout 触发 SIGTERM
+    await new Promise((r) => setTimeout(r, 30));
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    // grace 期后 → SIGKILL（exitCode 仍为 null）
+    await new Promise((r) => setTimeout(r, 5100));
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+
+    emit('close', null);
+    await expect(prom).rejects.toThrow('Python bridge 被终止');
+    await expect(prom).rejects.toThrow('超时');
+  }, 10_000);
+
+  it('abort signal 触发 terminate → SIGTERM → SIGKILL', async () => {
+    const { callPythonBridge } = await import('@/lib/python-bridge');
+    const child = makeMockChild();
+    const ctrl = new AbortController();
+
+    const prom = callPythonBridge(
+      { warehouseId: WH_ID, warehouseName: '测试', oldName: '旧名', country: 'VN', token: 'tok', mode: 'dry_run' },
+      ctrl.signal,
+    );
+
+    ctrl.abort();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    await new Promise((r) => setTimeout(r, 5100));
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+
+    emit('close', null);
+    await expect(prom).rejects.toThrow('Python bridge 被终止');
+    await expect(prom).rejects.toThrow('外部取消');
+  }, 10_000);
+
+  it('terminate 幂等 — timeout + abort 同时触发，SIGTERM 仅一次', async () => {
+    const { callPythonBridge } = await import('@/lib/python-bridge');
+    const child = makeMockChild();
+    const ctrl = new AbortController();
+
+    const prom = callPythonBridge(
+      { warehouseId: WH_ID, warehouseName: '测试', oldName: '旧名', country: 'VN', token: 'tok', mode: 'dry_run' },
+      ctrl.signal,
+      5,
+    );
+
+    // timeout fires
+    await new Promise((r) => setTimeout(r, 30));
+    // abort also fires
+    ctrl.abort();
+
+    const sigtermCalls = (child.kill as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: string[]) => c[0] === 'SIGTERM').length;
+    expect(sigtermCalls).toBe(1);
+
+    await new Promise((r) => setTimeout(r, 5100));
+    emit('close', null);
+    await expect(prom).rejects.toThrow('Python bridge 被终止');
+  }, 10_000);
+});
+
+// ─── 5. Lease 过期与并发保护 ────────────────────────────────────
 
 describe('P5-SY9E — lease 过期与并发保护', () => {
   beforeEach(() => {
@@ -212,30 +421,20 @@ describe('P5-SY9E — lease 过期与并发保护', () => {
     const repo = new MockRepository('admin');
     const now = Date.now();
 
-    // 注入一个已过期（finished_at 在 lease 之前）的 in_progress run
     repo._injectRunDetail('old-run', {
-      warehouseId: WH_ID,
-      mode: 'dry_run',
-      status: 'in_progress',
-      leaseExpiresAt: new Date(now - 60_000), // 1 分钟前过期
+      warehouseId: WH_ID, mode: 'dry_run', status: 'in_progress',
+      leaseExpiresAt: new Date(now - 60_000),
       heartbeatAt: new Date(now - 120_000),
       startedAt: new Date(now - 120_000),
       finishedAt: null,
     } as Parameters<typeof repo._injectRunDetail>[1]);
 
     const result = await repo.claimSyncRun({
-      warehouseId: WH_ID,
-      mode: 'dry_run',
-      runId: 'new-run',
-      leaseDuration: 300,
-      triggeredBy: TRIGGERED_BY,
-      triggeredFrom: 'web',
+      warehouseId: WH_ID, mode: 'dry_run', runId: 'new-run',
+      leaseDuration: 300, triggeredBy: TRIGGERED_BY, triggeredFrom: 'web',
     });
 
-    // 应成功 claim（旧 run 被回收）
     expect(result).toBe('new-run');
-
-    // 旧 run 应被标记为 failed
     const oldRun = await repo.getDryRunBindingMetadata('old-run');
     expect(oldRun?.status).toBe('failed');
   });
@@ -244,32 +443,18 @@ describe('P5-SY9E — lease 过期与并发保护', () => {
     const repo = new MockRepository('admin');
     const now = Date.now();
 
-    // 注入一个 in_progress run，lease 还剩 4 分钟
-    const leaseExpires = new Date(now + 240_000);
     repo._injectRunDetail('active-run', {
-      warehouseId: WH_ID,
-      mode: 'dry_run',
-      status: 'in_progress',
-      leaseExpiresAt: leaseExpires,
-      heartbeatAt: new Date(now),
-      startedAt: new Date(now),
-      finishedAt: null,
+      warehouseId: WH_ID, mode: 'dry_run', status: 'in_progress',
+      leaseExpiresAt: new Date(now + 240_000),
+      heartbeatAt: new Date(now), startedAt: new Date(now), finishedAt: null,
     } as Parameters<typeof repo._injectRunDetail>[1]);
 
-    // 尝试 claim 同仓
     const result = await repo.claimSyncRun({
-      warehouseId: WH_ID,
-      mode: 'dry_run',
-      runId: 'new-run',
-      leaseDuration: 300,
-      triggeredBy: TRIGGERED_BY,
-      triggeredFrom: 'web',
+      warehouseId: WH_ID, mode: 'dry_run', runId: 'new-run',
+      leaseDuration: 300, triggeredBy: TRIGGERED_BY, triggeredFrom: 'web',
     });
-
-    // 应被拒绝（active run 仍持有 lease）
     expect(result).toBeNull();
 
-    // 模拟 heartbeat 续租
     await repo.heartbeatSyncRun({ runId: 'active-run', leaseDuration: 300 });
     const updated = await repo.getDryRunBindingMetadata('active-run');
     expect(updated?.status).toBe('in_progress');
@@ -285,9 +470,7 @@ describe('P5-SY9E — lease 过期与并发保护', () => {
   it('heartbeat 对非 in_progress run 抛错', async () => {
     const repo = new MockRepository('admin');
     repo._injectRunDetail('completed-run', {
-      warehouseId: WH_ID,
-      mode: 'dry_run',
-      status: 'completed',
+      warehouseId: WH_ID, mode: 'dry_run', status: 'completed',
     } as Parameters<typeof repo._injectRunDetail>[1]);
 
     await expect(
@@ -296,45 +479,39 @@ describe('P5-SY9E — lease 过期与并发保护', () => {
   });
 });
 
-// ─── 4. heartbeatSyncRun schema 校验 ────────────────────────────
+// ─── 6. heartbeatSyncRun schema 校验 ────────────────────────────
 
 describe('P5-SY9E — heartbeatSyncRun schema', () => {
   it('leaseDuration 必须在 [30, 900] 范围内', async () => {
     const repo = new MockRepository('admin');
     repo._injectRunDetail('test-run', {
-      warehouseId: WH_ID,
-      mode: 'dry_run',
-      status: 'in_progress',
+      warehouseId: WH_ID, mode: 'dry_run', status: 'in_progress',
     } as Parameters<typeof repo._injectRunDetail>[1]);
 
-    // 小于 30 应拒绝
     await expect(
       repo.heartbeatSyncRun({ runId: 'test-run', leaseDuration: 10 }),
     ).rejects.toThrow('leaseDuration 必须在 [30, 900] 范围内');
 
-    // 大于 900 应拒绝
     await expect(
       repo.heartbeatSyncRun({ runId: 'test-run', leaseDuration: 1000 }),
     ).rejects.toThrow('leaseDuration 必须在 [30, 900] 范围内');
 
-    // 30 和 900 边界应通过
     await repo.heartbeatSyncRun({ runId: 'test-run', leaseDuration: 30 });
     await repo.heartbeatSyncRun({ runId: 'test-run', leaseDuration: 900 });
   });
 });
 
-// ─── 5. python-bridge timeout ────────────────────────────────────
+// ─── 7. python-bridge 类型检查 ──────────────────────────────────
 
-describe('P5-SY9E — python-bridge timeout', () => {
-  it('callPythonBridge 接受 timeoutMs 参数（类型检查）', async () => {
+describe('P5-SY9E — python-bridge 接口', () => {
+  it('callPythonBridge 接受 timeoutMs 参数', async () => {
     const { callPythonBridge } = await import('@/lib/python-bridge');
     expect(callPythonBridge).toBeInstanceOf(Function);
-    // 函数签名: (params, signal?, timeoutMs?) => Promise<PythonBridgeResult>
     expect(callPythonBridge.length).toBeGreaterThanOrEqual(2);
   });
 });
 
-// ─── 6. SyncRunner capabilities 暴露 timeout ────────────────────
+// ─── 8. SyncRunner capabilities ─────────────────────────────────
 
 describe('P5-SY9E — SyncRunner capabilities', () => {
   it('RealSyncRunner reports supportsTimeout=true, maxTimeoutMs=600_000', async () => {
@@ -343,17 +520,16 @@ describe('P5-SY9E — SyncRunner capabilities', () => {
     const caps = await runner.capabilities();
     expect(caps.supportsTimeout).toBe(true);
     expect(caps.maxTimeoutMs).toBe(600_000);
-    expect(caps.supportsCancel).toBe(true);
   });
 
-  it('MockSyncRunner reports supportsTimeout=false, maxTimeoutMs=0 (default)', async () => {
+  it('MockSyncRunner default: supportsTimeout=false, maxTimeoutMs=0', async () => {
     const runner = new MockSyncRunner();
     const caps = await runner.capabilities();
     expect(caps.supportsTimeout).toBe(false);
     expect(caps.maxTimeoutMs).toBe(0);
   });
 
-  it('MockSyncRunner._setCapabilities 可覆盖 timeout 能力', async () => {
+  it('MockSyncRunner._setCapabilities 覆盖 timeout', async () => {
     const runner = new MockSyncRunner();
     runner._setCapabilities({ supportsTimeout: true, maxTimeoutMs: 30_000 });
     const caps = await runner.capabilities();

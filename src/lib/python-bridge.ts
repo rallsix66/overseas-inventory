@@ -55,12 +55,16 @@ export interface PythonBridgeResult {
 /** SIGKILL 前等待 SIGTERM 优雅退出的宽限期（毫秒） */
 const SIGKILL_GRACE_MS = 5_000;
 
+/** 终止原因类型 */
+type TerminateReason = 'timeout' | 'abort' | 'error';
+
 /**
  * 调用 Python web_bridge.py 执行完整同步流程。
  * 返回解析后的 JSON 结果。
  *
  * @param timeoutMs 可选超时（毫秒）。超时后 SIGTERM → 5s grace → SIGKILL。
  *                  超时时 reject，调用方应在 sync-service 层 release 为 failed。
+ * @param signal    可选 AbortSignal。abort 时与 timeout 走同一终止管线。
  */
 export async function callPythonBridge(
   params: PythonBridgeParams,
@@ -98,39 +102,67 @@ export async function callPythonBridge(
       stderr += chunk.toString('utf-8');
     });
 
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        proc.kill('SIGTERM');
-      }, { once: true });
-    }
-
-    // ── P5-SY9E: timeout — SIGTERM → grace → SIGKILL ─────
+    // ── P5-SY9E rework: 统一终止管线 ──────────────────────────
+    let settled = false;
+    let terminateReason: TerminateReason = 'error';
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let sigkillId: ReturnType<typeof setTimeout> | undefined;
+    let abortListener: (() => void) | undefined;
 
     const clearTimers = () => {
       if (timeoutId) { clearTimeout(timeoutId); timeoutId = undefined; }
       if (sigkillId) { clearTimeout(sigkillId); sigkillId = undefined; }
     };
 
-    if (timeoutMs && timeoutMs > 0) {
-      timeoutId = setTimeout(() => {
-        proc.kill('SIGTERM');
-        sigkillId = setTimeout(() => {
-          if (proc.exitCode === null && !proc.killed) {
-            proc.kill('SIGKILL');
-          }
-        }, SIGKILL_GRACE_MS);
-      }, timeoutMs);
+    /** 统一终止：SIGTERM → 5s grace → SIGKILL（若进程仍存活）。
+     *  timeout 和 AbortSignal 均走此管线。已 settled 时幂等。 */
+    function terminate(reason: TerminateReason): void {
+      if (settled) return;
+      settled = true;
+      terminateReason = reason;
+      proc.kill('SIGTERM');
+      sigkillId = setTimeout(() => {
+        if (proc.exitCode === null) {
+          proc.kill('SIGKILL');
+        }
+      }, SIGKILL_GRACE_MS);
     }
 
+    // timeout
+    if (timeoutMs && timeoutMs > 0) {
+      timeoutId = setTimeout(() => terminate('timeout'), timeoutMs);
+    }
+
+    // external AbortSignal
+    if (signal) {
+      if (signal.aborted) {
+        terminate('abort');
+      } else {
+        const onAbort = () => terminate('abort');
+        abortListener = onAbort;
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
+
+    // ── close / error 处理 ──────────────────────────────────
     proc.on('close', (code: number | null) => {
       clearTimers();
+      if (abortListener && signal) {
+        signal.removeEventListener('abort', abortListener);
+      }
 
-      // P5-SY9E: 检测 timeout/SIGTERM 终止
-      const wasKilled = code === null && proc.killed;
+      // 被终止 — 返回中文错误
+      if (settled) {
+        const reasonLabel = terminateReason === 'timeout'
+          ? `超时（timeout=${timeoutMs}ms）`
+          : terminateReason === 'abort'
+            ? '外部取消（AbortSignal）'
+            : `进程错误（exit=${code}）`;
+        reject(new Error(`Python bridge 被终止：${reasonLabel}`));
+        return;
+      }
 
-      // Try to parse the last non-empty line as JSON
+      // 正常退出 — 解析 JSON
       const lines = stdout
         .split('\n')
         .map((l) => l.trim())
@@ -141,18 +173,13 @@ export async function callPythonBridge(
         if (stderr) {
           console.error('[python-bridge] stderr:', stderr);
         }
-        if (wasKilled) {
-          reject(new Error(`Python bridge 超时被终止（timeout=${timeoutMs}ms, exit=${code}）`));
-        } else {
-          reject(new Error(`Python bridge 无输出（exit=${code}）`));
-        }
+        reject(new Error(`Python bridge 无输出（exit=${code}）`));
         return;
       }
 
       try {
         const result = JSON.parse(lastJsonLine) as PythonBridgeResult;
         if (stderr) {
-          // Log stderr for debugging (Python prints progress to stderr)
           console.log('[python-bridge]', stderr.split('\n').slice(-5).join('\n'));
         }
         resolve(result);
@@ -165,6 +192,9 @@ export async function callPythonBridge(
 
     proc.on('error', (err: Error) => {
       clearTimers();
+      if (abortListener && signal) {
+        signal.removeEventListener('abort', abortListener);
+      }
       reject(new Error(`Python bridge 启动失败: ${err.message}`));
     });
   });

@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9A~D 均为 DONE（Codex 独立复验通过）；P5-SY9E 实现完成 AWAITING_REVIEW（heartbeat 续租 + timeout/abort 子进程控制 + 15 项测试）；P5-SY9F~I PENDING。
+`IN_PROGRESS` — P5-SY9A~D 均为 DONE（Codex 独立复验通过）；P5-SY9E 返工完成 AWAITING_REVIEW（统一 terminate 管线 + 可注入 heartbeat + prepareRunnerContext 异常清理 + 20 项测试）；P5-SY9F~I PENDING。
 
 ## 背景
 
@@ -196,7 +196,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 
 ## 停止条件
 
-- 本轮已完成 P5-SY9E (heartbeat / timeout / abort / 子进程控制 / 失败落库)：python-bridge.ts timeout（SIGTERM → 5s grace → SIGKILL）+ sync-service.ts heartbeat 续租循环 + prepareRunnerContext timeout 信号 + real-sync-runner.ts 传递 timeout 参数 + MockSyncRunner delayMs/signal 检测 + 15 项测试。445/445 非并发同步测试，Python 85/85 通过，lint 0 errors/10 warnings，build 通过。
+- 本轮已完成 P5-SY9E 返工：(1) python-bridge.ts 统一 terminate(reason) 管线（timeout/abort → SIGTERM → 5s grace → SIGKILL，settled 标志幂等，close/error 清理，中文错误）；(2) SyncServiceDeps 可注入 heartbeatIntervalMs，测试 20ms 间隔真实触发 heartbeat ≥1 次；(3) prepareRunnerContext 异常清理 heartbeat + release failed，dry_run/real_write 双路径；(4) MockSyncRunner shouldThrowCapabilities + 新增 child_process spawn mock SIGTERM→SIGKILL 测试。20/20 P5-SY9E 测试，450/450 非并发同步测试，Python 85/85，lint/build 通过。
 - 不连接生产 Supabase。
 - 不执行真实写入。
 - 不提交 runtime/artifacts、__pycache__、bound-plan-*.json、.env.local、profile、cookie、抓取产物。
