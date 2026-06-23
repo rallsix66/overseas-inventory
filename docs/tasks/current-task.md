@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9C 已通过 Codex 独立复验（DONE）；P5-SY9D rework 完成（修复 plan artifact 完整性 + Real Write 绑定校验 + 35 项测试），等待 Codex 独立验收（AWAITING_REVIEW）；P5-SY9A/B 均为 DONE；P5-SY9E~I PENDING。
+`IN_PROGRESS` — P5-SY9C 已通过 Codex 独立复验（DONE）；P5-SY9D rework 第二次返工完成（新增 getDryRunBindingMetadata() + 强制 hash 校验 + 14 项新测试 + 45/45 P5-SY9D 测试），等待 Codex 独立验收（AWAITING_REVIEW）；P5-SY9A/B 均为 DONE；P5-SY9E~I PENDING。
 
 ## 背景
 
@@ -196,11 +196,13 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 
 ## 停止条件
 
-- 本轮已完成 P5-SY9D rework：修复 Dry Run plan artifact 完整性（完整 plan 非 summary）+ Real Write 绑定校验（禁止重新抓取 + 应用层过期/hash/country 校验）+ 35 项测试。
+- 本轮已完成 P5-SY9D rework 第二次返工：新增 SyncRepository.getDryRunBindingMetadata()（server-only，serviceClient 直查）+ confirmRealWrite 强制 hash 校验（hash 缺失则阻断，不再条件跳过）+ 新增 14 项测试 + 45/45 P5-SY9D 测试。
 - 不连接生产 Supabase。
 - 不执行真实写入。
 - 不提交 runtime/artifacts、__pycache__、bound-plan-*.json、.env.local、profile、cookie、抓取产物。
 - 不开始 P5-SY9E。
+- 不修改已执行 migration。
+- 保留 DB claim_sync_run 二次防御。
 - 完成后 P5-SY9D 保持 AWAITING_REVIEW，等待 Codex 独立复验。
 
 ## 依赖

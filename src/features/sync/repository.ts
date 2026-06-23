@@ -3,6 +3,7 @@
 import type {
   SyncRunsResponse,
   SyncRunDetailResponse,
+  DryRunBindingMetadata,
 } from './types';
 
 // ─── Repository 接口 ──────────────────────────────────────────────
@@ -57,6 +58,11 @@ export interface SyncRepository {
 
   /** 返回所有 real_write 记录的 dry_run_run_id（非 NULL）— 被引用的 Dry Run */
   getReferencedDryRunIds(): Promise<Set<string>>;
+
+  /** P5-SY9D rework: 获取 Dry Run 绑定元数据（含 input_artifact_hash / plan_artifact_hash）。
+   *  使用 serviceClient 直接查询 public.sync_run，绕过 get_sync_run_detail RPC 的脱敏设计。
+   *  仅供 Server Action confirmRealWrite 调用，不返回客户端。 */
+  getDryRunBindingMetadata(runId: string): Promise<DryRunBindingMetadata | null>;
 }
 
 // ─── Mock Repository ──────────────────────────────────────────────
@@ -421,6 +427,21 @@ export class MockRepository implements SyncRepository {
       }
     }
     return ids;
+  }
+
+  async getDryRunBindingMetadata(runId: string): Promise<DryRunBindingMetadata | null> {
+    const run = MockRepository.runs.get(runId);
+    if (!run) return null;
+    return {
+      id: run.id,
+      warehouse_id: run.warehouseId,
+      mode: run.mode,
+      status: run.status,
+      finished_at: run.finishedAt?.toISOString() ?? null,
+      plan_drift_check: run.planDriftCheck,
+      input_artifact_hash: run.inputArtifactHash,
+      plan_artifact_hash: run.planArtifactHash,
+    };
   }
 
   async cleanupExpiredSyncRuns(): Promise<number> {

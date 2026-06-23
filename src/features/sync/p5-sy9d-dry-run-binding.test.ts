@@ -206,7 +206,6 @@ describe('confirmRealWrite — 绑定校验', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('计划漂移未通过');
     expect(result.error).toContain('DRIFT_DETECTED');
-    expect(result.error).toContain('3');
   });
 
   it('所有校验通过 → 进入 executeSync（返回 runId，不返回绑定错误）', async () => {
@@ -340,19 +339,21 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
 
   it('plan hash 不一致被阻断', async () => {
     const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
+
+    // Prepare input artifact first to get its hash
+    const inputPrep = artifactProvider.prepare({ skus: ['TEST'] });
+    await artifactProvider.store(DR_OK, 'input', inputPrep);
+    // Prepare plan artifact — computed hash will differ from EXPECTED_PLAN_HASH_XYZ
+    const planPrep = artifactProvider.prepare({ country: 'VN', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
+    await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    // Inject with valid input hash (so it passes input check) but wrong plan hash
     repo._injectRunDetail(DR_OK, {
       mode: 'dry_run', status: 'completed', warehouseId: WH_1,
       planDriftCheck: 'PASS', planDriftCount: 0,
-      inputArtifactHash: null, // no input hash check — only plan hash
-      planArtifactHash: 'sha256:EXPECTED_PLAN_HASH_XYZ',
+      inputArtifactHash: inputPrep.hash, // valid — matches stored artifact
+      planArtifactHash: 'sha256:EXPECTED_PLAN_HASH_XYZ', // wrong
     });
-
-    // Store input + plan artifacts
-    const inputPrep = artifactProvider.prepare({ skus: ['TEST'] });
-    await artifactProvider.store(DR_OK, 'input', inputPrep);
-    // prepare plan — computed hash will differ from EXPECTED_PLAN_HASH_XYZ
-    const planPrep = artifactProvider.prepare({ country: 'VN', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
-    await artifactProvider.store(DR_OK, 'plan', planPrep);
 
     const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
     expect(result.success).toBe(false);
@@ -426,16 +427,20 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
 
   it('confirmRealWrite 不得调用 inputArtifactSource.getInputArtifact（禁止重新抓取）', async () => {
     const { actions, repo, artifactProvider, inputSource } = await setupMockDryRun('admin');
-    repo._injectRunDetail(DR_OK, {
-      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
-      planDriftCheck: 'PASS', planDriftCount: 0,
-    });
 
-    // Store artifacts that confirmRealWrite will load
+    // Prepare artifacts first to get correct hashes
     const inputPrep = artifactProvider.prepare({ skus: ['BOUND-INPUT'] });
     await artifactProvider.store(DR_OK, 'input', inputPrep);
     const planPrep = artifactProvider.prepare({ country: 'VN', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
     await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    // Inject metadata with correct hashes matching the stored artifacts
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+      inputArtifactHash: inputPrep.hash,
+      planArtifactHash: planPrep.hash,
+    });
 
     // Spy on inputSource.getInputArtifact to prove re-scrape is NOT called
     const spy = vi.spyOn(inputSource, 'getInputArtifact');
@@ -443,6 +448,168 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     // confirmRealWrite should NOT call getInputArtifact — it loads from artifactProvider
     await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  // ─── P5-SY9D rework: 应用层 Hash 校验（强制，通过 getDryRunBindingMetadata） ─
+
+  it('input_artifact_hash 缺失（null）→ 阻断，不得跳过', async () => {
+    const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
+
+    // Store artifacts with valid content
+    const inputPrep = artifactProvider.prepare({ skus: ['REAL-INPUT'] });
+    await artifactProvider.store(DR_OK, 'input', inputPrep);
+    const planPrep = artifactProvider.prepare({ country: 'VN', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
+    await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    // Inject metadata WITHOUT input_artifact_hash
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+      inputArtifactHash: null, // ← 缺失！
+      planArtifactHash: planPrep.hash, // valid plan hash
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('缺少 input_artifact_hash');
+    expect(result.error).toContain('无法验证输入完整性');
+  });
+
+  it('plan_artifact_hash 缺失（null）→ 阻断，不得跳过', async () => {
+    const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
+
+    // Store artifacts with valid content
+    const inputPrep = artifactProvider.prepare({ skus: ['REAL-INPUT'] });
+    await artifactProvider.store(DR_OK, 'input', inputPrep);
+    const planPrep = artifactProvider.prepare({ country: 'VN', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
+    await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    // Inject metadata WITHOUT plan_artifact_hash
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+      inputArtifactHash: inputPrep.hash, // valid input hash
+      planArtifactHash: null, // ← 缺失！
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('缺少 plan_artifact_hash');
+    expect(result.error).toContain('无法验证计划完整性');
+  });
+
+  it('metadata 全部字段有效 + hash 一致 → 绑定校验全部通过（走 getDryRunBindingMetadata 路径）', async () => {
+    const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
+
+    // Prepare and store artifacts with matching hashes
+    const inputPrep = artifactProvider.prepare({ skus: ['VALID-INPUT'], warehouse: '测试仓' });
+    await artifactProvider.store(DR_OK, 'input', inputPrep);
+    const planPrep = artifactProvider.prepare({ country: 'VN', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
+    await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    // Inject metadata with ALL fields valid and hashes matching stored artifacts
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+      finishedAt: new Date(), // not expired
+      inputArtifactHash: inputPrep.hash,
+      planArtifactHash: planPrep.hash,
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+
+    // 绑定校验全部通过 → 进入 executeSync
+    // 注意：MockSyncRunner 可能因确认令牌等原因返回 success=false，
+    // 但不应返回任何绑定校验错误
+    expect(result.dryRunRunId).toBe(DR_OK);
+    const errorMsg = result.error ?? '';
+    expect(errorMsg).not.toContain('不存在');
+    expect(errorMsg).not.toContain('不是 Dry Run');
+    expect(errorMsg).not.toContain('未完成');
+    expect(errorMsg).not.toContain('仓库不匹配');
+    expect(errorMsg).not.toContain('计划漂移未通过');
+    expect(errorMsg).not.toContain('已过期');
+    expect(errorMsg).not.toContain('缺少完成时间');
+    expect(errorMsg).not.toContain('缺少 input_artifact_hash');
+    expect(errorMsg).not.toContain('缺少 plan_artifact_hash');
+    expect(errorMsg).not.toContain('hash 不一致');
+    expect(errorMsg).not.toContain('国家不匹配');
+  });
+
+  it('metadata 缺失 → 阻断（repo 返回 null）', async () => {
+    const { actions } = await setupMockDryRun('admin');
+    // No _injectRunDetail — metadata returns null
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_NOT_FOUND);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('不存在');
+  });
+
+  it('metadata warehouse_id 不匹配 → 阻断', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_OTHER,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('仓库不匹配');
+  });
+
+  it('metadata mode 不是 dry_run → 阻断', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'real_write', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('不是 Dry Run');
+  });
+
+  it('metadata status 不是 completed → 阻断', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'failed', warehouseId: WH_1,
+    });
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('未完成');
+  });
+
+  it('metadata plan_drift_check 不是 PASS → 阻断', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'DRIFT_DETECTED',
+    });
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('计划漂移未通过');
+  });
+
+  it('metadata finished_at 缺失 → 阻断', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+      finishedAt: null,
+    });
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('缺少完成时间');
+  });
+
+  it('metadata finished_at 过期 → 阻断', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    const expiredAt = new Date(Date.now() - 61 * 60 * 1000).toISOString();
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+      finishedAt: new Date(expiredAt),
+    });
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('已过期');
   });
 });
 

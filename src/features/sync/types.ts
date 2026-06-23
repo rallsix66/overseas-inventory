@@ -260,6 +260,22 @@ export interface TriggerDryRunResult {
   };
 }
 
+// ─── P5-SY9D rework: Dry Run 绑定元数据（server-only, serviceClient 直查） ─
+
+/** Dry Run 绑定元数据 — 由 SyncRepository.getDryRunBindingMetadata() 返回。
+ *  使用 serviceClient 直接查询 public.sync_run，绕过 get_sync_run_detail RPC 的脱敏设计。
+ *  仅供 Server Action 后端调用，不返回客户端。 */
+export interface DryRunBindingMetadata {
+  id: string;
+  warehouse_id: string;
+  mode: 'dry_run' | 'real_write';
+  status: 'in_progress' | 'completed' | 'failed';
+  finished_at: string | null;
+  plan_drift_check: 'PASS' | 'DRIFT_DETECTED' | null;
+  input_artifact_hash: string | null;
+  plan_artifact_hash: string | null;
+}
+
 /** 确认 Real Write 返回（绑定 Dry Run） */
 export interface ConfirmRealWriteResult {
   warehouseId: string;

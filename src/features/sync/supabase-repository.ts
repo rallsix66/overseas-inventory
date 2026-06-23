@@ -7,7 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import type { SyncRepository } from './repository';
-import type { SyncRunsResponse, SyncRunDetailResponse } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, DryRunBindingMetadata } from './types';
 
 export class SupabaseSyncRepository implements SyncRepository {
   constructor(
@@ -156,5 +156,27 @@ export class SupabaseSyncRepository implements SyncRepository {
         .map((r) => r.dry_run_run_id as string)
         .filter(Boolean),
     );
+  }
+
+  /** P5-SY9D rework: 使用 serviceClient 直接查询 public.sync_run，
+   *  绕过 get_sync_run_detail RPC 的脱敏设计，返回 input_artifact_hash
+   *  和 plan_artifact_hash 供 confirmRealWrite 绑定校验。
+   *  仅供 Server Action 后端调用，不返回客户端。 */
+  async getDryRunBindingMetadata(runId: string): Promise<DryRunBindingMetadata | null> {
+    const { data, error } = await this.serviceClient
+      .from('sync_run')
+      .select('id, warehouse_id, mode, status, finished_at, plan_drift_check, input_artifact_hash, plan_artifact_hash')
+      .eq('id', runId)
+      .maybeSingle();
+
+    if (error) {
+      // PGRST116 = "The result contains 0 rows" — not a real error
+      if ((error as { code?: string }).code === 'PGRST116') return null;
+      throw new Error(`查询 Dry Run 绑定元数据失败: ${error.message}`);
+    }
+
+    if (!data) return null;
+
+    return data as DryRunBindingMetadata;
   }
 }

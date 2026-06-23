@@ -9,7 +9,7 @@ import 'server-only';
 import type { SyncRepository } from './repository';
 import type { SyncService } from './sync-service';
 import type { ArtifactProvider } from './artifact-provider';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, SyncRunDetailAdmin, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
+import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
 import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema } from './schema';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 
@@ -295,9 +295,12 @@ export function createSyncActions(deps: SyncActionsDeps) {
 
       confirmRealWriteSchema.parse({ warehouseId, dryRunRunId });
 
-      // ── 1. 加载 Dry Run 详情 ──────────────────────────────
-      const dryRunDetail = await deps.repository.getSyncRunDetail(dryRunRunId);
-      if (!dryRunDetail) {
+      // ── 1. 加载 Dry Run 绑定元数据（含 hash 字段） ─────────
+      //     getDryRunBindingMetadata 使用 serviceClient 直查 public.sync_run，
+      //     绕过 get_sync_run_detail RPC 的脱敏设计，返回 input_artifact_hash
+      //     和 plan_artifact_hash。仅供 Server Action 后端调用。
+      const metadata = await deps.repository.getDryRunBindingMetadata(dryRunRunId);
+      if (!metadata) {
         return {
           warehouseId,
           warehouseName,
@@ -309,50 +312,47 @@ export function createSyncActions(deps: SyncActionsDeps) {
         };
       }
 
-      // 验证 Dry Run 模式
-      if (dryRunDetail.mode !== 'dry_run') {
+      // 验证 mode — 必须为 dry_run
+      if (metadata.mode !== 'dry_run') {
         return {
           warehouseId,
           warehouseName,
           success: false,
           runId: '',
           status: 'failed',
-          error: `绑定的运行不是 Dry Run（模式: ${dryRunDetail.mode}）`,
+          error: `绑定的运行不是 Dry Run（模式: ${metadata.mode}）`,
           dryRunRunId,
         };
       }
 
-      // 验证 Dry Run 状态
-      if (dryRunDetail.status !== 'completed') {
+      // 验证 status — 必须为 completed
+      if (metadata.status !== 'completed') {
         return {
           warehouseId,
           warehouseName,
           success: false,
           runId: '',
           status: 'failed',
-          error: `绑定的 Dry Run 未完成（状态: ${dryRunDetail.status}）`,
+          error: `绑定的 Dry Run 未完成（状态: ${metadata.status}）`,
           dryRunRunId,
         };
       }
 
-      // 验证仓库 ID 一致
-      if (dryRunDetail.warehouse_id !== warehouseId) {
+      // 验证 warehouse_id 一致
+      if (metadata.warehouse_id !== warehouseId) {
         return {
           warehouseId,
           warehouseName,
           success: false,
           runId: '',
           status: 'failed',
-          error: `绑定的 Dry Run 仓库不匹配（预期: ${warehouseId}, 实际: ${dryRunDetail.warehouse_id}）`,
+          error: `绑定的 Dry Run 仓库不匹配（预期: ${warehouseId}, 实际: ${metadata.warehouse_id}）`,
           dryRunRunId,
         };
       }
 
       // ── 2. 验证 Dry Run 未过期 ────────────────────────────
-      const finishedAt = dryRunDetail.finished_at
-        ? new Date(dryRunDetail.finished_at)
-        : null;
-      if (!finishedAt) {
+      if (!metadata.finished_at) {
         return {
           warehouseId,
           warehouseName,
@@ -363,6 +363,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
           dryRunRunId,
         };
       }
+      const finishedAt = new Date(metadata.finished_at);
       const ageMs = Date.now() - finishedAt.getTime();
       if (ageMs > DRY_RUN_EXPIRY_MS) {
         const ageMinutes = Math.round(ageMs / 60000);
@@ -377,15 +378,15 @@ export function createSyncActions(deps: SyncActionsDeps) {
         };
       }
 
-      // 验证计划漂移检查
-      if (dryRunDetail.plan_drift_check !== 'PASS') {
+      // 验证 plan_drift_check — 必须为 PASS
+      if (metadata.plan_drift_check !== 'PASS') {
         return {
           warehouseId,
           warehouseName,
           success: false,
           runId: '',
           status: 'failed',
-          error: `绑定的 Dry Run 计划漂移未通过（plan_drift_check: ${dryRunDetail.plan_drift_check}, count: ${dryRunDetail.plan_drift_count}）`,
+          error: `绑定的 Dry Run 计划漂移未通过（plan_drift_check: ${metadata.plan_drift_check}）`,
           dryRunRunId,
         };
       }
@@ -440,32 +441,54 @@ export function createSyncActions(deps: SyncActionsDeps) {
         };
       }
 
-      // ── 5. 应用层 Hash 校验 ──────────────────────────────
-      //     对比 DB sync_run 记录的 hash 与 ArtifactProvider 当前存储 hash，
-      //     在 claim 前阻断 hash 不一致（存储层被篡改或 artifact 损坏）。
+      // ── 5. 应用层 Hash 校验（强制） ───────────────────────
+      //     对比 metadata（serviceClient 直查 sync_run）的 hash 与
+      //     ArtifactProvider 当前存储 hash。
+      //     hash 字段缺失则阻断，不得"字段存在才校验"。
       //     DB claim_sync_run RPC 在事务内做二次防御性验证。
-      //     confirmRealWrite 仅 Admin 可调用，dryRunDetail 为 admin 视图。
-      const adminDetail = dryRunDetail as SyncRunDetailAdmin;
-      if (adminDetail.input_artifact_hash && adminDetail.input_artifact_hash !== dryRunInput.hash) {
+
+      if (!metadata.input_artifact_hash) {
         return {
           warehouseId,
           warehouseName,
           success: false,
           runId: '',
           status: 'failed',
-          error: `input hash 不一致（DB: ${adminDetail.input_artifact_hash}, artifact: ${dryRunInput.hash}）`,
+          error: `绑定的 Dry Run 缺少 input_artifact_hash（DB sync_run 记录），无法验证输入完整性`,
+          dryRunRunId,
+        };
+      }
+      if (metadata.input_artifact_hash !== dryRunInput.hash) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `input hash 不一致（DB: ${metadata.input_artifact_hash}, artifact: ${dryRunInput.hash}）`,
           dryRunRunId,
         };
       }
 
-      if (adminDetail.plan_artifact_hash && adminDetail.plan_artifact_hash !== dryRunPlan.hash) {
+      if (!metadata.plan_artifact_hash) {
         return {
           warehouseId,
           warehouseName,
           success: false,
           runId: '',
           status: 'failed',
-          error: `plan hash 不一致（DB: ${adminDetail.plan_artifact_hash}, artifact: ${dryRunPlan.hash}）`,
+          error: `绑定的 Dry Run 缺少 plan_artifact_hash（DB sync_run 记录），无法验证计划完整性`,
+          dryRunRunId,
+        };
+      }
+      if (metadata.plan_artifact_hash !== dryRunPlan.hash) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `plan hash 不一致（DB: ${metadata.plan_artifact_hash}, artifact: ${dryRunPlan.hash}）`,
           dryRunRunId,
         };
       }
