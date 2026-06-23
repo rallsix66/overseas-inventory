@@ -7,37 +7,19 @@
 // 真实 Provider / Runner / Repository 就绪后替换 mock 依赖即可。
 
 import { createSyncActions } from './actions';
-import type { InputArtifactSource } from './actions';
 import { createSyncService } from './sync-service';
 import { SupabaseSyncRepository } from './supabase-repository';
-import { MockArtifactProvider } from './mock-artifact-provider';
+import { FileSystemArtifactProvider } from './file-system-artifact-provider';
 import { MockSyncRunner } from './mock-sync-runner';
 import { RealSyncRunner, type WarehouseBridgeInfo } from './real-sync-runner';
+import { WebInputArtifactSource, isWebsyncRealWriteEnabled } from './web-input-artifact-source';
 import { revalidatePath } from 'next/cache';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse } from './types';
-
-// ─── Mock InputArtifactSource ─────────────────────────────────────
-
-const mockInputArtifactSource: InputArtifactSource = {
-  async getInputArtifact(
-    warehouseId: string,
-    _mode: 'dry_run' | 'real_write',
-  ): Promise<JsonValue> {
-    void warehouseId; // consumed by real InputArtifactSource in production
-    void _mode;
-    return {
-      warehouse: '菲律宾-新创启辰自建仓',
-      country: 'PH',
-      timestamp: new Date().toISOString(),
-      rows: [],
-    };
-  },
-};
+import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -50,7 +32,13 @@ async function createSupabaseRepo() {
 
 async function wireActions() {
   const repository = await createSupabaseRepo();
-  const artifactProvider = new MockArtifactProvider();
+  // P5-SY9C: 生产路径使用 FileSystemArtifactProvider 替代 MockArtifactProvider。
+  // wireActions() 供 getSyncRuns / getSyncRunDetail / triggerSync 使用。
+  // triggerSync 是旧版 FormData 触发路径，仍使用 MockSyncRunner；
+  // 当前同步页面通过 syncWarehouse/syncAllWarehouses → wireRealActions() 执行真实同步。
+  // MockSyncRunner 的 __mock__ 标记会在生产环境被 createSyncService guard 拒绝，
+  // 从而正确阻止旧版 triggerSync 在生产环境执行。
+  const artifactProvider = new FileSystemArtifactProvider();
   const runner = new MockSyncRunner();
   const syncService = createSyncService({
     repository,
@@ -61,15 +49,26 @@ async function wireActions() {
   return createSyncActions({
     repository,
     syncService,
-    inputArtifactSource: mockInputArtifactSource,
+    // triggerSync 是旧版路径，使用空 inputArtifactSource（不执行真实抓取）
+    inputArtifactSource: {
+      async getInputArtifact() {
+        throw new Error('triggerSync 旧版路径已禁用，请使用 syncWarehouse/syncAllWarehouses');
+      },
+    },
   });
 }
 
-/** 真实同步管线：RealSyncRunner 调用 Python 桥接执行 BigSeller 抓取 + Supabase RPC */
+/** 真实同步管线：RealSyncRunner + FileSystemArtifactProvider + WebInputArtifactSource
+ *  调用 Python 桥接执行 BigSeller 抓取 + Supabase RPC 写入。
+ *
+ *  P5-SY9C: 生产路径已移除 MockArtifactProvider 和 mockInputArtifactSource。
+ *  通过 WEBSYNC_REAL_WRITE_ENABLED feature gate 控制真实写入入口。
+ *  P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。 */
 async function wireRealActions(warehouses: WarehouseBridgeInfo[]) {
   const repository = await createSupabaseRepo();
-  const artifactProvider = new MockArtifactProvider();
+  const artifactProvider = new FileSystemArtifactProvider();
   const runner = new RealSyncRunner(warehouses);
+  const inputArtifactSource = new WebInputArtifactSource(warehouses);
   const syncService = createSyncService({
     repository,
     artifactProvider,
@@ -79,7 +78,7 @@ async function wireRealActions(warehouses: WarehouseBridgeInfo[]) {
   return createSyncActions({
     repository,
     syncService,
-    inputArtifactSource: mockInputArtifactSource,
+    inputArtifactSource,
   });
 }
 
@@ -190,6 +189,34 @@ export async function syncWarehouse(warehouseId: string): Promise<{
   dryRunRunId?: string;
 }> {
   await requireActiveAdmin();
+
+  // ── Session health guard (P5-SY9B) ──────────────────────────
+  const health = await verifyBigSellerSession();
+  if (health.status !== 'healthy') {
+    return {
+      warehouseId,
+      warehouseName: '会话异常',
+      success: false,
+      runId: '',
+      status: 'failed',
+      error: `BigSeller 登录会话不可用：${health.message}`,
+    };
+  }
+
+  // ── Feature gate (P5-SY9C) ──────────────────────────────────
+  // Web 同步真实写入入口保持 server-side disabled，直到 P5-SY9E
+  // heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。
+  if (!isWebsyncRealWriteEnabled()) {
+    return {
+      warehouseId,
+      warehouseName: '功能未开放',
+      success: false,
+      runId: '',
+      status: 'failed',
+      error: 'Web 同步真实写入功能尚未启用。请等待 P5-SY9E heartbeat/timeout 完成并通过 P5-SY9I 独立验收。',
+    };
+  }
+
   const warehouses = await getCachedOverseasWarehouses();
   const wh = warehouses.find((w) => w.id === warehouseId);
   if (!wh) {
@@ -216,6 +243,38 @@ export async function syncAllWarehouses(): Promise<{
   allSuccess: boolean;
 }> {
   await requireActiveAdmin();
+
+  // ── Session health guard (P5-SY9B) ──────────────────────────
+  const health = await verifyBigSellerSession();
+  if (health.status !== 'healthy') {
+    return {
+      results: [{
+        warehouseId: 'all',
+        warehouseName: '全部海外仓',
+        success: false,
+        runId: '',
+        status: 'failed',
+        error: `BigSeller 登录会话不可用：${health.message}`,
+      }],
+      allSuccess: false,
+    };
+  }
+
+  // ── Feature gate (P5-SY9C) ──────────────────────────────────
+  if (!isWebsyncRealWriteEnabled()) {
+    return {
+      results: [{
+        warehouseId: 'all',
+        warehouseName: '全部海外仓',
+        success: false,
+        runId: '',
+        status: 'failed',
+        error: 'Web 同步真实写入功能尚未启用。请等待 P5-SY9E heartbeat/timeout 完成并通过 P5-SY9I 独立验收。',
+      }],
+      allSuccess: false,
+    };
+  }
+
   const warehouses = await getCachedOverseasWarehouses();
   const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
   const results: Array<{
@@ -312,4 +371,94 @@ export async function establishBigSellerSession(): Promise<{
       '登录完成后浏览器会自动关闭，session cookie 将被持久化，之后网页端同步即可正常使用。' +
       `（日志: ${logFile}）`,
   };
+}
+
+// ─── BigSeller 会话健康检查 (P5-SY9B) ──────────────────────────
+
+const HEALTH_CHECK_TIMEOUT_MS = 60_000;
+
+/** 验证 BigSeller 登录会话是否可用于 Web headless 同步。
+ *  使用与 Web 同步相同的 profile 和 headless 模式，只读检查库存页是否可访问。
+ *  仅 Admin 可调用；不执行任何写入、抓取或同步操作。 */
+export async function verifyBigSellerSession(): Promise<SessionHealthResult> {
+  await requireActiveAdmin();
+
+  const projectRoot = path.resolve(process.cwd());
+
+  return new Promise<SessionHealthResult>((resolve) => {
+    const proc = spawn('python', [
+      '-m', 'tools.bigseller-scraper.sync.health_check',
+    ], {
+      cwd: projectRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    const timeoutId = setTimeout(() => {
+      proc.kill('SIGTERM');
+    }, HEALTH_CHECK_TIMEOUT_MS);
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf-8');
+    });
+
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf-8');
+    });
+
+    proc.on('close', (code: number | null) => {
+      clearTimeout(timeoutId);
+
+      const lines = stdout
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      const lastJsonLine = lines.at(-1);
+      if (!lastJsonLine) {
+        if (stderr) {
+          console.error('[verifyBigSellerSession] stderr:', stderr);
+        }
+        resolve({
+          status: 'unknown_error',
+          message: '会话健康检查无输出，Python 子进程可能启动失败。请检查服务器环境和 Playwright/Chrome 安装。',
+          checkedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      try {
+        const raw = JSON.parse(lastJsonLine) as Record<string, unknown>;
+        // Python 输出 checked_at (snake_case)，统一转换为 TypeScript 契约的 checkedAt (camelCase)
+        const result: SessionHealthResult = {
+          status: (raw.status as SessionHealthResult['status']) ?? 'unknown_error',
+          message: (raw.message as string) ?? '',
+          checkedAt: (raw.checked_at as string) ?? (raw.checkedAt as string) ?? new Date().toISOString(),
+          details: (raw.details as Record<string, unknown>) ?? {},
+        };
+        if (stderr) {
+          console.log('[verifyBigSellerSession]', stderr.split('\n').slice(-3).join('\n'));
+        }
+        resolve(result);
+      } catch {
+        resolve({
+          status: 'unknown_error',
+          message: `会话健康检查输出解析失败（exit=${code}）。请检查 Python 环境和依赖。`,
+          checkedAt: new Date().toISOString(),
+        });
+      }
+    });
+
+    proc.on('error', (err: Error) => {
+      clearTimeout(timeoutId);
+      resolve({
+        status: 'unknown_error',
+        message: `无法启动会话健康检查进程: ${err.message}`,
+        checkedAt: new Date().toISOString(),
+      });
+    });
+  });
 }

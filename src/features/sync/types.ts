@@ -192,6 +192,28 @@ export interface SyncRunOperatorRow {
 /** get_sync_runs 返回类型 — JSON 数组 */
 export type SyncRunsResponse = SyncRunAdminRow[] | SyncRunOperatorRow[];
 
+// ─── Session Health Check (P5-SY9B) ─────────────────────────────
+
+/** BigSeller 登录会话健康状态 */
+export type SessionHealthStatus =
+  | 'healthy'           // 已登录可用
+  | 'need_login'        // 需要登录
+  | 'need_verification' // 需要验证码
+  | 'profile_unavailable' // profile 不可用
+  | 'page_structure_changed' // 页面结构异常
+  | 'table_not_loaded'  // 表格未加载
+  | 'unknown_error';    // 未知错误
+
+/** 会话健康检查结果 */
+export interface SessionHealthResult {
+  status: SessionHealthStatus;
+  message: string;      // 中文可读描述
+  checkedAt: string;    // ISO 时间戳
+  details?: Record<string, unknown>;
+}
+
+// ─── Detail types ──────────────────────────────────────────────────
+
 /** get_sync_run_detail Admin 视图 — 比列表多 plan_drift_differences */
 export interface SyncRunDetailAdmin extends SyncRunAdminRow {
   plan_drift_differences: string[] | null;

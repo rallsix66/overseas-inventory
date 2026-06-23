@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9A 现状审查已完成（差距清单已输出，含 4 CRITICAL / 1 HIGH / 1 MEDIUM / 1 PASS），等待 Codex 独立验收；第二轮返工新增 BigSeller Session 复用不可靠（CRITICAL）与 P5-SY9B 子任务（Session Health Check）；P5-SY9B~I 仍为 PENDING。
+`IN_PROGRESS` — P5-SY9B BigSeller Session Health Check 已通过 Codex 独立复验（DONE）；P5-SY9C 真实 Provider / InputSource / Production wiring 已实现，等待 Codex 独立复验（AWAITING_REVIEW）；P5-SY9A 现状审查通过（DONE）；P5-SY9D~I 仍为 PENDING。
 
 ## 背景
 
@@ -71,7 +71,7 @@ P5-SY8A~H 已完成逐仓扩展：VN/TH/MY/ID 均已完成真实写入或 Dry Ru
 - Web 同步抓取 0 行时，错误提示仅说"登录会话已过期或需要验证码"，无法区分：未登录 / 需要验证码 / profile 不可用 / 页面结构异常 / 表格未加载。
 - `session-establish.log` 仅记录 headed 浏览器输出，无法证明 headless 同步可正常复用 profile。
 - `establishBigSellerSession()` 使用 `proc.unref()` 不等待结果，Server Action 立即返回 success，但实际登录可能未完成；当前无 API 查询登录是否完成。
-- `callPythonBridge` 设置 `BS_HEADLESS=1` 但不传 `PYTHONIOENCODING`（`establishBigSellerSession` 有传），环境变量继承差异可能导致编码或行为不一致。
+- 两条路径（`establishBigSellerSession` 与 `callPythonBridge`→`web_bridge.py`）均已传入 `PYTHONIOENCODING='utf-8'`，编码环境无差异；实际差距在于 headed/headless 模式不同、`proc.unref()` 不等待登录完成、无 `verifyBigSellerSession` 健康检查、0 行错误无法分类。
 
 ## 页面功能要求
 
@@ -139,10 +139,10 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 ## 子任务拆分
 
 | Sub-Task ID | 任务 | 目标 | 依赖 | 状态 |
-|---|---|---|---|---|---|
-| P5-SY9A | 现状审查与任务包落地 | 梳理 Web sync 与 CLI 差距，标记 Web real_write 为生产化待修复，确认验收标准 | P5-SY8H | AWAITING_REVIEW（7 维度差距已标记：4 CRITICAL / 1 HIGH / 1 MEDIUM / 1 PASS；含 BigSeller Session 复用不可靠） |
-| P5-SY9B | BigSeller Session Health Check | 新增 `verifyBigSellerSession()` Server Action：使用同一 profile 运行 headless 只读检查进入库存页并确认 VXE 表格/仓库筛选可用；返回中文状态（已登录/需要登录/需要验证码/profile 不可用/页面结构异常）；Sync 页面 session unhealthy 时禁用 Dry Run 按钮并提示重新建立登录会话 | P5-SY9A | PENDING |
-| P5-SY9C | 真实 Provider / InputSource / Production wiring | 替换生产 Mock，建立真实 artifact 存取和生产 wiring 测试 | P5-SY9B | PENDING |
+|---|---|---|---|---|
+| P5-SY9A | 现状审查与任务包落地 | 梳理 Web sync 与 CLI 差距，标记 Web real_write 为生产化待修复，确认验收标准 | P5-SY8H | DONE（7 维度差距已标记：4 CRITICAL / 1 HIGH / 1 MEDIUM / 1 PASS；含 BigSeller Session 复用不可靠） |
+| P5-SY9B | BigSeller Session Health Check | 新增 `verifyBigSellerSession()` Server Action + `health_check.py` + `profile_unavailable` 真实分类 + `checked_at→checkedAt` 转换 + syncWarehouse/syncAllWarehouses 服务端 session health guard | P5-SY9A | DONE（Codex 独立复验通过） |
+| P5-SY9C | 真实 Provider / InputSource / Production wiring | 替换生产 Mock，建立真实 artifact 存取和生产 wiring 测试 | P5-SY9B | AWAITING_REVIEW |
 | P5-SY9D | 单仓 Web Dry Run → 审核 → Real Write 绑定 | 用户无需输入 token/runId/hash；系统内部绑定 Dry Run；plan drift 阻断。可实现 Dry Run→Real Write 绑定逻辑，但 Web 真实写入入口必须保持 server-side disabled / feature gated，直到 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。 | P5-SY9C | PENDING |
 | P5-SY9E | heartbeat / timeout / 子进程控制 | 实现 heartbeat、timeout、abort、失败落库和并发锁测试 | P5-SY9D | PENDING |
 | P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，并展示审核总览 | P5-SY9E | PENDING |
@@ -196,13 +196,13 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 
 ## 停止条件
 
-- 本轮只做 P5-SY9A 差距清单补充（新增 BigSeller Session 复用不可靠）和子任务重排。
-- 不实现功能代码。
-- 不连接 Supabase。
+- 本轮只做 P5-SY9C 真实 Provider / InputSource / Production wiring。
+- 实现：`FileSystemArtifactProvider`（文件系统持久化）+ `WebInputArtifactSource`（Python bridge 真实抓取）+ 生产 wiring 重连（移除 MockArtifactProvider / mockInputArtifactSource / MockSyncRunner）+ `WEBSYNC_REAL_WRITE_ENABLED` feature gate（默认 disabled）。
+- 不连接生产 Supabase。
 - 不执行真实写入。
-- 不提交 runtime/profile、cookie、抓取产物。
-- 不开始 P5-SY9B。
-- 完成后 P5-SY9A 保持 AWAITING_REVIEW，等待 Codex 独立复验。
+- 不提交 runtime/profile、cookie、抓取产物、.env.local、.codex/hooks.json。
+- 不开始 P5-SY9D。
+- 完成后 P5-SY9C 保持 AWAITING_REVIEW，等待 Codex 独立复验。
 
 ## 依赖
 

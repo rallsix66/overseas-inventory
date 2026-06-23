@@ -2,10 +2,10 @@
 
 // 库存同步页 — 客户端交互层
 // 处理同步运行列表、仓库筛选和触发同步 Dialog
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Eye, Play, RefreshCw, LogIn } from 'lucide-react';
+import { Eye, Play, RefreshCw, LogIn, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -44,6 +44,7 @@ import {
   syncAllWarehouses,
   getSyncRunDetail,
   establishBigSellerSession,
+  verifyBigSellerSession,
 } from '@/features/sync/server-actions';
 import type {
   SyncRunAdminRow,
@@ -51,6 +52,7 @@ import type {
   SyncRunsResponse,
   SyncRunDetailAdmin,
   SyncRunDetailOperator,
+  SessionHealthResult,
 } from '@/features/sync/types';
 
 // ─── Type helpers ──────────────────────────────────────────────
@@ -242,6 +244,40 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
     setTriggerForm(DEFAULT_TRIGGER_FORM);
   }
 
+  // Session health check (P5-SY9B)
+  const [healthStatus, setHealthStatus] = useState<SessionHealthResult | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
+  const isSessionHealthy = healthStatus?.status === 'healthy';
+  const isSyncDisabled = !isSessionHealthy;
+
+  const checkHealth = useCallback(async () => {
+    setHealthLoading(true);
+    try {
+      const result = await verifyBigSellerSession();
+      setHealthStatus(result);
+    } catch (catchErr) {
+      const errMsg = (catchErr as Error).message || String(catchErr);
+      setHealthStatus({
+        status: 'unknown_error',
+        message: `健康检查失败: ${errMsg}`,
+        checkedAt: new Date().toISOString(),
+      });
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
+  // Auto-check health on mount for admin
+  useEffect(() => {
+    if (isAdmin) {
+      const timer = setTimeout(() => {
+        void checkHealth();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isAdmin, checkHealth]);
+
   // Establish session
   const [establishing, setEstablishing] = useState(false);
 
@@ -251,6 +287,8 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       const result = await establishBigSellerSession();
       if (result.success) {
         toast.success(result.message, { duration: 8000 });
+        // 建立登录会话后提示用户稍后检查健康状态
+        toast.info('登录完成后，请点击「检查会话状态」确认 headless 同步可用', { duration: 6000 });
       } else {
         toast.error(result.message);
       }
@@ -344,6 +382,8 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                 resetTriggerForm();
                 setTriggerOpen(true);
               }}
+              disabled={isSyncDisabled}
+              title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
             >
               <Play className="w-4 h-4 mr-1.5" />
               触发同步
@@ -352,6 +392,8 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
               size="sm"
               variant="secondary"
               onClick={() => setSyncAllOpen(true)}
+              disabled={isSyncDisabled}
+              title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
             >
               <RefreshCw className="w-4 h-4 mr-1.5" />
               同步所有国家
@@ -368,6 +410,100 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
           </div>
         )}
       </div>
+
+      {/* BigSeller 会话健康状态 (P5-SY9B) */}
+      {isAdmin && (
+        <div className="mb-5">
+          {healthLoading && !healthStatus && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-gray-50 rounded-md px-4 py-3">
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              正在检查 BigSeller 登录会话状态…
+            </div>
+          )}
+
+          {healthStatus && isSessionHealthy && (
+            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-md px-4 py-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                <div>
+                  <span className="text-sm font-medium text-green-700">会话状态：已登录可用</span>
+                  <span className="text-xs text-green-600 ml-2">
+                    {new Date(healthStatus.checkedAt).toLocaleTimeString('zh-CN')}
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={checkHealth}
+                disabled={healthLoading}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1 ${healthLoading ? 'animate-spin' : ''}`} />
+                刷新
+              </Button>
+            </div>
+          )}
+
+          {healthStatus && !isSessionHealthy && (
+            <div className="bg-amber-50 border border-amber-200 rounded-md px-4 py-3">
+              <div className="flex items-start gap-2">
+                {healthStatus.status === 'need_login' || healthStatus.status === 'need_verification' ? (
+                  <ShieldAlert className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-amber-800">
+                      会话状态：
+                      {healthStatus.status === 'need_login' && '需要登录'}
+                      {healthStatus.status === 'need_verification' && '需要验证码'}
+                      {healthStatus.status === 'profile_unavailable' && 'Profile 不可用'}
+                      {healthStatus.status === 'page_structure_changed' && '页面结构异常'}
+                      {healthStatus.status === 'table_not_loaded' && '表格未加载'}
+                      {healthStatus.status === 'unknown_error' && '未知错误'}
+                    </span>
+                    <span className="text-xs text-amber-600">
+                      {new Date(healthStatus.checkedAt).toLocaleTimeString('zh-CN')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-amber-700 mt-1">{healthStatus.message}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-amber-600">
+                      ⚠ 同步功能已禁用，请先解决会话问题
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={checkHealth}
+                      disabled={healthLoading}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 mr-1 ${healthLoading ? 'animate-spin' : ''}`} />
+                      重新检查
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!healthLoading && !healthStatus && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-gray-50 rounded-md px-4 py-3">
+              <AlertTriangle className="w-4 h-4 text-gray-400" />
+              会话状态未知，请检查
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={checkHealth}
+                disabled={healthLoading}
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                检查
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 筛选栏 */}
       <div className="flex items-center gap-2 mb-5">
