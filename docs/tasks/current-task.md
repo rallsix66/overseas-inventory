@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9C 已通过 Codex 独立复验（DONE）；P5-SY9D rework 第三次返工完成（country 校验强制化 + 查询契约除杂 + 60 分钟边界修复 + 6 项新增测试 + 51/51 P5-SY9D 测试），等待 Codex 独立验收（AWAITING_REVIEW）；P5-SY9A/B 均为 DONE；P5-SY9E~I PENDING。
+`IN_PROGRESS` — P5-SY9A~D 均为 DONE（Codex 独立复验通过）；P5-SY9E 实现完成 AWAITING_REVIEW（heartbeat 续租 + timeout/abort 子进程控制 + 15 项测试）；P5-SY9F~I PENDING。
 
 ## 背景
 
@@ -143,8 +143,8 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 | P5-SY9A | 现状审查与任务包落地 | 梳理 Web sync 与 CLI 差距，标记 Web real_write 为生产化待修复，确认验收标准 | P5-SY8H | DONE（7 维度差距已标记：4 CRITICAL / 1 HIGH / 1 MEDIUM / 1 PASS；含 BigSeller Session 复用不可靠） |
 | P5-SY9B | BigSeller Session Health Check | 新增 `verifyBigSellerSession()` Server Action + `health_check.py` + `profile_unavailable` 真实分类 + `checked_at→checkedAt` 转换 + syncWarehouse/syncAllWarehouses 服务端 session health guard | P5-SY9A | DONE（Codex 独立复验通过） |
 | P5-SY9C | 真实 Provider / InputSource / Production wiring | 替换生产 Mock，建立真实 artifact 存取和生产 wiring 测试 | P5-SY9B | DONE（Codex 独立复验通过） |
-| P5-SY9D | 单仓 Web Dry Run → 审核 → Real Write 绑定 | 用户无需输入 token/runId/hash；系统内部绑定 Dry Run；plan drift 阻断。已实现 Dry Run→Real Write 绑定逻辑，但 Web 真实写入入口必须保持 server-side disabled / feature gated，直到 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。 | P5-SY9C | AWAITING_REVIEW |
-| P5-SY9E | heartbeat / timeout / 子进程控制 | 实现 heartbeat、timeout、abort、失败落库和并发锁测试 | P5-SY9D | PENDING |
+| P5-SY9D | 单仓 Web Dry Run → 审核 → Real Write 绑定 | 用户无需输入 token/runId/hash；系统内部绑定 Dry Run；plan drift 阻断。已实现 Dry Run→Real Write 绑定逻辑，但 Web 真实写入入口必须保持 server-side disabled / feature gated，直到 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。 | P5-SY9C | DONE（Codex 验收通过） |
+| P5-SY9E | heartbeat / timeout / 子进程控制 | 实现 heartbeat、timeout、abort、失败落库和并发锁测试 | P5-SY9D | AWAITING_REVIEW |
 | P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，并展示审核总览 | P5-SY9E | PENDING |
 | P5-SY9G | 批量审核后真实写入 | 勾选 ready 仓库，强确认后逐仓写入；单仓失败不影响其他仓 | P5-SY9F | PENDING |
 | P5-SY9H | 页面体验与运营可用性收口 | 当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | PENDING |
@@ -196,7 +196,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 
 ## 停止条件
 
-- 本轮已完成 P5-SY9D rework 第三次返工：3 项修复 — (1) confirmRealWrite country 校验强制化（plan artifact 缺少 country / 非字符串 / 空字符串 / 不一致全部阻断，不再条件跳过）；(2) 普通查询契约除杂（SyncRunAdminRow 移除 input_artifact_hash/plan_artifact_hash，MockRepository getSyncRuns/getSyncRunDetail 不再返回此二字段，仅 DryRunBindingMetadata/getDryRunBindingMetadata 返回 hash）；(3) 60 分钟边界修复（ageMs >= DRY_RUN_EXPIRY_MS，原 > 导致恰好 60 分钟漏过）。新增 6 项测试（country 缺失/非字符串/空字符串阻断 + getSyncRuns/getSyncRunDetail 不含 hash 断言 + 恰好 60 分钟阻断）。51/51 P5-SY9D 测试，430/430 非并发同步测试，Python 85/85 通过，lint 0 errors，build 通过。
+- 本轮已完成 P5-SY9E (heartbeat / timeout / abort / 子进程控制 / 失败落库)：python-bridge.ts timeout（SIGTERM → 5s grace → SIGKILL）+ sync-service.ts heartbeat 续租循环 + prepareRunnerContext timeout 信号 + real-sync-runner.ts 传递 timeout 参数 + MockSyncRunner delayMs/signal 检测 + 15 项测试。445/445 非并发同步测试，Python 85/85 通过，lint 0 errors/10 warnings，build 通过。
 - 不连接生产 Supabase。
 - 不执行真实写入。
 - 不提交 runtime/artifacts、__pycache__、bound-plan-*.json、.env.local、profile、cookie、抓取产物。

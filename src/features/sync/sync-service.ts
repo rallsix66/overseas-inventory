@@ -26,7 +26,9 @@ export interface SyncServiceDeps {
   runner: SyncRunner;
 }
 
-const LEASE_DURATION = 300; // 5 minutes
+const LEASE_DURATION = 300; // 5 minutes (seconds)
+/** P5-SY9E: heartbeat 间隔 = lease 的 1/3，保证在 lease 过期前至少刷新 2 次 */
+const HEARTBEAT_INTERVAL_MS = Math.floor((LEASE_DURATION * 1000) / 3);
 
 function makeFailed(
   runId: string,
@@ -118,6 +120,58 @@ export function createSyncService(deps: SyncServiceDeps) {
 
 export type SyncService = ReturnType<typeof createSyncService>;
 
+// ─── P5-SY9E: heartbeat + timeout orchestration ──────────────────
+
+/** 启动 heartbeat 定时器。失败仅日志，不中断同步主流程。 */
+function startHeartbeat(
+  repo: SyncRepository,
+  runId: string,
+): ReturnType<typeof setInterval> {
+  return setInterval(() => {
+    repo.heartbeatSyncRun({ runId, leaseDuration: LEASE_DURATION }).catch((err) => {
+      console.error(`[heartbeat] sync_run ${runId} 续租失败: ${(err as Error).message}`);
+    });
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+interface RunnerContext {
+  signal?: AbortSignal;
+  cleanup: () => void;
+}
+
+/** 根据 Runner 能力创建 timeout AbortSignal + 合并外部 signal。
+ *  返回 signal 和 cleanup 函数。 */
+async function prepareRunnerContext(
+  runner: SyncRunner,
+  externalSignal?: AbortSignal,
+): Promise<RunnerContext> {
+  const caps = await runner.capabilities();
+  const cleanups: Array<() => void> = [];
+
+  let signal: AbortSignal | undefined;
+
+  if (caps.maxTimeoutMs > 0) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), caps.maxTimeoutMs);
+    cleanups.push(() => clearTimeout(tid));
+    signal = ctrl.signal;
+
+    // 外部 signal 也转发到同一个 controller
+    if (externalSignal) {
+      const onAbort = () => ctrl.abort();
+      externalSignal.addEventListener('abort', onAbort, { once: true });
+      cleanups.push(() => externalSignal.removeEventListener('abort', onAbort));
+    }
+  } else if (externalSignal) {
+    signal = externalSignal;
+  }
+
+  return {
+    signal,
+    cleanup: () => cleanups.forEach((fn) => fn()),
+  };
+}
+
 // ─── Dry Run lifecycle ────────────────────────────────────────────
 
 async function executeDryRun(
@@ -163,13 +217,16 @@ async function executeDryRun(
     return makeFailed(runId, `input artifact 存储失败: ${(err as Error).message}`);
   }
 
-  // c. execute runner
+  // c. execute runner (P5-SY9E: heartbeat + timeout)
+  const heartbeatId = startHeartbeat(repo, runId);
+  const ctx = await prepareRunnerContext(runner, input.signal);
+
   const dryParams: SyncExecuteParamsDryRun = {
     runId,
     warehouseId: input.warehouseId,
     mode: 'dry_run',
     triggeredBy: input.triggeredBy,
-    signal: input.signal,
+    signal: ctx.signal,
     inputArtifact: inputNormalized,
   };
 
@@ -178,6 +235,8 @@ async function executeDryRun(
     result = await runner.execute(dryParams);
   } catch (err) {
     // Runner 抛错
+    clearInterval(heartbeatId);
+    ctx.cleanup();
     const errorMsg = `Runner 执行失败: ${(err as Error).message}`;
     try {
       await repo.releaseSyncRun({
@@ -194,6 +253,10 @@ async function executeDryRun(
         'release failed 自身失败：全部 artifact 保留');
     }
   }
+
+  // P5-SY9E: runner 已完成（成功或抛错），停止 heartbeat + timeout
+  clearInterval(heartbeatId);
+  ctx.cleanup();
 
   // d. exitCode === 0
   if (result.exitCode === 0) {
@@ -354,7 +417,10 @@ async function executeRealWrite(
     return makeFailed(runId, `input artifact 存储失败: ${(err as Error).message}`);
   }
 
-  // d. execute runner
+  // d. execute runner (P5-SY9E: heartbeat + timeout)
+  const heartbeatId = startHeartbeat(repo, runId);
+  const ctx = await prepareRunnerContext(runner, input.signal);
+
   const realParams: SyncExecuteParamsRealWrite = {
     runId,
     warehouseId: input.warehouseId,
@@ -362,7 +428,7 @@ async function executeRealWrite(
     confirmToken: input.confirmToken,
     triggeredBy: input.triggeredBy,
     dryRunRunId: input.dryRunRunId,
-    signal: input.signal,
+    signal: ctx.signal,
     inputArtifact: inputNormalized,
     boundPlanArtifact: planArtifact_dr.content,
   };
@@ -372,6 +438,8 @@ async function executeRealWrite(
     result = await runner.execute(realParams);
     // Runner must not output planArtifact in real_write mode
     if (result.planArtifact !== undefined) {
+      clearInterval(heartbeatId);
+      ctx.cleanup();
       const errorMsg = 'Real Write Runner 不得输出 planArtifact';
       await repo.releaseSyncRun({
         runId,
@@ -384,6 +452,8 @@ async function executeRealWrite(
     }
   } catch (err) {
     // Runner 抛错
+    clearInterval(heartbeatId);
+    ctx.cleanup();
     const errorMsg = `Runner 执行失败: ${(err as Error).message}`;
     try {
       await repo.releaseSyncRun({
@@ -398,6 +468,10 @@ async function executeRealWrite(
         'release failed 自身失败：全部 artifact 保留');
     }
   }
+
+  // P5-SY9E: runner 已完成，停止 heartbeat + timeout
+  clearInterval(heartbeatId);
+  ctx.cleanup();
 
   // e. exitCode === 0
   if (result.exitCode === 0) {

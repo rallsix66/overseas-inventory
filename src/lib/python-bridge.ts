@@ -52,13 +52,20 @@ export interface PythonBridgeResult {
   invalid_sku_count: number;
 }
 
+/** SIGKILL 前等待 SIGTERM 优雅退出的宽限期（毫秒） */
+const SIGKILL_GRACE_MS = 5_000;
+
 /**
  * 调用 Python web_bridge.py 执行完整同步流程。
  * 返回解析后的 JSON 结果。
+ *
+ * @param timeoutMs 可选超时（毫秒）。超时后 SIGTERM → 5s grace → SIGKILL。
+ *                  超时时 reject，调用方应在 sync-service 层 release 为 failed。
  */
 export async function callPythonBridge(
   params: PythonBridgeParams,
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<PythonBridgeResult> {
   const args = [
     '-m', PYTHON_MODULE,
@@ -97,7 +104,32 @@ export async function callPythonBridge(
       }, { once: true });
     }
 
+    // ── P5-SY9E: timeout — SIGTERM → grace → SIGKILL ─────
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let sigkillId: ReturnType<typeof setTimeout> | undefined;
+
+    const clearTimers = () => {
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = undefined; }
+      if (sigkillId) { clearTimeout(sigkillId); sigkillId = undefined; }
+    };
+
+    if (timeoutMs && timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        proc.kill('SIGTERM');
+        sigkillId = setTimeout(() => {
+          if (proc.exitCode === null && !proc.killed) {
+            proc.kill('SIGKILL');
+          }
+        }, SIGKILL_GRACE_MS);
+      }, timeoutMs);
+    }
+
     proc.on('close', (code: number | null) => {
+      clearTimers();
+
+      // P5-SY9E: 检测 timeout/SIGTERM 终止
+      const wasKilled = code === null && proc.killed;
+
       // Try to parse the last non-empty line as JSON
       const lines = stdout
         .split('\n')
@@ -109,7 +141,11 @@ export async function callPythonBridge(
         if (stderr) {
           console.error('[python-bridge] stderr:', stderr);
         }
-        reject(new Error(`Python bridge 无输出（exit=${code}）`));
+        if (wasKilled) {
+          reject(new Error(`Python bridge 超时被终止（timeout=${timeoutMs}ms, exit=${code}）`));
+        } else {
+          reject(new Error(`Python bridge 无输出（exit=${code}）`));
+        }
         return;
       }
 
@@ -128,6 +164,7 @@ export async function callPythonBridge(
     });
 
     proc.on('error', (err: Error) => {
+      clearTimers();
       reject(new Error(`Python bridge 启动失败: ${err.message}`));
     });
   });

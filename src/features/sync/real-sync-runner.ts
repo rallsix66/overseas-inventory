@@ -75,6 +75,8 @@ export class RealSyncRunner implements SyncRunner {
     }
 
     try {
+      // P5-SY9E: 从 capabilities 获取 timeout，传递给 Python bridge
+      const caps = await this.capabilities();
       const bridgeResult = await callPythonBridge(
         {
           warehouseId: wh.id,
@@ -86,6 +88,7 @@ export class RealSyncRunner implements SyncRunner {
           priorDryRunPath,
         },
         params.signal,
+        caps.maxTimeoutMs > 0 ? caps.maxTimeoutMs : undefined,
       );
 
       const exitCode = bridgeResult.exit_code === 0 ? 0 as const : 1 as const;

@@ -90,11 +90,25 @@ export class MockSyncRunner implements SyncRunner {
   /** 配置抛出的错误消息 */
   throwMessage = 'MockSyncRunner 模拟未捕获异常';
 
+  /** P5-SY9E: 模拟执行延迟（毫秒）。期间检查 signal 是否 aborted。
+   *  用于测试 heartbeat 续租和 timeout/abort 行为。默认 0（立即完成）。 */
+  delayMs = 0;
+
+  /** P5-SY9E: signal aborted 时抛出的错误消息前缀 */
+  abortErrorMessage = '同步被取消';
+
+  /** P5-SY9E: 覆盖 capabilities（用于 timeout 测试） */
+  private _capsOverride: Partial<SyncRunnerCapabilities> = {};
+
+  _setCapabilities(caps: Partial<SyncRunnerCapabilities>): void {
+    this._capsOverride = caps;
+  }
+
   async capabilities(): Promise<SyncRunnerCapabilities> {
     return {
-      supportsCancel: false,
-      supportsTimeout: false,
-      maxTimeoutMs: 0,
+      supportsCancel: this._capsOverride.supportsCancel ?? false,
+      supportsTimeout: this._capsOverride.supportsTimeout ?? false,
+      maxTimeoutMs: this._capsOverride.maxTimeoutMs ?? 0,
       supportedModes: ['dry_run', 'real_write'],
     };
   }
@@ -102,6 +116,25 @@ export class MockSyncRunner implements SyncRunner {
   async execute(params: SyncExecuteParams): Promise<SyncExecuteResult> {
     if (this.shouldThrow) {
       throw new Error(this.throwMessage);
+    }
+
+    // P5-SY9E: 模拟执行延迟，期间定期检查 signal 是否 aborted
+    if (this.delayMs > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const deadline = Date.now() + this.delayMs;
+        const check = () => {
+          if (params.signal?.aborted) {
+            reject(new Error(`${this.abortErrorMessage}: ${params.signal.reason ?? '用户取消'}`));
+            return;
+          }
+          if (Date.now() >= deadline) {
+            resolve();
+            return;
+          }
+          setTimeout(check, 10);
+        };
+        check();
+      });
     }
 
     // Mode-specific validation
