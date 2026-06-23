@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9C 已通过 Codex 独立复验（DONE）。P5-SY9D rework 第二次返工完成：新增 SyncRepository.getDryRunBindingMetadata()（server-only，serviceClient 直查 public.sync_run 绕过 RPC 脱敏）+ confirmRealWrite 全部绑定校验改为从 metadata 方法取值 + hash 强制校验（input/plan hash 缺失则阻断，不再"字段存在才校验"）+ SupabaseSyncRepository / MockRepository 双实现 + 14 项新增测试（input hash 缺失阻断、plan hash 缺失阻断、metadata 全部字段有效/hash 一致 happy path、metadata 缺失/warehouse/mode/status/drift/finished_at 各字段不一致阻断）+ plan hash 不一致测试 hash 注入修复。45/45 P5-SY9D 测试，424/424 非并发同步测试，Python compileall 通过（26 plan + 44 verifier + 15 health_check = 85），lint 0 errors，build 通过。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled。P5-SY9D AWAITING_REVIEW，等待 Codex 独立验收。P5-SY9E~I PENDING。）
+`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9C 已通过 Codex 独立复验（DONE）。P5-SY9D rework 第三次返工完成：3 项修复 — (1) confirmRealWrite country 校验强制化：plan artifact 缺少 country / country 非字符串 / country 空字符串 / country 与 warehouse 不一致，全部阻断（不再条件跳过）；(2) 普通查询契约除杂：SyncRunAdminRow 移除 input_artifact_hash / plan_artifact_hash，MockRepository getSyncRuns/getSyncRunDetail admin 视图不再返回这两个字段，仅 DryRunBindingMetadata / getDryRunBindingMetadata 返回 hash；(3) 60 分钟边界修复：ageMs >= DRY_RUN_EXPIRY_MS（原 > 导致恰好 60 分钟时漏过）。新增 6 项测试（country 缺失/非字符串/空字符串阻断 + getSyncRuns/getSyncRunDetail 不含 hash + 恰好 60 分钟阻断）。51/51 P5-SY9D 测试，430/430 非并发同步测试，Python 85/85 通过，lint 0 errors，build 通过。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled。P5-SY9D AWAITING_REVIEW，等待 Codex 独立验收。P5-SY9E~I PENDING。）
 
 ## Completed Tasks
 
@@ -54,7 +54,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-- P5-SY9D — 待 Codex 独立验收（第二次返工完成：getDryRunBindingMetadata() + 强制 hash 校验 + 14 项新增测试。单仓 Web Dry Run → 审核 → Real Write 绑定，含 plan artifact 完整性修复 + 应用层绑定校验 + 45 项测试）
+- P5-SY9D — 待 Codex 独立验收（第三次返工完成：country 校验强制化 + 查询契约除杂 + 60 分钟边界修复 + 6 项新增测试。单仓 Web Dry Run → 审核 → Real Write 绑定，含 plan artifact 完整性修复 + 应用层绑定校验 + 51 项测试）
 
 ## Authentication Status
 
@@ -160,6 +160,7 @@ Phase 5 — 海外仓库存同步生产化
 
 | 日期 | 变更 |
 |---|---|
+| 2026-06-23 | P5-SY9D rework 第三次返工完成（AWAITING_REVIEW，等待 Codex 独立验收）：3 项修复 — (1) confirmRealWrite country 校验强制化：plan artifact 缺少 country / country 非字符串 / country 空字符串 / 不一致全部阻断；(2) 查询契约除杂：SyncRunAdminRow 移除 input_artifact_hash / plan_artifact_hash，MockRepository getSyncRuns/getSyncRunDetail admin 视图不再返回此二字段；(3) 60 分钟边界修复：ageMs >= DRY_RUN_EXPIRY_MS。新增 6 项测试（country 缺失/非字符串/空字符串阻断 + getSyncRuns/getSyncRunDetail 不含 hash + 恰好 60 分钟阻断）。51/51 P5-SY9D 测试，430/430 非并发同步测试，Python 85/85 通过，lint 0 errors，build 通过。未连接生产 Supabase，未执行真实写入。 |
 | 2026-06-23 | P5-SY9D rework 第二次返工完成（AWAITING_REVIEW，等待 Codex 独立验收）：修复 confirmRealWrite 应用层 hash 校验在生产路径被跳过的问题 — (1) 新增 SyncRepository.getDryRunBindingMetadata(runId) 方法，返回 DryRunBindingMetadata（id/warehouse_id/mode/status/finished_at/plan_drift_check/input_artifact_hash/plan_artifact_hash）；(2) SupabaseSyncRepository 使用 serviceClient 直查 public.sync_run 绕过 get_sync_run_detail RPC 脱敏；(3) MockRepository 同步实现该方法；(4) confirmRealWrite 全部绑定校验改为从 getDryRunBindingMetadata 取值，移除旧的 `adminDetail.input_artifact_hash &&` 条件跳过逻辑；(5) hash 强制校验：input/plan hash 缺失则阻断，不再"字段存在才校验"；(6) 新增 14 项测试（input hash 缺失阻断、plan hash 缺失阻断、metadata 全部字段有效/hash 一致 happy path、metadata 缺失/warehouse/mode/status/drift/finished_at 各字段不一致阻断）；(7) plan hash 不一致测试 hash 注入修复（必须通过 input hash 校验才能到达 plan hash 路径）；(8) re-scrape 禁止测试 hash 注入修复。保留 DB claim_sync_run 二次防御，不修改已执行 migration。45/45 P5-SY9D 测试，424/424 非并发同步测试，Python 测试（26 plan + 44 verifier + 15 health_check = 85），compileall 通过，lint 0 errors，build 通过。未连接生产 Supabase，未执行真实写入。不提交 runtime/artifacts、__pycache__。 |
 | 2026-06-23 | P5-SY9D rework 完成（AWAITING_REVIEW，等待 Codex 独立验收）：修复 3 项关键缺陷 — (1) Dry Run plan artifact 修复：web_bridge.py 新增 result['plan'] = plan_summary 暴露完整 plan（含元数据 country/generated_at/warehouse_id + 结构字段 new_variants/inventory_inserts/inventory_updates/inventory_unchanged/warehouse_rename_required），python-bridge.ts 新增 plan 字段，real-sync-runner.ts 使用 bridgeResult.plan（非 summary）作为 planArtifact；(2) Real Write 禁止重新抓取：confirmRealWrite 改为从 ArtifactProvider 加载绑定 Dry Run input + plan artifact，不再调用 inputArtifactSource.getInputArtifact(…, 'real_write')；(3) 应用层绑定校验新增 5 项：Dry Run 未过期（finished_at + 24h 窗口）、country 一致（plan 元数据 vs warehouse country）、input hash 一致（repo 存储 vs artifact 当前 hash）、plan hash 一致、input/plan artifact 加载失败阻断。新增 6 项失败测试（过期阻断、缺少 finished_at 阻断、country 不匹配阻断、input hash 不匹配阻断、plan hash 不匹配阻断、plan artifact 结构性验证）+ 2 项正确性测试（re-scrape 禁止验证、完整 plan 非 summary 验证）+ mock repository 新增 input_artifact_hash/plan_artifact_hash 到 admin 视图。SyncActionsDeps 新增 artifactProvider 依赖。35/35 P5-SY9D 测试，414/414 非并发同步测试，15/15 非 concurrency 文件，Python compileall 通过，lint 0 errors/3 warnings，build 通过。未连接生产 Supabase，未执行真实写入。不提交 runtime/artifacts、__pycache__、bound-plan-*.json。 |
 | 2026-06-23 | P5-SY9D 实现完成（AWAITING_REVIEW，等待 Codex 独立验收）：(1) web_bridge.py 修复 compare_plans(plan, plan) 自比较→真实 stored_plan 漂移比较 + --prior-dry-run-path；(2) TS pipeline 线 priorDryRunPath 传递；(3) actions.ts triggerDryRun + confirmRealWrite 拆分（含 dryRunRunId/warehouse_id/status/plan_drift_check 绑定校验）；(4) server-actions.ts 新增 Server Actions + feature gate；(5) sync page UI Dry Run 审核摘要 + 确认写入 Dialog；(6) MockRepository._injectRunDetail 测试辅助；(7) 27 项 P5-SY9D 测试；(8) 文档同步。406/406 TS 测试，15/15 Python，lint 0 errors，build 通过。未连接生产 Supabase，未执行真实写入。 |
@@ -701,4 +702,4 @@ BigSeller 实际 VXE 结构：
 
 ## Last Updated
 
-2026-06-23（P5-SY9D rework 第二次返工完成 — AWAITING_REVIEW。新增 getDryRunBindingMetadata() + confirmRealWrite 强制 hash 校验 + 14 项新测试 + plan hash/禁止重抓测试 hash 注入修复。45/45 P5-SY9D 测试，424/424 非并发同步 TS 测试，Python 85/85 通过，lint 0 errors，build 通过。等待 Codex 独立验收。）
+2026-06-23（P5-SY9D rework 第三次返工完成 — AWAITING_REVIEW：country 校验强制化 + 查询契约除杂 + 60 分钟边界修复 + 6 项新增测试。51/51 P5-SY9D 测试，430/430 非并发同步 TS 测试，Python 85/85 通过，lint 0 errors，build 通过。等待 Codex 独立验收。）

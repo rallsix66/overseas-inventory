@@ -294,6 +294,21 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     expect(result.error).toContain('缺少完成时间');
   });
 
+  it('恰好 60 分钟过期 → 阻断（ageMs >= DRY_RUN_EXPIRY_MS）', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    const exactly60MinAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+      finishedAt: new Date(exactly60MinAgo),
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('已过期');
+    expect(result.error).toContain('60 分钟');
+  });
+
   it('country 不一致被阻断', async () => {
     const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
     // Inject a completed Dry Run whose plan artifact references country=VN
@@ -314,6 +329,58 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     expect(result.error).toContain('国家不匹配');
     expect(result.error).toContain('TH');
     expect(result.error).toContain('VN');
+  });
+
+  it('plan artifact 缺少 country 字段（undefined）→ 阻断，不得条件跳过', async () => {
+    const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+    const inputPrep = artifactProvider.prepare({ skus: ['TEST'] });
+    await artifactProvider.store(DR_OK, 'input', inputPrep);
+    // Plan artifact WITHOUT country field
+    const planPrep = artifactProvider.prepare({ new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
+    await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('缺少有效的 country 字段');
+  });
+
+  it('plan artifact country 不是字符串（number）→ 阻断', async () => {
+    const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+    const inputPrep = artifactProvider.prepare({ skus: ['TEST'] });
+    await artifactProvider.store(DR_OK, 'input', inputPrep);
+    // Plan artifact with country as number
+    const planPrep = artifactProvider.prepare({ country: 123, new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
+    await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('缺少有效的 country 字段');
+    expect(result.error).toContain('123');
+  });
+
+  it('plan artifact country 为空字符串 → 阻断', async () => {
+    const { actions, repo, artifactProvider } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+    const inputPrep = artifactProvider.prepare({ skus: ['TEST'] });
+    await artifactProvider.store(DR_OK, 'input', inputPrep);
+    // Plan artifact with empty country
+    const planPrep = artifactProvider.prepare({ country: '', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
+    await artifactProvider.store(DR_OK, 'plan', planPrep);
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('缺少有效的 country 字段');
   });
 
   it('input hash 不一致被阻断', async () => {
@@ -724,7 +791,40 @@ describe('python-bridge — priorDryRunPath param', () => {
   });
 });
 
-// ─── 8. 类型出口 ──────────────────────────────────────────────
+// ─── 8. 普通查询契约 — 不得暴露 artifact hash ─────────────────
+
+describe('getSyncRuns / getSyncRunDetail — 不得暴露 artifact hash', () => {
+  it('getSyncRuns（admin 视图）不含 input_artifact_hash', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    // Seed a completed Dry Run
+    const drResult = await actions.triggerDryRun(WH_1, '测试仓');
+    expect(drResult.success).toBe(true);
+
+    const runs = await repo.getSyncRuns({ limit: 10 });
+    const adminRuns = runs as Array<Record<string, unknown>>;
+    expect(adminRuns.length).toBeGreaterThan(0);
+    for (const run of adminRuns) {
+      expect(run).not.toHaveProperty('input_artifact_hash');
+      expect(run).not.toHaveProperty('plan_artifact_hash');
+    }
+  });
+
+  it('getSyncRunDetail（admin 视图）不含 input_artifact_hash 和 plan_artifact_hash', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    const drResult = await actions.triggerDryRun(WH_1, '测试仓');
+    expect(drResult.success).toBe(true);
+
+    const detail = await repo.getSyncRunDetail(drResult.runId);
+    expect(detail).not.toBeNull();
+    const adminDetail = detail as Record<string, unknown>;
+    expect(adminDetail).not.toHaveProperty('input_artifact_hash');
+    expect(adminDetail).not.toHaveProperty('plan_artifact_hash');
+    // admin detail 仍应包含 display_name 等 Admin 专属字段
+    expect(adminDetail).toHaveProperty('display_name');
+  });
+});
+
+// ─── 9. 类型出口 ──────────────────────────────────────────────
 
 describe('P5-SY9D 类型出口', () => {
   it('TriggerDryRunResult 和 ConfirmRealWriteResult 类型已定义', async () => {

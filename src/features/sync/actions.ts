@@ -365,7 +365,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
       }
       const finishedAt = new Date(metadata.finished_at);
       const ageMs = Date.now() - finishedAt.getTime();
-      if (ageMs > DRY_RUN_EXPIRY_MS) {
+      if (ageMs >= DRY_RUN_EXPIRY_MS) {
         const ageMinutes = Math.round(ageMs / 60000);
         return {
           warehouseId,
@@ -427,9 +427,21 @@ export function createSyncActions(deps: SyncActionsDeps) {
         };
       }
 
-      // ── 4. 验证 country 一致 ──────────────────────────────
-      const planCountry = (dryRunPlan.content as unknown as Record<string, string | undefined>)?.country;
-      if (planCountry && planCountry !== country) {
+      // ── 4. 验证 country 一致（强制，不得条件跳过）──────────
+      const planContent = dryRunPlan.content as Record<string, unknown>;
+      const planCountry = planContent?.country;
+      if (typeof planCountry !== 'string' || planCountry.length === 0) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 计划缺少有效的 country 字段（值: ${String(planCountry)}）`,
+          dryRunRunId,
+        };
+      }
+      if (planCountry !== country) {
         return {
           warehouseId,
           warehouseName,

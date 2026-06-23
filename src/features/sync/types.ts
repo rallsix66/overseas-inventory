@@ -175,9 +175,6 @@ export interface SyncRunAdminRow {
   plan_drift_check: 'PASS' | 'DRIFT_DETECTED' | null;
   plan_drift_count: number | null;
   dry_run_run_id: string | null;
-  /** P5-SY9D rework: artifact hash 字段供绑定校验使用 */
-  input_artifact_hash: string | null;
-  plan_artifact_hash: string | null;
 }
 
 /** Operator 视图 — get_sync_runs 单条记录（脱敏） */

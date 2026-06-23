@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9C 已通过 Codex 独立复验（DONE）；P5-SY9D rework 第二次返工完成（新增 getDryRunBindingMetadata() + 强制 hash 校验 + 14 项新测试 + 45/45 P5-SY9D 测试），等待 Codex 独立验收（AWAITING_REVIEW）；P5-SY9A/B 均为 DONE；P5-SY9E~I PENDING。
+`IN_PROGRESS` — P5-SY9C 已通过 Codex 独立复验（DONE）；P5-SY9D rework 第三次返工完成（country 校验强制化 + 查询契约除杂 + 60 分钟边界修复 + 6 项新增测试 + 51/51 P5-SY9D 测试），等待 Codex 独立验收（AWAITING_REVIEW）；P5-SY9A/B 均为 DONE；P5-SY9E~I PENDING。
 
 ## 背景
 
@@ -196,7 +196,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 
 ## 停止条件
 
-- 本轮已完成 P5-SY9D rework 第二次返工：新增 SyncRepository.getDryRunBindingMetadata()（server-only，serviceClient 直查）+ confirmRealWrite 强制 hash 校验（hash 缺失则阻断，不再条件跳过）+ 新增 14 项测试 + 45/45 P5-SY9D 测试。
+- 本轮已完成 P5-SY9D rework 第三次返工：3 项修复 — (1) confirmRealWrite country 校验强制化（plan artifact 缺少 country / 非字符串 / 空字符串 / 不一致全部阻断，不再条件跳过）；(2) 普通查询契约除杂（SyncRunAdminRow 移除 input_artifact_hash/plan_artifact_hash，MockRepository getSyncRuns/getSyncRunDetail 不再返回此二字段，仅 DryRunBindingMetadata/getDryRunBindingMetadata 返回 hash）；(3) 60 分钟边界修复（ageMs >= DRY_RUN_EXPIRY_MS，原 > 导致恰好 60 分钟漏过）。新增 6 项测试（country 缺失/非字符串/空字符串阻断 + getSyncRuns/getSyncRunDetail 不含 hash 断言 + 恰好 60 分钟阻断）。51/51 P5-SY9D 测试，430/430 非并发同步测试，Python 85/85 通过，lint 0 errors，build 通过。
 - 不连接生产 Supabase。
 - 不执行真实写入。
 - 不提交 runtime/artifacts、__pycache__、bound-plan-*.json、.env.local、profile、cookie、抓取产物。
