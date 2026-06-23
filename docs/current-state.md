@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9C 已通过 Codex 独立复验（DONE），P5-SY9D 单仓 Web Dry Run → 审核 → Real Write 绑定（AWAITING_REVIEW）。P5-SY9D 已完成：compare_plans 假校验修复 + triggerDryRun/confirmRealWrite 拆分 + binding validation + sync page UI + 27 测试。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled。P5-SY9E~I PENDING。）
+`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9C 已通过 Codex 独立复验（DONE）。P5-SY9D rework 完成：修复 plan artifact 存储（完整 plan 非 summary）+ confirmRealWrite 不再重新抓取（加载绑定 Dry Run input/plan artifact）+ 应用层绑定校验（过期/国家/hash 一致性）+ 6 项新增失败测试。35/35 P5-SY9D 测试，414/414 非并发同步测试，Python compileall 通过，lint 0 errors，build 通过。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled。P5-SY9D AWAITING_REVIEW，等待 Codex 独立验收。P5-SY9E~I PENDING。）
 
 ## Completed Tasks
 
@@ -54,7 +54,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-暂无待审查项。P5-SY9D 当前 IN_PROGRESS。
+- P5-SY9D — 待 Codex 独立验收（单仓 Web Dry Run → 审核 → Real Write 绑定，含 plan artifact 完整性修复 + 应用层绑定校验 + 35 项测试）
 
 ## Authentication Status
 
@@ -160,6 +160,7 @@ Phase 5 — 海外仓库存同步生产化
 
 | 日期 | 变更 |
 |---|---|
+| 2026-06-23 | P5-SY9D rework 完成（AWAITING_REVIEW，等待 Codex 独立验收）：修复 3 项关键缺陷 — (1) Dry Run plan artifact 修复：web_bridge.py 新增 result['plan'] = plan_summary 暴露完整 plan（含元数据 country/generated_at/warehouse_id + 结构字段 new_variants/inventory_inserts/inventory_updates/inventory_unchanged/warehouse_rename_required），python-bridge.ts 新增 plan 字段，real-sync-runner.ts 使用 bridgeResult.plan（非 summary）作为 planArtifact；(2) Real Write 禁止重新抓取：confirmRealWrite 改为从 ArtifactProvider 加载绑定 Dry Run input + plan artifact，不再调用 inputArtifactSource.getInputArtifact(…, 'real_write')；(3) 应用层绑定校验新增 5 项：Dry Run 未过期（finished_at + 24h 窗口）、country 一致（plan 元数据 vs warehouse country）、input hash 一致（repo 存储 vs artifact 当前 hash）、plan hash 一致、input/plan artifact 加载失败阻断。新增 6 项失败测试（过期阻断、缺少 finished_at 阻断、country 不匹配阻断、input hash 不匹配阻断、plan hash 不匹配阻断、plan artifact 结构性验证）+ 2 项正确性测试（re-scrape 禁止验证、完整 plan 非 summary 验证）+ mock repository 新增 input_artifact_hash/plan_artifact_hash 到 admin 视图。SyncActionsDeps 新增 artifactProvider 依赖。35/35 P5-SY9D 测试，414/414 非并发同步测试，15/15 非 concurrency 文件，Python compileall 通过，lint 0 errors/3 warnings，build 通过。未连接生产 Supabase，未执行真实写入。不提交 runtime/artifacts、__pycache__、bound-plan-*.json。 |
 | 2026-06-23 | P5-SY9D 实现完成（AWAITING_REVIEW，等待 Codex 独立验收）：(1) web_bridge.py 修复 compare_plans(plan, plan) 自比较→真实 stored_plan 漂移比较 + --prior-dry-run-path；(2) TS pipeline 线 priorDryRunPath 传递；(3) actions.ts triggerDryRun + confirmRealWrite 拆分（含 dryRunRunId/warehouse_id/status/plan_drift_check 绑定校验）；(4) server-actions.ts 新增 Server Actions + feature gate；(5) sync page UI Dry Run 审核摘要 + 确认写入 Dialog；(6) MockRepository._injectRunDetail 测试辅助；(7) 27 项 P5-SY9D 测试；(8) 文档同步。406/406 TS 测试，15/15 Python，lint 0 errors，build 通过。未连接生产 Supabase，未执行真实写入。 |
 | 2026-06-23 | P5-SY9C Codex 独立复验通过（DONE）。3 项返工全部通过：MockSyncRunner 移除 + baseDir 注入 + production-wiring 补强。P5-SY9D 启动（IN_PROGRESS）：单仓 Web Dry Run → 审核 → Real Write 绑定设计与实现。Web 真实写入入口 WEBSYNC_REAL_WRITE_ENABLED 保持 disabled。 |
 | 2026-06-23 | P5-SY9C 返工完成（AWAITING_REVIEW，等待 Codex 再验收）：(1) 移除 server-actions.ts 中 MockSyncRunner import + wireActions() 函数，getSyncRuns/getSyncRunDetail 改为 repository-only 读路径，triggerSync 直接返回中文错误不构造 SyncService；(2) FileSystemArtifactProvider 支持注入 baseDir（默认仍为 runtime/artifacts），新增 getBaseDir() 方法，测试使用 os.tmpdir() 隔离，afterEach 只删除测试目录；(3) production-wiring.test.ts 移除所有 expect(true) placeholder，新增：server-actions.ts 源码不含 Mock import、NODE_ENV=production createSyncService 拒绝 Mock 组合/接受真实组合、sync 页面源码不含 supabase.from()、feature gate 默认 false 且拦截 healthy session；(4) session-health.test.ts 新增 syncWarehouse/syncAllWarehouses feature gate 拦截测试（healthy session + gate disabled → gate error）。98/98 P5-SY9C 测试，15/15 Python 测试，lint 0 errors/10 warnings，build 通过，379/379 非并发测试。未连接生产 Supabase，未执行真实写入，未删除真实 runtime/artifacts。 |

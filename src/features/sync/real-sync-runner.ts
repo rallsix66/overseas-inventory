@@ -114,9 +114,19 @@ export class RealSyncRunner implements SyncRunner {
         startedAt: bridgeResult.started_at,
         finishedAt: bridgeResult.finished_at ?? new Date().toISOString(),
         durationMs: 0,
+        // P5-SY9D rework: 使用 bridge 返回的完整 plan（含元数据），
+        // 不是 summary（仅计数）。plan 字段包含 generated_at / warehouse_id /
+        // country / input_rows / new_variants / inventory_inserts /
+        // inventory_updates / inventory_unchanged / warehouse_rename_required。
         planArtifact: params.mode === 'dry_run' && bridgeResult.success
-          ? bridgeResult.summary as unknown as JsonValue
+          ? (bridgeResult.plan as unknown as JsonValue) ?? undefined
           : undefined,
+        // P5-SY9D rework: 传递抓取元数据供审核摘要展示
+        scraperMeta: {
+          rawRowCount: bridgeResult.raw_row_count,
+          validSkuCount: bridgeResult.valid_sku_count,
+          invalidSkuCount: bridgeResult.invalid_sku_count,
+        },
       };
     } catch (err) {
       return makeErrorResult(wh.id, `Python 桥接失败: ${(err as Error).message}`);

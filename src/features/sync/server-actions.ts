@@ -51,6 +51,7 @@ async function wireRealActions(warehouses: WarehouseBridgeInfo[]) {
     repository,
     syncService,
     inputArtifactSource,
+    artifactProvider, // P5-SY9D rework: confirmRealWrite 加载绑定 artifact 使用
   });
 }
 
@@ -286,7 +287,7 @@ export async function confirmRealWrite(
     return { warehouseId, warehouseName: '未知仓库', success: false, runId: '', status: 'failed', error: '未知仓库 ID', dryRunRunId };
   }
   const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
-  const result = await actions.confirmRealWrite(warehouseId, wh.name, dryRunRunId);
+  const result = await actions.confirmRealWrite(warehouseId, wh.name, wh.country, dryRunRunId);
   if (result.success) {
     revalidatePath('/dashboard/inventory/overseas');
   }

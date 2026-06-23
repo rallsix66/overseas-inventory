@@ -1,8 +1,8 @@
 {
-  "sessionId": "2ce7f2f9-5415-4138-955d-48529ae50c7c",
-  "startedAt": "2026-06-23T03:23:32.358Z",
-  "turns": 4,
-  "compactions": 1,
-  "lastCompaction": "2026-06-23T05:40:58.315Z",
-  "lastUpdated": "2026-06-23T05:40:58.316Z"
+  "sessionId": "9f6a4404-68e4-43d7-9246-df661ebdc318",
+  "startedAt": "2026-06-23T06:35:41.395Z",
+  "turns": 1,
+  "compactions": 0,
+  "lastCompaction": null,
+  "lastUpdated": "2026-06-23T06:36:04.038Z"
 }

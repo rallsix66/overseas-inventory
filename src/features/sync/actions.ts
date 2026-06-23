@@ -8,9 +8,14 @@ import 'server-only';
 
 import type { SyncRepository } from './repository';
 import type { SyncService } from './sync-service';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
+import type { ArtifactProvider } from './artifact-provider';
+import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, SyncRunDetailAdmin, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
 import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema } from './schema';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
+
+/** Dry Run 过期窗口（毫秒）。超过此窗口的 Dry Run 不能绑定 Real Write。
+ *  与 DB claim lease (300s) 对齐为 60 分钟（2× 典型抓取超时），防止跨天 Dry Run 绑定。 */
+const DRY_RUN_EXPIRY_MS = 60 * 60 * 1000; // 60 minutes
 
 // ─── InputArtifactSource ──────────────────────────────────────────
 
@@ -30,6 +35,8 @@ export interface SyncActionsDeps {
   repository: SyncRepository;
   syncService: SyncService; // 由 createSyncService() 创建
   inputArtifactSource: InputArtifactSource;
+  /** P5-SY9D rework: artifactProvider 用于加载绑定的 Dry Run artifact */
+  artifactProvider: ArtifactProvider;
 }
 
 // ─── Factory ─────────────────────────────────────────────────────
@@ -240,6 +247,8 @@ export function createSyncActions(deps: SyncActionsDeps) {
 
         // 构造审核摘要
         const summary = dryRunResult.runnerResult?.summary;
+        const planContent = dryRunResult.runnerResult?.planArtifact as Record<string, unknown> | undefined;
+        const scraperMeta = dryRunResult.runnerResult?.scraperMeta;
         return {
           warehouseId,
           warehouseName,
@@ -248,10 +257,10 @@ export function createSyncActions(deps: SyncActionsDeps) {
           status: 'completed',
           summary: {
             warehouseName,
-            country: (dryRunResult.runnerResult?.summary as Record<string, unknown>)?.warehouseName as string ?? '',
-            rawRowCount: 0,
-            validSkuCount: 0,
-            invalidSkuCount: 0,
+            country: (planContent?.country as string) ?? '',
+            rawRowCount: scraperMeta?.rawRowCount ?? 0,
+            validSkuCount: scraperMeta?.validSkuCount ?? 0,
+            invalidSkuCount: scraperMeta?.invalidSkuCount ?? 0,
             variantsCreated: summary?.variantsCreated ?? 0,
             inventoryInserted: summary?.inventoryInserted ?? 0,
             inventoryUpdated: summary?.inventoryUpdated ?? 0,
@@ -273,11 +282,12 @@ export function createSyncActions(deps: SyncActionsDeps) {
       }
     },
 
-    // ─── P5-SY9D: 确认 Real Write（绑定已完成 Dry Run） ───────────
+    // ─── P5-SY9D rework: 确认 Real Write（绑定已完成 Dry Run） ───
 
     async confirmRealWrite(
       warehouseId: string,
       warehouseName: string,
+      country: string,
       dryRunRunId: string,
     ): Promise<ConfirmRealWriteResult> {
       const user = await requireActiveAdmin();
@@ -285,7 +295,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
 
       confirmRealWriteSchema.parse({ warehouseId, dryRunRunId });
 
-      // ── 绑定验证：加载 Dry Run 详情 ──────────────────────
+      // ── 1. 加载 Dry Run 详情 ──────────────────────────────
       const dryRunDetail = await deps.repository.getSyncRunDetail(dryRunRunId);
       if (!dryRunDetail) {
         return {
@@ -338,6 +348,35 @@ export function createSyncActions(deps: SyncActionsDeps) {
         };
       }
 
+      // ── 2. 验证 Dry Run 未过期 ────────────────────────────
+      const finishedAt = dryRunDetail.finished_at
+        ? new Date(dryRunDetail.finished_at)
+        : null;
+      if (!finishedAt) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 缺少完成时间，无法验证是否过期`,
+          dryRunRunId,
+        };
+      }
+      const ageMs = Date.now() - finishedAt.getTime();
+      if (ageMs > DRY_RUN_EXPIRY_MS) {
+        const ageMinutes = Math.round(ageMs / 60000);
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 已过期（完成于 ${finishedAt.toISOString()}，距今约 ${ageMinutes} 分钟，超过 ${DRY_RUN_EXPIRY_MS / 60000} 分钟限制）`,
+          dryRunRunId,
+        };
+      }
+
       // 验证计划漂移检查
       if (dryRunDetail.plan_drift_check !== 'PASS') {
         return {
@@ -351,19 +390,95 @@ export function createSyncActions(deps: SyncActionsDeps) {
         };
       }
 
-      // ── 执行 Real Write ──────────────────────────────────
+      // ── 3. 从 ArtifactProvider 加载 Dry Run artifact ───────
+      //     禁止重新抓取：Real Write 必须使用绑定的 Dry Run 的
+      //     input artifact + plan artifact，不得调用
+      //     inputArtifactSource.getInputArtifact(..., 'real_write')
+      let dryRunInput: { content: JsonValue; hash: string };
+      let dryRunPlan: { content: JsonValue; hash: string };
       try {
-        const realInputArtifact = await deps.inputArtifactSource.getInputArtifact(
+        const inputArtifact = await deps.artifactProvider.get(dryRunRunId, 'input');
+        dryRunInput = { content: inputArtifact.content, hash: inputArtifact.hash };
+      } catch (err) {
+        return {
           warehouseId,
-          'real_write',
-        );
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定 Dry Run input artifact 加载失败: ${(err as Error).message}`,
+          dryRunRunId,
+        };
+      }
 
+      try {
+        const planArtifact = await deps.artifactProvider.get(dryRunRunId, 'plan');
+        dryRunPlan = { content: planArtifact.content, hash: planArtifact.hash };
+      } catch (err) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定 Dry Run plan artifact 加载失败: ${(err as Error).message}`,
+          dryRunRunId,
+        };
+      }
+
+      // ── 4. 验证 country 一致 ──────────────────────────────
+      const planCountry = (dryRunPlan.content as unknown as Record<string, string | undefined>)?.country;
+      if (planCountry && planCountry !== country) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 国家不匹配（预期: ${country}, Dry Run: ${planCountry}）`,
+          dryRunRunId,
+        };
+      }
+
+      // ── 5. 应用层 Hash 校验 ──────────────────────────────
+      //     对比 DB sync_run 记录的 hash 与 ArtifactProvider 当前存储 hash，
+      //     在 claim 前阻断 hash 不一致（存储层被篡改或 artifact 损坏）。
+      //     DB claim_sync_run RPC 在事务内做二次防御性验证。
+      //     confirmRealWrite 仅 Admin 可调用，dryRunDetail 为 admin 视图。
+      const adminDetail = dryRunDetail as SyncRunDetailAdmin;
+      if (adminDetail.input_artifact_hash && adminDetail.input_artifact_hash !== dryRunInput.hash) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `input hash 不一致（DB: ${adminDetail.input_artifact_hash}, artifact: ${dryRunInput.hash}）`,
+          dryRunRunId,
+        };
+      }
+
+      if (adminDetail.plan_artifact_hash && adminDetail.plan_artifact_hash !== dryRunPlan.hash) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `plan hash 不一致（DB: ${adminDetail.plan_artifact_hash}, artifact: ${dryRunPlan.hash}）`,
+          dryRunRunId,
+        };
+      }
+
+      // ── 6. 执行 Real Write ──────────────────────────────────
+      //     使用绑定的 Dry Run input artifact（不重新抓取）
+      try {
         const realResult = await deps.syncService.executeSync({
           warehouseId,
           mode: 'real_write',
-          inputArtifact: realInputArtifact,
+          inputArtifact: dryRunInput.content,
           dryRunRunId,
-          confirmToken: 'P5-SY3B-PH', // P5-SY9C: feature gate blocks this from executing
+          confirmToken: 'P5-SY3B-PH',
           triggeredBy,
         });
 

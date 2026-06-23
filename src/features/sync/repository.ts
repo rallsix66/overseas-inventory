@@ -304,6 +304,8 @@ export class MockRepository implements SyncRepository {
         plan_drift_check: r.planDriftCheck,
         plan_drift_count: r.planDriftCount,
         dry_run_run_id: r.dryRunRunId,
+        input_artifact_hash: r.inputArtifactHash,
+        plan_artifact_hash: r.planArtifactHash,
       }));
     }
 
@@ -356,6 +358,8 @@ export class MockRepository implements SyncRepository {
         plan_drift_count: run.planDriftCount,
         dry_run_run_id: run.dryRunRunId,
         plan_drift_differences: run.planDriftDifferences,
+        input_artifact_hash: run.inputArtifactHash,
+        plan_artifact_hash: run.planArtifactHash,
       };
     }
 

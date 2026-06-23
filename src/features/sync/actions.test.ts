@@ -49,7 +49,7 @@ function buildDeps(overrides?: Partial<SyncActionsDeps>): SyncActionsDeps {
   const inputArtifactSource: InputArtifactSource = {
     getInputArtifact: async () => ({ skus: ['TEST-SKU'] }),
   };
-  return { repository, syncService, inputArtifactSource, ...overrides };
+  return { repository, syncService, inputArtifactSource, artifactProvider, ...overrides };
 }
 
 function buildFormData(overrides: Record<string, string> = {}): FormData {
@@ -198,7 +198,7 @@ describe('createSyncActions — triggerSync real_write', () => {
     const inputArtifactSource: InputArtifactSource = {
       getInputArtifact: async () => ({ skus: ['REAL-SKU'] }),
     };
-    const actions = createSyncActions({ repository: repo, syncService: realSvc, inputArtifactSource });
+    const actions = createSyncActions({ repository: repo, syncService: realSvc, inputArtifactSource, artifactProvider });
 
     const fd = buildFormData({
       mode: 'real_write',
@@ -423,6 +423,7 @@ describe('createSyncActions — cross-request artifact lifecycle', () => {
       repository: repo2,
       syncService: syncService2,
       inputArtifactSource: inputSrc2,
+      artifactProvider: provider2,
     });
 
     const rwFd = new FormData();

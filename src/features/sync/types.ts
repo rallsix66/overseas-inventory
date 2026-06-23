@@ -104,6 +104,12 @@ export interface SyncExecuteResult {
    *  real_write 模式必须为 undefined（使用绑定的 Dry Run plan）。
    *  结构严格匹配 plan_generator.generate_plan() 输出。 */
   planArtifact?: JsonValue;
+  /** 抓取元数据（来自 BigSeller scraper，供审核摘要展示） */
+  scraperMeta?: {
+    rawRowCount: number;
+    validSkuCount: number;
+    invalidSkuCount: number;
+  };
 }
 
 // ─── SyncServiceInput — mode 判别联合 ─────────────────────────────
@@ -169,6 +175,9 @@ export interface SyncRunAdminRow {
   plan_drift_check: 'PASS' | 'DRIFT_DETECTED' | null;
   plan_drift_count: number | null;
   dry_run_run_id: string | null;
+  /** P5-SY9D rework: artifact hash 字段供绑定校验使用 */
+  input_artifact_hash: string | null;
+  plan_artifact_hash: string | null;
 }
 
 /** Operator 视图 — get_sync_runs 单条记录（脱敏） */

@@ -216,6 +216,13 @@ def main():
         result['summary']['inventory_unchanged'] = len(plan.get('inventory_unchanged', []))
         result['summary']['warehouse_renamed'] = plan.get('warehouse_rename_required', {}).get('action') == 'rename'
 
+        # P5-SY9D rework: 暴露完整 Dry Run plan artifact（含元数据），
+        # 供 TypeScript 层存储为 plan artifact 并在 Real Write 绑定校验中使用。
+        # plan_summary 包含 generated_at / warehouse_id / warehouse_name /
+        # country / input_rows + plan 所有字段（new_variants / inventory_inserts /
+        # inventory_updates / inventory_unchanged / warehouse_rename_required）
+        result['plan'] = plan_summary
+
         # ============================================================
         # Phase 4: 真实写入（仅 --no-dry-run）
         # ============================================================

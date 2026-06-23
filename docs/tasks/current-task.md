@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9C 已通过 Codex 独立复验（DONE）；P5-SY9D 单仓 Web Dry Run → 审核 → Real Write 绑定实现完成，等待 Codex 独立验收（AWAITING_REVIEW）；P5-SY9A/B 均为 DONE；P5-SY9E~I PENDING。
+`IN_PROGRESS` — P5-SY9C 已通过 Codex 独立复验（DONE）；P5-SY9D rework 完成（修复 plan artifact 完整性 + Real Write 绑定校验 + 35 项测试），等待 Codex 独立验收（AWAITING_REVIEW）；P5-SY9A/B 均为 DONE；P5-SY9E~I PENDING。
 
 ## 背景
 
@@ -196,13 +196,12 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 
 ## 停止条件
 
-- 本轮只做 P5-SY9C 真实 Provider / InputSource / Production wiring。
-- 实现：`FileSystemArtifactProvider`（文件系统持久化）+ `WebInputArtifactSource`（Python bridge 真实抓取）+ 生产 wiring 重连（移除 MockArtifactProvider / mockInputArtifactSource / MockSyncRunner）+ `WEBSYNC_REAL_WRITE_ENABLED` feature gate（默认 disabled）。
+- 本轮已完成 P5-SY9D rework：修复 Dry Run plan artifact 完整性（完整 plan 非 summary）+ Real Write 绑定校验（禁止重新抓取 + 应用层过期/hash/country 校验）+ 35 项测试。
 - 不连接生产 Supabase。
 - 不执行真实写入。
-- 不提交 runtime/profile、cookie、抓取产物、.env.local、.codex/hooks.json。
-- 不开始 P5-SY9D。
-- 完成后 P5-SY9C 保持 AWAITING_REVIEW，等待 Codex 独立复验。
+- 不提交 runtime/artifacts、__pycache__、bound-plan-*.json、.env.local、profile、cookie、抓取产物。
+- 不开始 P5-SY9E。
+- 完成后 P5-SY9D 保持 AWAITING_REVIEW，等待 Codex 独立复验。
 
 ## 依赖
 

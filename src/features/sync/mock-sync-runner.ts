@@ -17,6 +17,7 @@ import { validateJsonValue } from './validate-json-value';
 /** Mock Plan Artifact 构造器 — 返回与 plan_generator.generate_plan() 结构一致的固定数据 */
 function buildMockPlanArtifact(): JsonValue {
   return {
+    country: 'PH',
     warehouse_rename_required: null,
     new_variants: [
       {
@@ -68,6 +69,11 @@ function buildSuccessResult(params: SyncExecuteParams, planArtifact?: JsonValue)
     finishedAt: new Date().toISOString(),
     durationMs: 1000,
     planArtifact,
+    scraperMeta: {
+      rawRowCount: 91,
+      validSkuCount: 91,
+      invalidSkuCount: 0,
+    },
   };
 }
 

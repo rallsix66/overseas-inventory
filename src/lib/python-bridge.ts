@@ -42,6 +42,14 @@ export interface PythonBridgeResult {
   plan_drift_check: 'PASS' | 'DRIFT_DETECTED' | null;
   plan_drift_count: number;
   plan_drift_differences: string[];
+  /** P5-SY9D rework: 完整 Dry Run plan artifact（含元数据）。
+   *  dry_run 完成时 web_bridge.py 输出 plan_summary；
+   *  real_write 时为 null（无需 plan，使用绑定的 Dry Run plan）。 */
+  plan: Record<string, unknown> | null;
+  /** 抓取元数据（BigSeller scraper 输出） */
+  raw_row_count: number;
+  valid_sku_count: number;
+  invalid_sku_count: number;
 }
 
 /**
