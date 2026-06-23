@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9B BigSeller Session Health Check 已通过 Codex 独立复验（DONE）；P5-SY9C 真实 Provider / InputSource / Production wiring 已实现，等待 Codex 独立复验（AWAITING_REVIEW）；P5-SY9A 现状审查通过（DONE）；P5-SY9D~I 仍为 PENDING。
+`IN_PROGRESS` — P5-SY9B BigSeller Session Health Check 已通过 Codex 独立复验（DONE）；P5-SY9C 真实 Provider / InputSource / Production wiring 返工完成，等待 Codex 再验收（AWAITING_REVIEW）；P5-SY9A 现状审查通过（DONE）；P5-SY9D~I 仍为 PENDING。
 
 ## 背景
 
@@ -142,7 +142,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 |---|---|---|---|---|
 | P5-SY9A | 现状审查与任务包落地 | 梳理 Web sync 与 CLI 差距，标记 Web real_write 为生产化待修复，确认验收标准 | P5-SY8H | DONE（7 维度差距已标记：4 CRITICAL / 1 HIGH / 1 MEDIUM / 1 PASS；含 BigSeller Session 复用不可靠） |
 | P5-SY9B | BigSeller Session Health Check | 新增 `verifyBigSellerSession()` Server Action + `health_check.py` + `profile_unavailable` 真实分类 + `checked_at→checkedAt` 转换 + syncWarehouse/syncAllWarehouses 服务端 session health guard | P5-SY9A | DONE（Codex 独立复验通过） |
-| P5-SY9C | 真实 Provider / InputSource / Production wiring | 替换生产 Mock，建立真实 artifact 存取和生产 wiring 测试 | P5-SY9B | AWAITING_REVIEW |
+| P5-SY9C | 真实 Provider / InputSource / Production wiring | 替换生产 Mock，建立真实 artifact 存取和生产 wiring 测试 | P5-SY9B | AWAITING_REVIEW（返工完成，等待 Codex 再验收） |
 | P5-SY9D | 单仓 Web Dry Run → 审核 → Real Write 绑定 | 用户无需输入 token/runId/hash；系统内部绑定 Dry Run；plan drift 阻断。可实现 Dry Run→Real Write 绑定逻辑，但 Web 真实写入入口必须保持 server-side disabled / feature gated，直到 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。 | P5-SY9C | PENDING |
 | P5-SY9E | heartbeat / timeout / 子进程控制 | 实现 heartbeat、timeout、abort、失败落库和并发锁测试 | P5-SY9D | PENDING |
 | P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，并展示审核总览 | P5-SY9E | PENDING |

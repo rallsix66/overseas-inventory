@@ -469,6 +469,79 @@ describe('syncWarehouse session health guard', () => {
   });
 });
 
+// ─── Feature gate interception (P5-SY9C rework) ────────────────
+
+describe('syncWarehouse feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
+  beforeEach(() => {
+    mockState.authRejection = null;
+    mockState.spawnStdout = null;
+    mockState.spawnStderr = null;
+    mockState.spawnError = null;
+    mockState.spawnExitCode = null;
+    // 刻意不设置 WEBSYNC_REAL_WRITE_ENABLED — gate 默认关闭
+    delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
+  });
+
+  afterEach(() => {
+    delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
+  });
+
+  it('healthy session 但 gate 关闭 → 返回 gate 错误，不进入真实同步', async () => {
+    mockState.spawnStdout = JSON.stringify({
+      status: 'healthy',
+      message: '已登录可用：BigSeller 登录会话正常。',
+      checked_at: '2026-06-23T10:00:00.000Z',
+      details: {},
+    }) + '\n';
+    mockState.spawnExitCode = 0;
+
+    const { syncWarehouse } = await getSyncActions();
+    const result = await syncWarehouse('any-wh-id');
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('功能尚未启用');
+    expect(result.error).toContain('P5-SY9E');
+    expect(result.runId).toBe('');
+  });
+
+  it('healthy session 但 gate 关闭 → error 不包含 session health 消息（gate 在 health 之后拦截）', async () => {
+    mockState.spawnStdout = JSON.stringify({
+      status: 'healthy',
+      message: '已登录可用。',
+      checked_at: '2026-06-23T10:00:00.000Z',
+      details: {},
+    }) + '\n';
+    mockState.spawnExitCode = 0;
+
+    const { syncWarehouse } = await getSyncActions();
+    const result = await syncWarehouse('any-wh-id');
+
+    // gate 拦截消息与 session health 无关
+    expect(result.error).not.toContain('BigSeller 登录会话不可用');
+    expect(result.error).not.toContain('已登录可用');
+  });
+
+  it('gate 关闭时 verifyBigSellerSession 仍被调用（health guard 先于 gate）', async () => {
+    // session unhealthy → 被 health guard 拦截，gate 未到达
+    mockState.spawnStdout = JSON.stringify({
+      status: 'need_login',
+      message: '需要登录。',
+      checked_at: '2026-06-23T10:00:00.000Z',
+      details: {},
+    }) + '\n';
+    mockState.spawnExitCode = 0;
+
+    const { syncWarehouse } = await getSyncActions();
+    const result = await syncWarehouse('any-wh-id');
+
+    // health guard 先拦截，返回 session error 而非 gate error
+    expect(result.error).toContain('BigSeller 登录会话不可用');
+    expect(result.error).toContain('需要登录');
+    expect(result.error).not.toContain('功能尚未启用');
+  });
+});
+
 describe('syncAllWarehouses session health guard', () => {
   beforeEach(() => {
     mockState.authRejection = null;
@@ -541,5 +614,59 @@ describe('syncAllWarehouses session health guard', () => {
       const msg = e instanceof Error ? e.message : String(e);
       expect(msg).not.toContain('BigSeller 登录会话不可用');
     }
+  });
+});
+
+// ─── Feature gate interception for syncAllWarehouses (P5-SY9C rework) ──
+
+describe('syncAllWarehouses feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
+  beforeEach(() => {
+    mockState.authRejection = null;
+    mockState.spawnStdout = null;
+    mockState.spawnStderr = null;
+    mockState.spawnError = null;
+    mockState.spawnExitCode = null;
+    // 刻意不设置 WEBSYNC_REAL_WRITE_ENABLED — gate 默认关闭
+    delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
+  });
+
+  afterEach(() => {
+    delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
+  });
+
+  it('healthy session 但 gate 关闭 → 返回 gate 错误 results', async () => {
+    mockState.spawnStdout = JSON.stringify({
+      status: 'healthy',
+      message: '已登录可用：BigSeller 登录会话正常。',
+      checked_at: '2026-06-23T10:00:00.000Z',
+      details: {},
+    }) + '\n';
+    mockState.spawnExitCode = 0;
+
+    const { syncAllWarehouses } = await getSyncActions();
+    const result = await syncAllWarehouses();
+
+    expect(result.allSuccess).toBe(false);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].success).toBe(false);
+    expect(result.results[0].status).toBe('failed');
+    expect(result.results[0].error).toContain('功能尚未启用');
+    expect(result.results[0].runId).toBe('');
+  });
+
+  it('healthy session 但 gate 关闭 → error 不包含 session health 消息', async () => {
+    mockState.spawnStdout = JSON.stringify({
+      status: 'healthy',
+      message: '已登录可用。',
+      checked_at: '2026-06-23T10:00:00.000Z',
+      details: {},
+    }) + '\n';
+    mockState.spawnExitCode = 0;
+
+    const { syncAllWarehouses } = await getSyncActions();
+    const result = await syncAllWarehouses();
+
+    expect(result.results[0].error).not.toContain('BigSeller 登录会话不可用');
+    expect(result.results[0].error).not.toContain('已登录可用');
   });
 });

@@ -22,7 +22,7 @@ import type { ArtifactProvider } from './artifact-provider';
 // ─── Constants ────────────────────────────────────────────────────
 
 const PROJECT_ROOT = path.resolve(process.cwd());
-const ARTIFACTS_BASE_DIR = path.join(
+const DEFAULT_ARTIFACTS_DIR = path.join(
   PROJECT_ROOT,
   'tools',
   'bigseller-scraper',
@@ -36,10 +36,6 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function artifactFilePath(runId: string, type: ArtifactType): string {
-  return path.join(ARTIFACTS_BASE_DIR, runId, `${type}.json`);
-}
-
 /** 磁盘上的 artifact 文件结构 */
 interface StoredArtifact {
   content: JsonValue;
@@ -51,6 +47,23 @@ interface StoredArtifact {
 
 export class FileSystemArtifactProvider implements ArtifactProvider {
   /** 生产实现 — 无 __mock__ 标记，可通过 createSyncService guard 验证 */
+
+  private readonly baseDir: string;
+
+  constructor(baseDir?: string) {
+    this.baseDir = baseDir ?? DEFAULT_ARTIFACTS_DIR;
+  }
+
+  /** 返回当前使用的 artifact 存储目录路径（用于测试验证分离性） */
+  getBaseDir(): string {
+    return this.baseDir;
+  }
+
+  // ── 内部路径方法 ──────────────────────────────────────────────
+
+  private artifactFilePath(runId: string, type: ArtifactType): string {
+    return path.join(this.baseDir, runId, `${type}.json`);
+  }
 
   // ── prepare ───────────────────────────────────────────────────
 
@@ -78,7 +91,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
       );
     }
 
-    const dir = path.dirname(artifactFilePath(runId, type));
+    const dir = path.dirname(this.artifactFilePath(runId, type));
     await fs.mkdir(dir, { recursive: true });
 
     const stored: StoredArtifact = {
@@ -88,7 +101,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
     };
 
     await fs.writeFile(
-      artifactFilePath(runId, type),
+      this.artifactFilePath(runId, type),
       JSON.stringify(stored),
       'utf-8',
     );
@@ -99,7 +112,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
   // ── get ───────────────────────────────────────────────────────
 
   async get(runId: string, type: ArtifactType): Promise<Artifact> {
-    const filePath = artifactFilePath(runId, type);
+    const filePath = this.artifactFilePath(runId, type);
 
     let raw: string;
     try {
@@ -160,7 +173,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
   // ── delete ────────────────────────────────────────────────────
 
   async delete(runId: string, type: ArtifactType): Promise<void> {
-    const filePath = artifactFilePath(runId, type);
+    const filePath = this.artifactFilePath(runId, type);
     try {
       await fs.unlink(filePath);
     } catch (err) {
@@ -178,7 +191,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
 
     let runDirs: string[];
     try {
-      runDirs = await fs.readdir(ARTIFACTS_BASE_DIR);
+      runDirs = await fs.readdir(this.baseDir);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         return []; // artifacts 目录尚未创建
@@ -187,7 +200,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
     }
 
     for (const runId of runDirs) {
-      const runDir = path.join(ARTIFACTS_BASE_DIR, runId);
+      const runDir = path.join(this.baseDir, runId);
 
       let stat;
       try {
@@ -200,7 +213,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
 
       // 检查该 runId 目录下的 artifact 文件
       for (const type of ['input', 'plan'] as ArtifactType[]) {
-        const filePath = artifactFilePath(runId, type);
+        const filePath = this.artifactFilePath(runId, type);
         try {
           const fileStat = await fs.stat(filePath);
           if (fileStat.mtime < olderThan) {
@@ -226,7 +239,7 @@ export class FileSystemArtifactProvider implements ArtifactProvider {
   ): Promise<number> {
     let count = 0;
     for (const { runId, type } of artifacts) {
-      const filePath = artifactFilePath(runId, type);
+      const filePath = this.artifactFilePath(runId, type);
       try {
         await fs.unlink(filePath);
         count++;

@@ -10,9 +10,9 @@ import { createSyncActions } from './actions';
 import { createSyncService } from './sync-service';
 import { SupabaseSyncRepository } from './supabase-repository';
 import { FileSystemArtifactProvider } from './file-system-artifact-provider';
-import { MockSyncRunner } from './mock-sync-runner';
 import { RealSyncRunner, type WarehouseBridgeInfo } from './real-sync-runner';
 import { WebInputArtifactSource, isWebsyncRealWriteEnabled } from './web-input-artifact-source';
+import { getSyncRunsSchema, getSyncRunDetailSchema } from './schema';
 import { revalidatePath } from 'next/cache';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
@@ -28,34 +28,6 @@ async function createSupabaseRepo() {
     await createClient(),
     createServiceClient(),
   );
-}
-
-async function wireActions() {
-  const repository = await createSupabaseRepo();
-  // P5-SY9C: 生产路径使用 FileSystemArtifactProvider 替代 MockArtifactProvider。
-  // wireActions() 供 getSyncRuns / getSyncRunDetail / triggerSync 使用。
-  // triggerSync 是旧版 FormData 触发路径，仍使用 MockSyncRunner；
-  // 当前同步页面通过 syncWarehouse/syncAllWarehouses → wireRealActions() 执行真实同步。
-  // MockSyncRunner 的 __mock__ 标记会在生产环境被 createSyncService guard 拒绝，
-  // 从而正确阻止旧版 triggerSync 在生产环境执行。
-  const artifactProvider = new FileSystemArtifactProvider();
-  const runner = new MockSyncRunner();
-  const syncService = createSyncService({
-    repository,
-    artifactProvider,
-    runner,
-  });
-
-  return createSyncActions({
-    repository,
-    syncService,
-    // triggerSync 是旧版路径，使用空 inputArtifactSource（不执行真实抓取）
-    inputArtifactSource: {
-      async getInputArtifact() {
-        throw new Error('triggerSync 旧版路径已禁用，请使用 syncWarehouse/syncAllWarehouses');
-      },
-    },
-  });
 }
 
 /** 真实同步管线：RealSyncRunner + FileSystemArtifactProvider + WebInputArtifactSource
@@ -89,24 +61,36 @@ export async function getSyncRuns(
   limit?: number,
 ): Promise<SyncRunsResponse> {
   await requireActiveAuth();
-  const actions = await wireActions();
-  return actions.getSyncRunsAction(warehouseId, limit);
+  const repository = await createSupabaseRepo();
+  const parsed = getSyncRunsSchema.parse({ warehouseId, limit });
+  return repository.getSyncRuns({
+    warehouseId: parsed.warehouseId,
+    limit: parsed.limit,
+  });
 }
 
 export async function getSyncRunDetail(
   runId: string,
 ): Promise<SyncRunDetailResponse> {
   await requireActiveAuth();
-  const actions = await wireActions();
-  return actions.getSyncRunDetailAction(runId);
+  const repository = await createSupabaseRepo();
+  const parsed = getSyncRunDetailSchema.parse({ runId });
+  return repository.getSyncRunDetail(parsed.runId);
 }
 
 export async function triggerSync(
-  formData: FormData,
+  _formData: FormData,
 ): Promise<{ success: boolean; runId: string; status: string; error?: string }> {
   await requireActiveAdmin();
-  const actions = await wireActions();
-  return actions.triggerSync(formData);
+  // P5-SY9C: 旧版 FormData 同步路径已禁用。
+  // 在构造 SyncService 之前直接返回中文错误，
+  // 不通过 MockSyncRunner 间接触发生产 guard。
+  return {
+    success: false,
+    runId: '',
+    status: 'failed',
+    error: '旧版 FormData 同步路径已禁用，请使用一键同步功能。',
+  };
 }
 
 const COUNTRY_TOKEN_MAP: Record<string, string> = {

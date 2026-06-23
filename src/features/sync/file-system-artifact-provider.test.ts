@@ -3,42 +3,82 @@
 // P5-SY9C: 验证真实文件系统 ArtifactProvider 的 prepare / store / get / verify /
 // delete / listCandidates / deleteMany 行为。
 // 不连接 Supabase，不执行真实写入。
+//
+// P5-SY9C rework: 测试使用 os.tmpdir() 隔离测试目录，不接触生产 runtime/artifacts。
+// 默认路径和测试路径分离通过 getBaseDir() 验证。
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { FileSystemArtifactProvider } from './file-system-artifact-provider';
 import type { JsonValue, PreparedArtifact } from './types';
 
-const TEST_BASE = path.resolve(
-  process.cwd(),
-  'tools',
-  'bigseller-scraper',
-  'runtime',
-  'artifacts',
-);
+// ─── 测试专用临时目录 ───────────────────────────────────────────────
+
+let TEST_DIR: string;
+
+function makeTestDir() {
+  const prefix = path.join(os.tmpdir(), 'dis-fs-artifact-test-');
+  TEST_DIR = fs.mkdtempSync ? fs.mkdtempSync(prefix) : path.join(prefix, `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  if (!existsSync(TEST_DIR)) {
+    mkdirSync(TEST_DIR, { recursive: true });
+  }
+}
+
+function removeTestDir() {
+  if (TEST_DIR && existsSync(TEST_DIR)) {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  }
+}
 
 function testPath(runId: string, type: string): string {
-  return path.join(TEST_BASE, runId, `${type}.json`);
+  return path.join(TEST_DIR, runId, `${type}.json`);
 }
 
 describe('FileSystemArtifactProvider', () => {
   let provider: FileSystemArtifactProvider;
 
   beforeEach(() => {
-    provider = new FileSystemArtifactProvider();
-    // 确保测试目录存在
-    if (!existsSync(TEST_BASE)) {
-      mkdirSync(TEST_BASE, { recursive: true });
-    }
+    makeTestDir();
+    // 使用测试专用目录构造 provider，不接触生产 runtime/artifacts
+    provider = new FileSystemArtifactProvider(TEST_DIR);
   });
 
   afterEach(() => {
-    // 清理测试 artifact
-    if (existsSync(TEST_BASE)) {
-      rmSync(TEST_BASE, { recursive: true, force: true });
-    }
+    removeTestDir();
+  });
+
+  // ─── 路径分离验证 (P5-SY9C rework) ───────────────────────────
+
+  describe('baseDir 隔离', () => {
+    it('应使用注入的 baseDir 而非默认生产路径', () => {
+      expect(provider.getBaseDir()).toBe(TEST_DIR);
+    });
+
+    it('默认路径指向生产 runtime/artifacts', () => {
+      const defaultProvider = new FileSystemArtifactProvider();
+      const defaultDir = defaultProvider.getBaseDir();
+      // 默认路径应包含 tools/bigseller-scraper/runtime/artifacts
+      expect(defaultDir).toContain('tools');
+      expect(defaultDir).toContain('bigseller-scraper');
+      expect(defaultDir).toContain('runtime');
+      expect(defaultDir).toContain('artifacts');
+    });
+
+    it('测试路径与默认路径不同', () => {
+      const defaultProvider = new FileSystemArtifactProvider();
+      expect(provider.getBaseDir()).not.toBe(defaultProvider.getBaseDir());
+    });
+
+    it('afterEach 只删除测试目录，不删除默认目录', () => {
+      // 给定：测试已创建文件和目录
+      // 验证：removeTestDir 只删除 TEST_DIR
+      const defaultDir = new FileSystemArtifactProvider().getBaseDir();
+      // 默认目录可能不存在（合法），但路径必须不同于测试目录
+      expect(TEST_DIR).not.toBe(defaultDir);
+    });
   });
 
   // ─── prepare ─────────────────────────────────────────────────
@@ -101,7 +141,7 @@ describe('FileSystemArtifactProvider', () => {
       const key = await provider.store('run-001', 'input', prepared);
       expect(key).toBe('run-001:input');
 
-      // 文件应该存在
+      // 文件应该存在于测试目录
       expect(existsSync(testPath('run-001', 'input'))).toBe(true);
 
       const artifact = await provider.get('run-001', 'input');
