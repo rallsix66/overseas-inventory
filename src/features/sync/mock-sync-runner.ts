@@ -46,7 +46,11 @@ function buildMockPlanArtifact(): JsonValue {
   };
 }
 
-function buildSuccessResult(params: SyncExecuteParams, planArtifact?: JsonValue): SyncExecuteResult {
+function buildSuccessResult(
+  params: SyncExecuteParams,
+  planArtifact?: JsonValue,
+  drift?: { check: 'PASS' | 'DRIFT_DETECTED'; count: number },
+): SyncExecuteResult {
   return {
     success: true,
     exitCode: 0,
@@ -61,8 +65,8 @@ function buildSuccessResult(params: SyncExecuteParams, planArtifact?: JsonValue)
       warehouseRenamed: false,
     },
     syncLog: { status: 'success', written: true },
-    planDriftCheck: 'PASS',
-    planDriftCount: 0,
+    planDriftCheck: drift?.check ?? 'PASS',
+    planDriftCount: drift?.count ?? 0,
     planDriftDifferences: [],
     errors: [],
     startedAt: new Date().toISOString(),
@@ -89,6 +93,15 @@ export class MockSyncRunner implements SyncRunner {
 
   /** 配置抛出的错误消息 */
   throwMessage = 'MockSyncRunner 模拟未捕获异常';
+
+  /** P5-SY9F: 可配置的计划漂移检查结果 */
+  planDriftCheck: 'PASS' | 'DRIFT_DETECTED' = 'PASS';
+
+  /** P5-SY9F: 可配置的计划漂移数量 */
+  planDriftCount = 0;
+
+  /** P5-SY9F: 可配置的仓库改名计划（null 表示无改名计划） */
+  renamePlan: Record<string, unknown> | null = null;
 
   /** P5-SY9E: 模拟执行延迟（毫秒）。期间检查 signal 是否 aborted。
    *  用于测试 heartbeat 续租和 timeout/abort 行为。默认 0（立即完成）。 */
@@ -156,8 +169,10 @@ export class MockSyncRunner implements SyncRunner {
         throw new Error('Dry Run SyncExecuteParams 不得包含 boundPlanArtifact');
       }
 
-      const planArtifact = this.exitCode === 0 ? buildMockPlanArtifact() : undefined;
-      const result = buildSuccessResult(params, planArtifact);
+      const planArtifact: JsonValue | undefined = this.exitCode === 0
+        ? { ...(buildMockPlanArtifact() as Record<string, unknown>), warehouse_rename_required: this.renamePlan } as unknown as JsonValue
+        : undefined;
+      const result = buildSuccessResult(params, planArtifact, { check: this.planDriftCheck, count: this.planDriftCount });
       if (this.exitCode !== 0) {
         result.success = false;
         result.exitCode = this.exitCode;
@@ -190,7 +205,7 @@ export class MockSyncRunner implements SyncRunner {
     }
 
     // Real Write must NOT output planArtifact
-    const result = buildSuccessResult(params, undefined);
+    const result = buildSuccessResult(params, undefined, { check: this.planDriftCheck, count: this.planDriftCount });
     if (this.exitCode !== 0) {
       result.success = false;
       result.exitCode = this.exitCode;

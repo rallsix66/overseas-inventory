@@ -626,7 +626,8 @@ describe('createSyncActions — triggerBatchDryRun', () => {
     expect(typeof r.inventoryInserted).toBe('number');
     expect(typeof r.inventoryUpdated).toBe('number');
     expect(typeof r.inventoryUnchanged).toBe('number');
-    expect(typeof r.warehouseRenamed).toBe('boolean');
+    // warehouseRenamePlan is null or has rename plan details
+    expect(r.warehouseRenamePlan === null || typeof r.warehouseRenamePlan === 'object').toBe(true);
     expect(r.planDriftCheck).toBeDefined();
     expect(typeof r.planDriftCount).toBe('number');
   });

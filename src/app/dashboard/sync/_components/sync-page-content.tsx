@@ -41,12 +41,12 @@ import {
 } from '@/components/ui/sheet';
 import {
   syncWarehouse,
-  syncAllWarehouses,
   getSyncRunDetail,
   establishBigSellerSession,
   verifyBigSellerSession,
   triggerDryRun,
   confirmRealWrite,
+  triggerBatchDryRun,
 } from '@/features/sync/server-actions';
 import type {
   SyncRunAdminRow,
@@ -56,6 +56,8 @@ import type {
   SyncRunDetailOperator,
   SessionHealthResult,
   TriggerDryRunResult,
+  BatchDryRunResult,
+  BatchDryRunItemResult,
 } from '@/features/sync/types';
 
 // ─── Type helpers ──────────────────────────────────────────────
@@ -170,6 +172,73 @@ function DetailField({
       <p className={`text-sm mt-0.5 ${mono ? 'font-mono text-xs break-all' : ''}`}>
         {value}
       </p>
+    </div>
+  );
+}
+
+// ─── Batch Review Card (P5-SY9F) ───────────────────────────────
+
+function BatchReviewCard({ item }: { item: BatchDryRunItemResult }) {
+  const statusConfig = {
+    ready: { bg: 'bg-green-50 border-green-200', text: 'text-green-800', label: '✓ 就绪' },
+    failed: { bg: 'bg-red-50 border-red-200', text: 'text-red-800', label: '✗ 失败' },
+    blocked: { bg: 'bg-yellow-50 border-yellow-200', text: 'text-yellow-800', label: '⚠ 阻断' },
+  }[item.status];
+
+  return (
+    <div className={`rounded-md border p-3 text-sm ${statusConfig.bg}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-medium">
+          {item.warehouseName}
+          <span className="text-xs text-muted-foreground ml-1.5">({item.country})</span>
+        </span>
+        <span className={`text-xs font-medium ${statusConfig.text}`}>{statusConfig.label}</span>
+      </div>
+
+      {/* Run ID */}
+      {item.runId && (
+        <p className="text-xs text-muted-foreground mb-2 font-mono">
+          Run ID: {item.runId.slice(0, 12)}…
+        </p>
+      )}
+
+      {/* Summary grid — only for ready/blocked (not failed with no run) */}
+      {item.status !== 'failed' && (
+        <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs mb-2">
+          <span>抓取行数: {item.rawRowCount}</span>
+          <span>有效 SKU: {item.validSkuCount}</span>
+          <span>无效 SKU: {item.invalidSkuCount}</span>
+          <span>新 Variant: {item.variantsCreated}</span>
+          <span>库存新增: {item.inventoryInserted}</span>
+          <span>库存更新: {item.inventoryUpdated}</span>
+          <span>库存不变: {item.inventoryUnchanged}</span>
+          <span className="col-span-2">
+            计划漂移: {item.planDriftCheck === 'PASS'
+              ? <span className="text-green-700 font-medium">✓ 一致</span>
+              : item.planDriftCheck === 'DRIFT_DETECTED'
+                ? <span className="text-red-700">检测到漂移（{item.planDriftCount} 项）</span>
+                : '—'}
+          </span>
+        </div>
+      )}
+
+      {/* Rename plan */}
+      {item.warehouseRenamePlan && item.warehouseRenamePlan.action === 'rename' && (
+        <div className="text-xs text-amber-700 bg-amber-100/50 rounded px-2 py-1 mb-2">
+          📝 仓库改名：{item.warehouseRenamePlan.currentName} → {item.warehouseRenamePlan.targetName}
+        </div>
+      )}
+      {item.warehouseRenamePlan && item.warehouseRenamePlan.action === 'none' && (
+        <div className="text-xs text-muted-foreground mb-2">仓库名称无需更改</div>
+      )}
+
+      {/* Failure reason */}
+      {item.failureReason && (
+        <p className="text-xs text-red-700 mt-1">
+          {item.failureReason}
+        </p>
+      )}
     </div>
   );
 }
@@ -309,39 +378,50 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
     }
   }
 
-  // Sync-all dialog
+  // Batch Dry Run dialog (P5-SY9F)
   const [syncAllOpen, setSyncAllOpen] = useState(false);
-  const [syncAllSubmitting, setSyncAllSubmitting] = useState(false);
+  const [batchDryRunSubmitting, setBatchDryRunSubmitting] = useState(false);
+  const [batchDryRunResult, setBatchDryRunResult] = useState<BatchDryRunResult | null>(null);
 
-  async function handleSyncAll() {
-    setSyncAllSubmitting(true);
+  async function handleBatchDryRun() {
+    setBatchDryRunSubmitting(true);
+    setBatchDryRunResult(null);
     try {
-      const result = await syncAllWarehouses();
-      const successCount = result.results.filter((r) => r.success).length;
-      const failCount = result.results.length - successCount;
+      const result = await triggerBatchDryRun();
+      setBatchDryRunResult(result);
 
-      if (result.allSuccess) {
-        toast.success(`全部 ${result.results.length} 个仓库同步完成`);
-      } else if (successCount > 0) {
-        toast.warning(`${successCount}/${result.results.length} 仓库同步成功，${failCount} 失败`);
+      const readyCount = result.successCount;
+      const failedCount = result.failedCount;
+      const blockedCount = result.blockedCount;
+
+      if (result.blockReason) {
+        toast.error(`批量 Dry Run 已阻断: ${result.blockReason}`, { duration: 8000 });
+      } else if (result.allSucceeded) {
+        toast.success(`全部 ${readyCount} 个仓库 Dry Run 通过，可进入审核`);
       } else {
-        toast.error(`全部 ${result.results.length} 个仓库同步失败`);
+        toast.warning(
+          `批量 Dry Run 完成：${readyCount} 就绪 / ${failedCount} 失败 / ${blockedCount} 阻断`,
+          { duration: 6000 },
+        );
       }
 
-      for (const r of result.results) {
-        if (!r.success) {
-          toast.error(`${r.warehouseName}: ${r.error || '同步失败'}`, { duration: 6000 });
+      for (const item of result.results) {
+        if (item.status === 'failed') {
+          toast.error(`${item.warehouseName}: ${item.failureReason || '执行失败'}`, { duration: 6000 });
+        } else if (item.status === 'blocked') {
+          toast.warning(`${item.warehouseName}: ${item.failureReason || '已阻断'}`, { duration: 5000 });
         }
       }
 
-      setSyncAllOpen(false);
-      router.refresh();
+      if (result.results.some((r) => r.status === 'ready')) {
+        router.refresh();
+      }
     } catch (catchErr) {
       const errMsg = (catchErr as Error).message || String(catchErr);
-      console.error('批量同步失败:', catchErr);
-      toast.error(`批量同步失败: ${errMsg}`, { duration: 10000 });
+      console.error('批量 Dry Run 失败:', catchErr);
+      toast.error(`批量 Dry Run 失败: ${errMsg}`, { duration: 10000 });
     } finally {
-      setSyncAllSubmitting(false);
+      setBatchDryRunSubmitting(false);
     }
   }
 
@@ -448,7 +528,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
               title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
             >
               <RefreshCw className="w-4 h-4 mr-1.5" />
-              同步所有国家
+              批量 Dry Run
             </Button>
             <Button
               size="sm"
@@ -599,7 +679,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
           <p className="text-xs text-muted-foreground mt-1">
             {rows.length === 0
               ? isAdmin
-                ? '点击右上角"触发同步"开始首次库存同步'
+                ? '点击右上角"触发同步"执行单仓 Dry Run，或使用"批量 Dry Run"审核全部仓库'
                 : '请联系管理员触发库存同步'
               : '请尝试调整筛选条件'}
           </p>
@@ -814,44 +894,86 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* 同步所有国家 Dialog */}
-      <Dialog open={syncAllOpen} onOpenChange={setSyncAllOpen}>
-        <DialogContent>
+      {/* 批量 Dry Run / 审核总览 Dialog (P5-SY9F) */}
+      <Dialog open={syncAllOpen} onOpenChange={(open) => { if (!open) { setSyncAllOpen(false); setBatchDryRunResult(null); } }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>同步所有国家</DialogTitle>
+            <DialogTitle>批量 Dry Run / 审核总览</DialogTitle>
             <DialogDescription>
-              系统将依次对以下仓库执行 Dry Run 验证后写入：
+              对全部启用海外仓执行只读 Dry Run，生成审核总览。不会写入数据库。
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             {/* 仓库清单 */}
-            <div className="rounded-md bg-gray-50 p-3">
-              <ul className="text-sm text-muted-foreground space-y-1.5">
-                {warehouses.map((w) => (
-                  <li key={w.id} className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                    {w.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {!batchDryRunResult && (
+              <div className="rounded-md bg-gray-50 p-3">
+                <p className="text-sm font-medium text-muted-foreground mb-2">
+                  将依次对以下 {warehouses.length} 个仓库执行 Dry Run：
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-1.5">
+                  {warehouses.map((w) => (
+                    <li key={w.id} className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                      {w.name}
+                      <span className="text-xs text-muted-foreground/60">({w.country})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* 全局阻断 */}
+            {batchDryRunResult?.blockReason && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                <p className="font-medium">⚠ 批量 Dry Run 已阻断</p>
+                <p className="text-xs mt-1">{batchDryRunResult.blockReason}</p>
+              </div>
+            )}
+
+            {/* 审核总览结果 */}
+            {batchDryRunResult && !batchDryRunResult.blockReason && (
+              <>
+                {/* 汇总统计 */}
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    就绪 <span className="font-medium">{batchDryRunResult.successCount}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                    失败 <span className="font-medium">{batchDryRunResult.failedCount}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                    阻断 <span className="font-medium">{batchDryRunResult.blockedCount}</span>
+                  </span>
+                </div>
+
+                {/* 逐仓审核明细 */}
+                <div className="max-h-[50vh] overflow-y-auto space-y-3">
+                  {batchDryRunResult.results.map((item) => (
+                    <BatchReviewCard key={item.warehouseId} item={item} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              onClick={() => setSyncAllOpen(false)}
-              disabled={syncAllSubmitting}
+              onClick={() => { setSyncAllOpen(false); setBatchDryRunResult(null); }}
+              disabled={batchDryRunSubmitting}
             >
-              取消
+              {batchDryRunResult ? '关闭' : '取消'}
             </Button>
-            <Button onClick={handleSyncAll} disabled={syncAllSubmitting}>
-              {syncAllSubmitting && (
+            <Button onClick={handleBatchDryRun} disabled={batchDryRunSubmitting}>
+              {batchDryRunSubmitting && (
                 <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
               )}
-              {syncAllSubmitting ? '同步中…' : '开始批量同步'}
+              {batchDryRunSubmitting ? '执行中…' : '开始批量 Dry Run'}
             </Button>
           </DialogFooter>
         </DialogContent>

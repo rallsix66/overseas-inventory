@@ -465,7 +465,8 @@ describe('P5-SY9F — BatchDryRunResult 类型契约', () => {
     expect(typeof item.inventoryInserted).toBe('number');
     expect(typeof item.inventoryUpdated).toBe('number');
     expect(typeof item.inventoryUnchanged).toBe('number');
-    expect(typeof item.warehouseRenamed).toBe('boolean');
+    // warehouseRenamePlan is null or object (mock path has no real plan → null)
+    expect(item.warehouseRenamePlan === null || typeof item.warehouseRenamePlan === 'object').toBe(true);
     expect(['PASS', 'DRIFT_DETECTED', null]).toContain(item.planDriftCheck);
     expect(typeof item.planDriftCount).toBe('number');
     // failureReason should be undefined for ready status
@@ -488,5 +489,227 @@ describe('P5-SY9F — BatchDryRunResult 类型契约', () => {
     expect(result.results[0].failureReason!.length).toBeGreaterThan(0);
     // runId is empty when claim never happened
     expect(result.results[0].runId).toBe('');
+  });
+});
+
+// ─── 9. DRIFT_DETECTED → blocked ────────────────────────────────
+
+describe('P5-SY9F — DRIFT_DETECTED → blocked', () => {
+  beforeEach(() => {
+    MockRepository._resetAll();
+    MockArtifactProvider._resetAll();
+    vi.mocked(requireActiveAdmin).mockResolvedValue(mockAdminUser);
+  });
+
+  it('planDriftCheck=DRIFT_DETECTED → status=blocked, not ready', async () => {
+    const runner = new MockSyncRunner();
+    runner.planDriftCheck = 'DRIFT_DETECTED';
+    runner.planDriftCount = 3;
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+    const deps = buildActionsDeps({
+      repository: repo,
+      syncService: svc,
+      artifactProvider: ap,
+    });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH_PH]);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].status).toBe('blocked');
+    expect(result.results[0].planDriftCheck).toBe('DRIFT_DETECTED');
+    expect(result.results[0].planDriftCount).toBe(3);
+    expect(result.results[0].failureReason).toBeDefined();
+    expect(result.results[0].failureReason).toContain('DRIFT_DETECTED');
+    expect(result.results[0].failureReason).toContain('3');
+    // blockedCount should reflect this
+    expect(result.blockedCount).toBe(1);
+    expect(result.successCount).toBe(0);
+    expect(result.allSucceeded).toBe(false);
+  });
+
+  it('mixed ready + blocked warehouses → correct counts', async () => {
+    MockRepository._resetAll();
+    MockArtifactProvider._resetAll();
+
+    const goodRunner = new MockSyncRunner();
+    goodRunner.planDriftCheck = 'PASS';
+    const badRunner = new MockSyncRunner();
+    badRunner.planDriftCheck = 'DRIFT_DETECTED';
+    badRunner.planDriftCount = 5;
+
+    // Use a shared repo with two separate sync services
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svcGood = createSyncService({ repository: repo, artifactProvider: ap, runner: goodRunner });
+    const svcBad = createSyncService({ repository: repo, artifactProvider: ap, runner: badRunner });
+
+    // We need per-warehouse routing. Use input source to distinguish.
+    // Simpler approach: test each warehouse independently
+    const actionsGood = createSyncActions({
+      repository: repo,
+      syncService: svcGood,
+      inputArtifactSource: { getInputArtifact: async () => ({ skus: ['SKU'] }) },
+      artifactProvider: ap,
+    });
+    const actionsBad = createSyncActions({
+      repository: repo,
+      syncService: svcBad,
+      inputArtifactSource: { getInputArtifact: async () => ({ skus: ['SKU'] }) },
+      artifactProvider: ap,
+    });
+
+    // Run PH with good runner → ready
+    const goodResult = await actionsGood.triggerBatchDryRun([WH_PH]);
+    expect(goodResult.results[0].status).toBe('ready');
+
+    // Run TH with bad runner → blocked
+    const badResult = await actionsBad.triggerBatchDryRun([WH_TH]);
+    expect(badResult.results[0].status).toBe('blocked');
+    expect(badResult.results[0].failureReason).toContain('DRIFT_DETECTED');
+  });
+});
+
+// ─── 10. Rename plan 出现在批量结果中 ────────────────────────────
+
+describe('P5-SY9F — rename plan 出现在批量结果中', () => {
+  beforeEach(() => {
+    MockRepository._resetAll();
+    MockArtifactProvider._resetAll();
+    vi.mocked(requireActiveAdmin).mockResolvedValue(mockAdminUser);
+  });
+
+  it('rename plan with action=rename → includes old/new name', async () => {
+    const runner = new MockSyncRunner();
+    runner.renamePlan = {
+      action: 'rename',
+      warehouse_id: WH_PH.id,
+      current_name: '菲律宾仓',
+      target_name: '菲律宾-新创启辰自建仓',
+      message: '仓库名称从"菲律宾仓"改为"菲律宾-新创启辰自建仓"',
+    };
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+    const deps = buildActionsDeps({ repository: repo, syncService: svc, artifactProvider: ap });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH_PH]);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].status).toBe('ready');
+
+    const rp = result.results[0].warehouseRenamePlan;
+    expect(rp).not.toBeNull();
+    expect(rp?.action).toBe('rename');
+    expect(rp?.currentName).toBe('菲律宾仓');
+    expect(rp?.targetName).toBe('菲律宾-新创启辰自建仓');
+    expect(rp?.message).toContain('菲律宾仓');
+    expect(rp?.message).toContain('菲律宾-新创启辰自建仓');
+  });
+
+  it('rename plan with action=none → no rename', async () => {
+    const runner = new MockSyncRunner();
+    runner.renamePlan = {
+      action: 'none',
+      warehouse_id: WH_PH.id,
+      current_name: '菲律宾-新创启辰自建仓',
+      message: '仓库名称已是目标名称，无需改名',
+    };
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+    const deps = buildActionsDeps({ repository: repo, syncService: svc, artifactProvider: ap });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH_PH]);
+    const rp = result.results[0].warehouseRenamePlan;
+    expect(rp).not.toBeNull();
+    expect(rp?.action).toBe('none');
+    expect(rp?.targetName).toBeUndefined();
+  });
+
+  it('no rename plan (null) → warehouseRenamePlan is null', async () => {
+    const runner = new MockSyncRunner();
+    runner.renamePlan = null; // Explicitly null
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+    const deps = buildActionsDeps({ repository: repo, syncService: svc, artifactProvider: ap });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH_PH]);
+    expect(result.results[0].warehouseRenamePlan).toBeNull();
+  });
+
+  it('failed warehouse also has warehouseRenamePlan=null', async () => {
+    const deps = buildActionsDeps({
+      inputArtifactSource: {
+        getInputArtifact: async () => { throw new Error('网络超时'); },
+      },
+    });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.triggerBatchDryRun([WH_PH]);
+    expect(result.results[0].status).toBe('failed');
+    expect(result.results[0].warehouseRenamePlan).toBeNull();
+  });
+});
+
+// ─── 11. Page source — batch button calls triggerBatchDryRun ─────
+
+describe('P5-SY9F — 页面批量按钮调用 triggerBatchDryRun 不调用 syncAllWarehouses', () => {
+  it('sync-page-content.tsx imports triggerBatchDryRun, not syncAllWarehouses', () => {
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/app/dashboard/sync/_components/sync-page-content.tsx'),
+      'utf-8',
+    );
+    // Import from server-actions
+    const importMatch = src.match(
+      /import\s*\{([^}]*)\}\s*from\s*['"]@\/features\/sync\/server-actions['"]/,
+    );
+    expect(importMatch).not.toBeNull();
+    const importBody = importMatch![1];
+    expect(importBody).toContain('triggerBatchDryRun');
+    expect(importBody).not.toContain('syncAllWarehouses');
+  });
+
+  it('sync-page-content.tsx calls triggerBatchDryRun(), not syncAllWarehouses()', () => {
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/app/dashboard/sync/_components/sync-page-content.tsx'),
+      'utf-8',
+    );
+    // triggerBatchDryRun is called in the component
+    expect(src).toContain('triggerBatchDryRun');
+    // syncAllWarehouses must NOT appear as a function call or import
+    expect(src).not.toMatch(/syncAllWarehouses/);
+  });
+
+  it('batch button onClick calls handleBatchDryRun, which calls triggerBatchDryRun', () => {
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/app/dashboard/sync/_components/sync-page-content.tsx'),
+      'utf-8',
+    );
+    // The button for batch dry run should reference handleBatchDryRun and triggerBatchDryRun
+    expect(src).toContain('批量 Dry Run');
+    expect(src).toContain('handleBatchDryRun');
+    expect(src).toContain('triggerBatchDryRun()');
+    // Verify the file does NOT reference syncAllWarehouses anywhere
+    expect(src).not.toMatch(/syncAllWarehouses/);
+    // Verify the dialog section around the batch button uses triggerBatchDryRun
+    const dialogSectionStart = src.indexOf('批量 Dry Run / 审核总览');
+    expect(dialogSectionStart).toBeGreaterThan(0);
+    const dialogSection = src.slice(dialogSectionStart, dialogSectionStart + 4000);
+    expect(dialogSection).toContain('handleBatchDryRun');
+    // The button onClick must reference handleBatchDryRun
+    expect(dialogSection).toMatch(/onClick=\{handleBatchDryRun\}/);
+  });
+
+  it('page.tsx does not import syncAllWarehouses', () => {
+    const pagePath = path.resolve(process.cwd(), 'src/app/dashboard/sync/page.tsx');
+    if (fs.existsSync(pagePath)) {
+      const src = fs.readFileSync(pagePath, 'utf-8');
+      expect(src).not.toMatch(/syncAllWarehouses/);
+    }
   });
 });

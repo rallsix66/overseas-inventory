@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9A~F 均为 DONE（Codex 独立复验通过 P5-SY9E；P5-SY9F AWAITING_REVIEW）；P5-SY9G~I PENDING。
+`IN_PROGRESS` — P5-SY9A~E DONE（Codex 独立复验通过 P5-SY9E）；P5-SY9F AWAITING_REVIEW（返工完成待 Codex 再验收）；P5-SY9G~I PENDING。
 
 ## 背景
 
@@ -145,7 +145,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 | P5-SY9C | 真实 Provider / InputSource / Production wiring | 替换生产 Mock，建立真实 artifact 存取和生产 wiring 测试 | P5-SY9B | DONE（Codex 独立复验通过） |
 | P5-SY9D | 单仓 Web Dry Run → 审核 → Real Write 绑定 | 用户无需输入 token/runId/hash；系统内部绑定 Dry Run；plan drift 阻断。已实现 Dry Run→Real Write 绑定逻辑，但 Web 真实写入入口必须保持 server-side disabled / feature gated，直到 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。 | P5-SY9C | DONE（Codex 验收通过） |
 | P5-SY9E | heartbeat / timeout / 子进程控制 | 实现 heartbeat、timeout、abort、失败落库和并发锁测试 | P5-SY9D | DONE（Codex 独立验收通过） |
-| P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，并展示审核总览 | P5-SY9E | AWAITING_REVIEW |
+| P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，页面展示审核总览。planDriftCheck!='PASS'→blocked；warehouseRenamePlan 含详情 | P5-SY9E | AWAITING_REVIEW（返工完成） |
 | P5-SY9G | 批量审核后真实写入 | 勾选 ready 仓库，强确认后逐仓写入；单仓失败不影响其他仓 | P5-SY9F | PENDING |
 | P5-SY9H | 页面体验与运营可用性收口 | 当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | PENDING |
 | P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | PENDING |

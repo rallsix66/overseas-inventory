@@ -579,7 +579,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
               inventoryInserted: 0,
               inventoryUpdated: 0,
               inventoryUnchanged: 0,
-              warehouseRenamed: false,
+              warehouseRenamePlan: null,
               planDriftCheck: null,
               planDriftCount: 0,
               failureReason: dryRunResult.error || 'Dry Run 失败',
@@ -590,13 +590,29 @@ export function createSyncActions(deps: SyncActionsDeps) {
           const summary = dryRunResult.runnerResult?.summary;
           const planContent = dryRunResult.runnerResult?.planArtifact as Record<string, unknown> | undefined;
           const scraperMeta = dryRunResult.runnerResult?.scraperMeta;
+          const planDriftCheck = dryRunResult.runnerResult?.planDriftCheck ?? 'PASS';
+          const renameRequired = planContent?.warehouse_rename_required as Record<string, unknown> | undefined;
+
+          // Build warehouse rename plan details from plan artifact
+          let warehouseRenamePlan: BatchDryRunItemResult['warehouseRenamePlan'] = null;
+          if (renameRequired) {
+            warehouseRenamePlan = {
+              action: (renameRequired.action === 'rename' ? 'rename' : 'none') as 'rename' | 'none',
+              currentName: renameRequired.current_name as string | undefined,
+              targetName: renameRequired.target_name as string | undefined,
+              message: renameRequired.message as string | undefined,
+            };
+          }
+
+          // DRIFT_DETECTED → blocked, not ready
+          const isBlocked = planDriftCheck !== 'PASS';
 
           results.push({
             warehouseId: wh.id,
             warehouseName: wh.name,
             country: (planContent?.country as string) || wh.country,
             runId: dryRunResult.runId,
-            status: 'ready',
+            status: isBlocked ? 'blocked' : 'ready',
             rawRowCount: scraperMeta?.rawRowCount ?? 0,
             validSkuCount: scraperMeta?.validSkuCount ?? 0,
             invalidSkuCount: scraperMeta?.invalidSkuCount ?? 0,
@@ -604,9 +620,10 @@ export function createSyncActions(deps: SyncActionsDeps) {
             inventoryInserted: summary?.inventoryInserted ?? 0,
             inventoryUpdated: summary?.inventoryUpdated ?? 0,
             inventoryUnchanged: summary?.inventoryUnchanged ?? 0,
-            warehouseRenamed: summary?.warehouseRenamed ?? false,
-            planDriftCheck: dryRunResult.runnerResult?.planDriftCheck ?? 'PASS',
+            warehouseRenamePlan,
+            planDriftCheck,
             planDriftCount: dryRunResult.runnerResult?.planDriftCount ?? 0,
+            failureReason: isBlocked ? `计划漂移未通过（plan_drift_check=${planDriftCheck}，${dryRunResult.runnerResult?.planDriftCount ?? 0} 项差异）` : undefined,
           });
         } catch (err) {
           results.push({
@@ -622,7 +639,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
             inventoryInserted: 0,
             inventoryUpdated: 0,
             inventoryUnchanged: 0,
-            warehouseRenamed: false,
+            warehouseRenamePlan: null,
             planDriftCheck: null,
             planDriftCount: 0,
             failureReason: `Dry Run 异常: ${(err as Error).message}`,

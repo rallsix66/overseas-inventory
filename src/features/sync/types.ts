@@ -301,7 +301,16 @@ export interface BatchDryRunItemResult {
   inventoryInserted: number;
   inventoryUpdated: number;
   inventoryUnchanged: number;
-  warehouseRenamed: boolean;
+  /** 仓库改名计划详情。来自 Plan Artifact 的 warehouse_rename_required。
+   *  action='rename' 时包含 old name → new name 映射；
+   *  action='none' 时仅含 currentName 和 message；
+   *  null 表示无改名计划（如仓库不存在、数据异常或未生成）。 */
+  warehouseRenamePlan?: {
+    action: 'rename' | 'none';
+    currentName?: string;
+    targetName?: string;
+    message?: string;
+  } | null;
   planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
   planDriftCount: number;
   /** 失败/阻断原因（中文），仅 status 为 failed 或 blocked 时存在 */
