@@ -19,7 +19,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -287,7 +287,7 @@ export async function confirmRealWrite(
     return { warehouseId, warehouseName: '未知仓库', success: false, runId: '', status: 'failed', error: '未知仓库 ID', dryRunRunId };
   }
   const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
-  const result = await actions.confirmRealWrite(warehouseId, wh.name, wh.country, dryRunRunId);
+  const result = await actions.confirmRealWrite(warehouseId, wh.name, wh.country, dryRunRunId, wh.token);
   if (result.success) {
     revalidatePath('/dashboard/inventory/overseas');
   }
@@ -319,6 +319,60 @@ export async function triggerBatchDryRun(): Promise<BatchDryRunResult> {
   );
 
   if (result.results.some((r) => r.status === 'ready')) {
+    revalidatePath('/dashboard/inventory/overseas');
+  }
+
+  return result;
+}
+
+// ─── P5-SY9G: 批量审核后真实写入 ────────────────────────────
+
+export async function triggerBatchRealWrite(
+  items: BatchRealWriteItem[],
+  confirmationPhrase: string,
+): Promise<BatchRealWriteResult> {
+  await requireActiveAdmin();
+
+  // ── Session health guard (P5-SY9B) ──────────────────────────
+  const health = await verifyBigSellerSession();
+  if (health.status !== 'healthy') {
+    return {
+      results: [],
+      allSucceeded: false,
+      successCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      blockReason: `BigSeller 登录会话不可用：${health.message}`,
+    };
+  }
+
+  // ── Feature gate (P5-SY9C) ──────────────────────────────────
+  // Web 真实写入入口保持 server-side disabled，直到 P5-SY9E
+  // heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。
+  if (!isWebsyncRealWriteEnabled()) {
+    return {
+      results: [],
+      allSucceeded: false,
+      successCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      blockReason: 'Web 同步真实写入功能尚未启用。请等待 P5-SY9E heartbeat/timeout 完成并通过 P5-SY9I 独立验收。',
+    };
+  }
+
+  const warehouses = await getCachedOverseasWarehouses();
+  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
+
+  // Populate confirmToken server-side from COUNTRY_TOKEN_MAP.
+  // Client must not send tokens — they are derived from warehouse country.
+  const populatedItems = items.map((item) => ({
+    ...item,
+    confirmToken: COUNTRY_TOKEN_MAP[item.country] ?? '',
+  }));
+
+  const result = await actions.triggerBatchRealWrite(populatedItems, confirmationPhrase);
+
+  if (result.results.some((r) => r.status === 'success')) {
     revalidatePath('/dashboard/inventory/overseas');
   }
 

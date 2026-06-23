@@ -47,6 +47,7 @@ import {
   triggerDryRun,
   confirmRealWrite,
   triggerBatchDryRun,
+  triggerBatchRealWrite,
 } from '@/features/sync/server-actions';
 import type {
   SyncRunAdminRow,
@@ -58,6 +59,9 @@ import type {
   TriggerDryRunResult,
   BatchDryRunResult,
   BatchDryRunItemResult,
+  BatchRealWriteItem,
+  BatchRealWriteResult,
+  BatchRealWriteItemResult,
 } from '@/features/sync/types';
 
 // ─── Type helpers ──────────────────────────────────────────────
@@ -178,7 +182,20 @@ function DetailField({
 
 // ─── Batch Review Card (P5-SY9F) ───────────────────────────────
 
-function BatchReviewCard({ item }: { item: BatchDryRunItemResult }) {
+function BatchReviewCard({
+  item,
+  selectable = false,
+  checked = false,
+  onToggle,
+}: {
+  item: BatchDryRunItemResult;
+  selectable?: boolean;
+  checked?: boolean;
+  onToggle?: () => void;
+}) {
+  const isReady = item.status === 'ready';
+  const isSelectable = selectable && isReady;
+
   const statusConfig = {
     ready: { bg: 'bg-green-50 border-green-200', text: 'text-green-800', label: '✓ 就绪' },
     failed: { bg: 'bg-red-50 border-red-200', text: 'text-red-800', label: '✗ 失败' },
@@ -189,10 +206,21 @@ function BatchReviewCard({ item }: { item: BatchDryRunItemResult }) {
     <div className={`rounded-md border p-3 text-sm ${statusConfig.bg}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <span className="font-medium">
-          {item.warehouseName}
-          <span className="text-xs text-muted-foreground ml-1.5">({item.country})</span>
-        </span>
+        <div className="flex items-center gap-2">
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={onToggle}
+              disabled={!isSelectable}
+              className={`w-4 h-4 rounded border-gray-300 ${isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'}`}
+            />
+          )}
+          <span className="font-medium">
+            {item.warehouseName}
+            <span className="text-xs text-muted-foreground ml-1.5">({item.country})</span>
+          </span>
+        </div>
         <span className={`text-xs font-medium ${statusConfig.text}`}>{statusConfig.label}</span>
       </div>
 
@@ -386,6 +414,9 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
   async function handleBatchDryRun() {
     setBatchDryRunSubmitting(true);
     setBatchDryRunResult(null);
+    setSelectedReadyItems(new Set());
+    setConfirmationPhrase('');
+    setBatchRealWriteResult(null);
     try {
       const result = await triggerBatchDryRun();
       setBatchDryRunResult(result);
@@ -422,6 +453,89 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       toast.error(`批量 Dry Run 失败: ${errMsg}`, { duration: 10000 });
     } finally {
       setBatchDryRunSubmitting(false);
+    }
+  }
+
+  // P5-SY9G: Batch real write state
+  const [selectedReadyItems, setSelectedReadyItems] = useState<Set<string>>(new Set());
+  const [confirmationPhrase, setConfirmationPhrase] = useState('');
+  const [batchRealWriteSubmitting, setBatchRealWriteSubmitting] = useState(false);
+  const [batchRealWriteResult, setBatchRealWriteResult] = useState<BatchRealWriteResult | null>(null);
+
+  function toggleReadyItem(warehouseId: string) {
+    setSelectedReadyItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(warehouseId)) {
+        next.delete(warehouseId);
+      } else {
+        next.add(warehouseId);
+      }
+      return next;
+    });
+  }
+
+  function selectAllReady() {
+    if (!batchDryRunResult) return;
+    const readyIds = batchDryRunResult.results
+      .filter((r) => r.status === 'ready')
+      .map((r) => r.warehouseId);
+    setSelectedReadyItems(new Set(readyIds));
+  }
+
+  function deselectAllReady() {
+    setSelectedReadyItems(new Set());
+  }
+
+  async function handleBatchRealWrite() {
+    if (!batchDryRunResult) return;
+    if (selectedReadyItems.size === 0) {
+      toast.error('请至少勾选一个就绪仓库');
+      return;
+    }
+
+    // Build confirmation items from selected ready results
+    const selectedResults = batchDryRunResult.results.filter(
+      (r) => r.status === 'ready' && selectedReadyItems.has(r.warehouseId),
+    );
+
+    const items: BatchRealWriteItem[] = selectedResults.map((r) => ({
+      warehouseId: r.warehouseId,
+      warehouseName: r.warehouseName,
+      country: r.country,
+      dryRunRunId: r.runId,
+      confirmToken: '', // populated server-side from COUNTRY_TOKEN_MAP
+    }));
+
+    setBatchRealWriteSubmitting(true);
+    setBatchRealWriteResult(null);
+    try {
+      const result = await triggerBatchRealWrite(items, confirmationPhrase);
+      setBatchRealWriteResult(result);
+
+      if (result.blockReason) {
+        toast.error(`批量写入已阻断: ${result.blockReason}`, { duration: 8000 });
+      } else {
+        toast.info(
+          `批量写入完成：${result.successCount} 成功 / ${result.failedCount} 失败 / ${result.skippedCount} 跳过`,
+          { duration: 6000 },
+        );
+      }
+
+      for (const item of result.results) {
+        if (item.status === 'failed') {
+          toast.error(`${item.warehouseName}: ${item.failureReason || '写入失败'}`, { duration: 6000 });
+        }
+      }
+
+      if (result.results.some((r) => r.status === 'success')) {
+        router.refresh();
+      }
+    } catch (catchErr) {
+      const errMsg = (catchErr as Error).message || String(catchErr);
+      console.error('批量写入失败:', catchErr);
+      toast.error(`批量写入失败: ${errMsg}`, { duration: 10000 });
+    } finally {
+      setBatchRealWriteSubmitting(false);
     }
   }
 
@@ -951,11 +1065,160 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                 </div>
 
                 {/* 逐仓审核明细 */}
-                <div className="max-h-[50vh] overflow-y-auto space-y-3">
+                <div className="max-h-[40vh] overflow-y-auto space-y-3">
                   {batchDryRunResult.results.map((item) => (
-                    <BatchReviewCard key={item.warehouseId} item={item} />
+                    <BatchReviewCard
+                      key={item.warehouseId}
+                      item={item}
+                      selectable={item.status === 'ready'}
+                      checked={selectedReadyItems.has(item.warehouseId)}
+                      onToggle={() => toggleReadyItem(item.warehouseId)}
+                    />
                   ))}
                 </div>
+
+                {/* P5-SY9G: 批量真实写入操作区 */}
+                {batchDryRunResult.successCount > 0 && !batchRealWriteResult && (
+                  <div className="border-t pt-4 space-y-3">
+                    {/* 选择工具栏 */}
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">
+                        已选择 {selectedReadyItems.size} / {batchDryRunResult.successCount} 个就绪仓库
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={selectAllReady}
+                          disabled={selectedReadyItems.size === batchDryRunResult.successCount}
+                        >
+                          全选就绪仓库
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={deselectAllReady}
+                          disabled={selectedReadyItems.size === 0}
+                        >
+                          取消选择
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* 确认短语输入 */}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="batch-confirm-phrase" className="text-sm">
+                        确认短语 <span className="text-red-500">*</span>
+                      </Label>
+                      <input
+                        id="batch-confirm-phrase"
+                        type="text"
+                        className="w-full px-3 py-2 text-sm border rounded-md"
+                        placeholder="请输入「确认写入」以确认批量真实写入"
+                        value={confirmationPhrase}
+                        onChange={(e) => setConfirmationPhrase(e.target.value)}
+                        disabled={batchRealWriteSubmitting}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        输入「确认写入」后，点击下方按钮将逐仓执行真实数据库写入。操作不可撤销。
+                      </p>
+                    </div>
+
+                    {/* 批量写入按钮 */}
+                    <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                      <p>
+                        ⚠ 将对已勾选的 <strong>{selectedReadyItems.size}</strong> 个就绪仓库执行真实写入。
+                        每仓独立执行，单仓失败不影响其他仓库继续写入。
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="default"
+                      className="w-full"
+                      onClick={handleBatchRealWrite}
+                      disabled={
+                        selectedReadyItems.size === 0
+                        || confirmationPhrase !== '确认写入'
+                        || batchRealWriteSubmitting
+                      }
+                    >
+                      {batchRealWriteSubmitting && (
+                        <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+                      )}
+                      {batchRealWriteSubmitting ? '写入中…' : `批量确认写入（${selectedReadyItems.size} 仓）`}
+                    </Button>
+                  </div>
+                )}
+
+                {/* 批量写入结果 */}
+                {batchRealWriteResult && (
+                  <div className="border-t pt-4 space-y-3">
+                    {batchRealWriteResult.blockReason ? (
+                      <div className="rounded-md bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                        <p className="font-medium">⚠ 批量写入已阻断</p>
+                        <p className="text-xs mt-1">{batchRealWriteResult.blockReason}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium">批量写入结果</p>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                            成功 <span className="font-medium">{batchRealWriteResult.successCount}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                            失败 <span className="font-medium">{batchRealWriteResult.failedCount}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded-full bg-gray-400" />
+                            跳过 <span className="font-medium">{batchRealWriteResult.skippedCount}</span>
+                          </span>
+                        </div>
+                        <div className="max-h-[30vh] overflow-y-auto space-y-2">
+                          {batchRealWriteResult.results.map((r) => (
+                            <div
+                              key={r.warehouseId}
+                              className={`rounded-md border p-2.5 text-sm ${
+                                r.status === 'success'
+                                  ? 'bg-green-50 border-green-200'
+                                  : r.status === 'failed'
+                                    ? 'bg-red-50 border-red-200'
+                                    : 'bg-gray-50 border-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">
+                                  {r.warehouseName}
+                                  <span className="text-xs text-muted-foreground ml-1">({r.country})</span>
+                                </span>
+                                <span className={`text-xs font-medium ${
+                                  r.status === 'success'
+                                    ? 'text-green-800'
+                                    : r.status === 'failed'
+                                      ? 'text-red-800'
+                                      : 'text-gray-600'
+                                }`}>
+                                  {r.status === 'success' ? '✓ 成功' : r.status === 'failed' ? '✗ 失败' : '— 跳过'}
+                                </span>
+                              </div>
+                              {r.runId && (
+                                <p className="text-xs text-muted-foreground mt-1 font-mono">
+                                  Run ID: {r.runId.slice(0, 12)}…
+                                </p>
+                              )}
+                              {r.failureReason && (
+                                <p className="text-xs text-red-700 mt-1">{r.failureReason}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -964,17 +1227,25 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
             <Button
               type="button"
               variant="outline"
-              onClick={() => { setSyncAllOpen(false); setBatchDryRunResult(null); }}
-              disabled={batchDryRunSubmitting}
+              onClick={() => {
+                setSyncAllOpen(false);
+                setBatchDryRunResult(null);
+                setSelectedReadyItems(new Set());
+                setConfirmationPhrase('');
+                setBatchRealWriteResult(null);
+              }}
+              disabled={batchDryRunSubmitting || batchRealWriteSubmitting}
             >
               {batchDryRunResult ? '关闭' : '取消'}
             </Button>
-            <Button onClick={handleBatchDryRun} disabled={batchDryRunSubmitting}>
-              {batchDryRunSubmitting && (
-                <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
-              )}
-              {batchDryRunSubmitting ? '执行中…' : '开始批量 Dry Run'}
-            </Button>
+            {!batchDryRunResult && (
+              <Button onClick={handleBatchDryRun} disabled={batchDryRunSubmitting}>
+                {batchDryRunSubmitting && (
+                  <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+                )}
+                {batchDryRunSubmitting ? '执行中…' : '开始批量 Dry Run'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

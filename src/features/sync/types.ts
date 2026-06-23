@@ -327,3 +327,37 @@ export interface BatchDryRunResult {
   /** 全局阻断原因（如 session unhealthy），此时 results 为空 */
   blockReason?: string;
 }
+
+// ─── P5-SY9G: 批量审核后真实写入 ─────────────────────────────────
+
+/** 批量 Real Write 单个确认项 */
+export interface BatchRealWriteItem {
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  dryRunRunId: string;
+  confirmToken: string;
+}
+
+/** 批量 Real Write 单仓结果 */
+export interface BatchRealWriteItemResult {
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  dryRunRunId: string;
+  /** success=写入成功, failed=写入失败, skipped=跳过（如被阻断） */
+  status: 'success' | 'failed' | 'skipped';
+  runId: string; // real write runId（空字符串表示未执行）
+  failureReason?: string;
+}
+
+/** 批量 Real Write 总览结果 */
+export interface BatchRealWriteResult {
+  results: BatchRealWriteItemResult[];
+  allSucceeded: boolean;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  /** 全局阻断原因（如 feature gate disabled / session unhealthy），此时 results 为空 */
+  blockReason?: string;
+}

@@ -9,8 +9,8 @@ import 'server-only';
 import type { SyncRepository } from './repository';
 import type { SyncService } from './sync-service';
 import type { ArtifactProvider } from './artifact-provider';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchDryRunItemResult } from './types';
-import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema } from './schema';
+import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchDryRunItemResult, BatchRealWriteItem, BatchRealWriteResult, BatchRealWriteItemResult } from './types';
+import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema, triggerBatchRealWriteSchema } from './schema';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 
 /** Dry Run 过期窗口（毫秒）。超过此窗口的 Dry Run 不能绑定 Real Write。
@@ -289,6 +289,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
       warehouseName: string,
       country: string,
       dryRunRunId: string,
+      confirmToken: string,
     ): Promise<ConfirmRealWriteResult> {
       const user = await requireActiveAdmin();
       const triggeredBy = user.id;
@@ -513,7 +514,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
           mode: 'real_write',
           inputArtifact: dryRunInput.content,
           dryRunRunId,
-          confirmToken: 'P5-SY3B-PH',
+          confirmToken,
           triggeredBy,
         });
 
@@ -653,6 +654,74 @@ export function createSyncActions(deps: SyncActionsDeps) {
         successCount: results.filter((r) => r.status === 'ready').length,
         failedCount: results.filter((r) => r.status === 'failed').length,
         blockedCount: results.filter((r) => r.status === 'blocked').length,
+      };
+    },
+
+    // ─── P5-SY9G: 批量审核后真实写入 ──────────────────────────
+
+    async triggerBatchRealWrite(
+      items: BatchRealWriteItem[],
+      confirmationPhrase: string,
+    ): Promise<BatchRealWriteResult> {
+      await requireActiveAdmin();
+
+      // Zod 校验确认短语和勾选项清单
+      triggerBatchRealWriteSchema.parse({ confirmationPhrase, items });
+
+      const results: BatchRealWriteItemResult[] = [];
+
+      for (const item of items) {
+        try {
+          // 逐仓调用 confirmRealWrite，复用全部绑定校验
+          // （Dry Run 存在性/状态/仓库一致/未过期/plan_drift_check=PASS/
+          //   country 一致/input hash/plan hash）
+          const realResult = await this.confirmRealWrite(
+            item.warehouseId,
+            item.warehouseName,
+            item.country,
+            item.dryRunRunId,
+            item.confirmToken,
+          );
+
+          if (realResult.success) {
+            results.push({
+              warehouseId: item.warehouseId,
+              warehouseName: item.warehouseName,
+              country: item.country,
+              dryRunRunId: item.dryRunRunId,
+              status: 'success',
+              runId: realResult.runId,
+            });
+          } else {
+            results.push({
+              warehouseId: item.warehouseId,
+              warehouseName: item.warehouseName,
+              country: item.country,
+              dryRunRunId: item.dryRunRunId,
+              status: 'failed',
+              runId: realResult.runId || '',
+              failureReason: realResult.error || 'Real Write 失败',
+            });
+          }
+        } catch (err) {
+          results.push({
+            warehouseId: item.warehouseId,
+            warehouseName: item.warehouseName,
+            country: item.country,
+            dryRunRunId: item.dryRunRunId,
+            status: 'failed',
+            runId: '',
+            failureReason: `Real Write 异常: ${(err as Error).message}`,
+          });
+        }
+      }
+
+      return {
+        results,
+        allSucceeded: results.every((r) => r.status === 'success'),
+        successCount: results.filter((r) => r.status === 'success').length,
+        failedCount: results.filter((r) => r.status === 'failed').length,
+        skippedCount: results.filter((r) => r.status === 'skipped').length,
       };
     },
 

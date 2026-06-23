@@ -65,3 +65,20 @@ export const confirmRealWriteSchema = z.object({
 }).strict();
 
 export type ConfirmRealWriteInput = z.infer<typeof confirmRealWriteSchema>;
+
+// ─── P5-SY9G: 批量审核后真实写入 ─────────────────────────
+
+export const triggerBatchRealWriteSchema = z.object({
+  confirmationPhrase: z.literal('确认写入', {
+    error: '确认短语必须为「确认写入」',
+  }),
+  items: z.array(z.object({
+    warehouseId: z.string().uuid(),
+    warehouseName: z.string().min(1),
+    country: z.string().min(1),
+    dryRunRunId: z.string().uuid(),
+    confirmToken: z.string().min(1),
+  })).min(1).max(20),
+}).strict();
+
+export type TriggerBatchRealWriteInput = z.infer<typeof triggerBatchRealWriteSchema>;

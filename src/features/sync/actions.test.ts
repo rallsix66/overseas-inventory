@@ -1,6 +1,7 @@
 // Sync Feature Module — createSyncActions 测试 (P5-SY5C2 V5.8)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { createSyncActions } from './actions';
 import type { SyncActionsDeps, InputArtifactSource } from './actions';
 import { MockRepository } from './repository';
@@ -474,7 +475,7 @@ describe('SyncActions type', () => {
     expect(actions).toHaveProperty('triggerBatchDryRun'); // P5-SY9F
     expect(actions).toHaveProperty('getSyncRunsAction');
     expect(actions).toHaveProperty('getSyncRunDetailAction');
-    expect(Object.keys(actions).length).toBe(8); // P5-SY9F: +1 method
+    expect(Object.keys(actions).length).toBe(9); // P5-SY9G: +1 method (triggerBatchRealWrite)
   });
 });
 
@@ -715,5 +716,316 @@ describe('createSyncActions — triggerBatchDryRun', () => {
     expect(result.results).toHaveLength(1);
     expect(result.results[0].status).toBe('failed');
     expect(result.results[0].failureReason).toContain('Runner 内部错误');
+  });
+});
+
+// ─── P5-SY9G: 批量审核后真实写入 ────────────────────────────────
+
+describe('P5-SY9G — triggerBatchRealWrite', () => {
+  // Generate valid v4 UUIDs at import time for test consistency
+  const WH_A = { warehouseId: randomUUID(), warehouseName: '仓库A', country: 'PH', dryRunRunId: randomUUID(), confirmToken: 'P5-SY3B-PH' };
+  const WH_B = { warehouseId: randomUUID(), warehouseName: '仓库B', country: 'VN', dryRunRunId: randomUUID(), confirmToken: 'P5-SY8B-VN' };
+  const WH_C = { warehouseId: randomUUID(), warehouseName: '仓库C', country: 'TH', dryRunRunId: randomUUID(), confirmToken: 'P5-SY8D-TH' };
+
+  // Valid "bad" UUIDs for tests that need non-existent dry runs:
+  // 00000000-0000-0000-0000-000000000000 and ffffffff-ffff-ffff-ffff-ffffffffffff
+  // are accepted by the Zod schema's UUID pattern but don't exist in the mock repo
+  const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+  const MAX_UUID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+  const CONFIRM_PHRASE = '确认写入' as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireActiveAdmin).mockResolvedValue(mockAdminUser);
+    vi.mocked(requireActiveAuth).mockResolvedValue(mockAdminUser);
+  });
+
+  // ── Helpers ──────────────────────────────────────────────────
+
+  function setupBatchDeps(opts?: {
+    shouldSucceed?: boolean;
+  }) {
+    MockRepository._resetAll();
+    MockArtifactProvider._resetAll();
+
+    const repo = new MockRepository('admin');
+    const ap = new MockArtifactProvider();
+    const runner = new MockSyncRunner();
+    if (opts?.shouldSucceed === false) {
+      runner.exitCode = 1;
+    }
+
+    const svc = createSyncService({ repository: repo, artifactProvider: ap, runner });
+    const inputArtifactSource: InputArtifactSource = {
+      getInputArtifact: async () => ({ skus: ['TEST-SKU'] }),
+    };
+
+    return { actions: createSyncActions({ repository: repo, syncService: svc, inputArtifactSource, artifactProvider: ap }), repo, ap };
+  }
+
+  async function seedDryRunArtifacts(
+    ap: MockArtifactProvider,
+    runId: string,
+    warehouseId: string,
+    warehouseName: string,
+    country: string,
+  ) {
+    // Store input artifact
+    const inputPrep = ap.prepare({ warehouse: warehouseName, warehouseId, skus: ['SKU-1'] });
+    await ap.store(runId, 'input', inputPrep);
+
+    // Store plan artifact
+    const planPrep = ap.prepare({
+      country,
+      warehouse_id: warehouseId,
+      new_variants: [],
+      inventory_inserts: [],
+      inventory_updates: [],
+      inventory_unchanged: [],
+      warehouse_rename_required: null,
+      rejected_rows: [],
+    });
+    await ap.store(runId, 'plan', planPrep);
+
+    return { inputHash: inputPrep.hash, planHash: planPrep.hash };
+  }
+
+  function seedDryRunRecord(
+    repo: MockRepository,
+    runId: string,
+    warehouseId: string,
+    inputHash: string,
+    planHash: string,
+  ) {
+    repo._injectRunDetail(runId, {
+      warehouseId,
+      mode: 'dry_run' as const,
+      status: 'completed' as const,
+      finishedAt: new Date(),
+      planDriftCheck: 'PASS' as const,
+      inputArtifactHash: inputHash,
+      planArtifactHash: planHash,
+    });
+  }
+
+  // ── Happy path ───────────────────────────────────────────────
+
+  it('all selected ready warehouses succeed', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+
+    for (const wh of [WH_A, WH_B]) {
+      const { inputHash, planHash } = await seedDryRunArtifacts(ap, wh.dryRunRunId, wh.warehouseId, wh.warehouseName, wh.country);
+      seedDryRunRecord(repo, wh.dryRunRunId, wh.warehouseId, inputHash, planHash);
+    }
+
+    const result = await actions.triggerBatchRealWrite([WH_A, WH_B], CONFIRM_PHRASE);
+
+    expect(result.allSucceeded).toBe(true);
+    expect(result.successCount).toBe(2);
+    expect(result.failedCount).toBe(0);
+    expect(result.skippedCount).toBe(0);
+    expect(result.results).toHaveLength(2);
+
+    for (const r of result.results) {
+      expect(r.status).toBe('success');
+      expect(r.runId).toBeTruthy();
+      expect(r.warehouseId).toBeTruthy();
+      expect(r.dryRunRunId).toBeTruthy();
+    }
+  });
+
+  it('single warehouse succeeds', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+    const { inputHash, planHash } = await seedDryRunArtifacts(ap, WH_A.dryRunRunId, WH_A.warehouseId, WH_A.warehouseName, WH_A.country);
+    seedDryRunRecord(repo, WH_A.dryRunRunId, WH_A.warehouseId, inputHash, planHash);
+
+    const result = await actions.triggerBatchRealWrite([WH_A], CONFIRM_PHRASE);
+
+    expect(result.allSucceeded).toBe(true);
+    expect(result.successCount).toBe(1);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].status).toBe('success');
+  });
+
+  // ── Mixed results / isolation ────────────────────────────────
+
+  it('single warehouse failure does not affect others', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+
+    // Seed WH_A with valid data
+    const { inputHash: hashA, planHash: planA } = await seedDryRunArtifacts(ap, WH_A.dryRunRunId, WH_A.warehouseId, WH_A.warehouseName, WH_A.country);
+    seedDryRunRecord(repo, WH_A.dryRunRunId, WH_A.warehouseId, hashA, planA);
+
+    // WH_B has a non-existent dryRunRunId — confirmRealWrite will fail for it
+    const badItem = { ...WH_B, dryRunRunId: NIL_UUID };
+
+    const result = await actions.triggerBatchRealWrite([WH_A, badItem], CONFIRM_PHRASE);
+
+    expect(result.allSucceeded).toBe(false);
+    expect(result.successCount).toBe(1);
+    expect(result.failedCount).toBe(1);
+    expect(result.results).toHaveLength(2);
+
+    const successItem = result.results.find((r) => r.warehouseId === WH_A.warehouseId)!;
+    expect(successItem.status).toBe('success');
+    expect(successItem.runId).toBeTruthy();
+
+    const failedItem = result.results.find((r) => r.warehouseId === badItem.warehouseId)!;
+    expect(failedItem.status).toBe('failed');
+    expect(failedItem.failureReason).toBeTruthy();
+  });
+
+  it('all warehouses fail → allSucceeded=false, successCount=0', async () => {
+    const { actions } = setupBatchDeps({ shouldSucceed: true });
+    const badItems = [
+      { ...WH_A, dryRunRunId: NIL_UUID },
+      { ...WH_B, dryRunRunId: MAX_UUID },
+    ];
+    const result = await actions.triggerBatchRealWrite(badItems, CONFIRM_PHRASE);
+
+    expect(result.allSucceeded).toBe(false);
+    expect(result.successCount).toBe(0);
+    expect(result.failedCount).toBe(2);
+    expect(result.results.every((r) => r.status === 'failed')).toBe(true);
+  });
+
+  it('failed warehouse includes failureReason in Chinese', async () => {
+    const { actions } = setupBatchDeps({ shouldSucceed: true });
+    const badItem = { ...WH_A, dryRunRunId: NIL_UUID };
+    const result = await actions.triggerBatchRealWrite([badItem], CONFIRM_PHRASE);
+
+    expect(result.results[0].status).toBe('failed');
+    expect(result.results[0].failureReason).toBeTruthy();
+    // Should contain Chinese text
+    expect(result.results[0].failureReason).toMatch(/不存在|失败|异常/);
+  });
+
+  // ── Confirmation phrase ──────────────────────────────────────
+
+  it('wrong confirmation phrase rejected by Zod', async () => {
+    const { actions } = setupBatchDeps({ shouldSucceed: true });
+    await expect(
+      actions.triggerBatchRealWrite([WH_A], '批准'),
+    ).rejects.toThrow();
+  });
+
+  it('empty confirmation phrase rejected by Zod', async () => {
+    const { actions } = setupBatchDeps({ shouldSucceed: true });
+    await expect(
+      actions.triggerBatchRealWrite([WH_A], ''),
+    ).rejects.toThrow();
+  });
+
+  it('correct phrase 「确认写入」 accepted', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+    const { inputHash, planHash } = await seedDryRunArtifacts(ap, WH_A.dryRunRunId, WH_A.warehouseId, WH_A.warehouseName, WH_A.country);
+    seedDryRunRecord(repo, WH_A.dryRunRunId, WH_A.warehouseId, inputHash, planHash);
+
+    const result = await actions.triggerBatchRealWrite([WH_A], '确认写入');
+    expect(result.successCount).toBe(1);
+  });
+
+  // ── Empty items ──────────────────────────────────────────────
+
+  it('empty items array rejected by Zod', async () => {
+    const { actions } = setupBatchDeps({ shouldSucceed: true });
+    await expect(
+      actions.triggerBatchRealWrite([], CONFIRM_PHRASE),
+    ).rejects.toThrow();
+  });
+
+  // ── Admin required ───────────────────────────────────────────
+
+  it('non-admin user rejected', async () => {
+    vi.mocked(requireActiveAdmin).mockRejectedValue(new Error('权限不足'));
+    const { actions } = setupBatchDeps({ shouldSucceed: true });
+    await expect(
+      actions.triggerBatchRealWrite([WH_A], CONFIRM_PHRASE),
+    ).rejects.toThrow('权限不足');
+  });
+
+  // ── confirmToken pass-through ─────────────────────────────────
+
+  it('confirmToken is passed through to syncService', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+    const { inputHash, planHash } = await seedDryRunArtifacts(ap, WH_A.dryRunRunId, WH_A.warehouseId, WH_A.warehouseName, WH_A.country);
+    seedDryRunRecord(repo, WH_A.dryRunRunId, WH_A.warehouseId, inputHash, planHash);
+
+    // confirmToken 'P5-SY3B-PH' should be accepted by MockSyncRunner
+    const result = await actions.triggerBatchRealWrite([WH_A], CONFIRM_PHRASE);
+    expect(result.results[0].status).toBe('success');
+  });
+
+  it('invalid confirmToken causes failure in syncService', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+    const { inputHash, planHash } = await seedDryRunArtifacts(ap, WH_A.dryRunRunId, WH_A.warehouseId, WH_A.warehouseName, WH_A.country);
+    seedDryRunRecord(repo, WH_A.dryRunRunId, WH_A.warehouseId, inputHash, planHash);
+
+    const badItem = { ...WH_A, confirmToken: 'INVALID-TOKEN' };
+    const result = await actions.triggerBatchRealWrite([badItem], CONFIRM_PHRASE);
+
+    // MockSyncRunner rejects unknown tokens
+    expect(result.results[0].status).toBe('failed');
+  });
+
+  // ── Dry Run binding failures propagate ───────────────────────
+
+  it('non-existent dry run blocked by confirmRealWrite binding checks', async () => {
+    const { actions } = setupBatchDeps({ shouldSucceed: true });
+    const badItem = { ...WH_A, dryRunRunId: MAX_UUID };
+    const result = await actions.triggerBatchRealWrite([badItem], CONFIRM_PHRASE);
+
+    expect(result.results[0].status).toBe('failed');
+    expect(result.results[0].failureReason).toContain('不存在');
+  });
+
+  it('dry run from different warehouse blocked by confirmRealWrite', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+
+    // Seed WH_A's dry run
+    const { inputHash, planHash } = await seedDryRunArtifacts(ap, WH_A.dryRunRunId, WH_A.warehouseId, WH_A.warehouseName, WH_A.country);
+    seedDryRunRecord(repo, WH_A.dryRunRunId, WH_A.warehouseId, inputHash, planHash);
+
+    // WH_B tries to use WH_A's dryRunRunId
+    const mismatchedItem = { ...WH_B, dryRunRunId: WH_A.dryRunRunId };
+    const result = await actions.triggerBatchRealWrite([mismatchedItem], CONFIRM_PHRASE);
+
+    expect(result.results[0].status).toBe('failed');
+    expect(result.results[0].failureReason).toContain('不匹配');
+  });
+
+  // ── Skipped status ───────────────────────────────────────────
+
+  it('skippedCount is reported correctly (zero when no skips)', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+
+    for (const wh of [WH_A, WH_B]) {
+      const { inputHash, planHash } = await seedDryRunArtifacts(ap, wh.dryRunRunId, wh.warehouseId, wh.warehouseName, wh.country);
+      seedDryRunRecord(repo, wh.dryRunRunId, wh.warehouseId, inputHash, planHash);
+    }
+
+    const result = await actions.triggerBatchRealWrite([WH_A, WH_B], CONFIRM_PHRASE);
+    expect(result.skippedCount).toBe(0);
+  });
+
+  // ── Per-warehouse dryRunRunId binding ────────────────────────
+
+  it('each warehouse uses its own dryRunRunId', async () => {
+    const { actions, repo, ap } = setupBatchDeps({ shouldSucceed: true });
+
+    for (const wh of [WH_A, WH_B, WH_C]) {
+      const { inputHash, planHash } = await seedDryRunArtifacts(ap, wh.dryRunRunId, wh.warehouseId, wh.warehouseName, wh.country);
+      seedDryRunRecord(repo, wh.dryRunRunId, wh.warehouseId, inputHash, planHash);
+    }
+
+    const result = await actions.triggerBatchRealWrite([WH_A, WH_B, WH_C], CONFIRM_PHRASE);
+
+    expect(result.results).toHaveLength(3);
+    // Each warehouse must report its own dryRunRunId
+    const ids = new Set(result.results.map((r) => r.dryRunRunId));
+    expect(ids.has(WH_A.dryRunRunId)).toBe(true);
+    expect(ids.has(WH_B.dryRunRunId)).toBe(true);
+    expect(ids.has(WH_C.dryRunRunId)).toBe(true);
   });
 });

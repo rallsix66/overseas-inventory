@@ -140,7 +140,7 @@ describe('confirmRealWrite — 绑定校验', () => {
 
   it('Dry Run 不存在 → 返回错误', async () => {
     const { actions } = await setupMockDryRun('admin');
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_NOT_FOUND);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_NOT_FOUND, 'P5-SY8B-VN');
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('绑定的 Dry Run 不存在');
@@ -154,7 +154,7 @@ describe('confirmRealWrite — 绑定校验', () => {
       planDriftCheck: 'PASS', planDriftCount: 0,
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_RW);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_RW, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('不是 Dry Run');
   });
@@ -166,7 +166,7 @@ describe('confirmRealWrite — 绑定校验', () => {
       planDriftCheck: null, planDriftCount: null,
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_FAILED);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_FAILED, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('未完成');
   });
@@ -178,7 +178,7 @@ describe('confirmRealWrite — 绑定校验', () => {
       planDriftCheck: null, planDriftCount: null,
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_IN_PROGRESS);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_IN_PROGRESS, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('未完成');
   });
@@ -190,7 +190,7 @@ describe('confirmRealWrite — 绑定校验', () => {
       planDriftCheck: 'PASS', planDriftCount: 0,
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OTHER_WH);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OTHER_WH, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('仓库不匹配');
   });
@@ -202,7 +202,7 @@ describe('confirmRealWrite — 绑定校验', () => {
       planDriftCheck: 'DRIFT_DETECTED', planDriftCount: 3,
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_DRIFTED);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_DRIFTED, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('计划漂移未通过');
     expect(result.error).toContain('DRIFT_DETECTED');
@@ -219,7 +219,7 @@ describe('confirmRealWrite — 绑定校验', () => {
     // 使用硬编码 token 使 MockSyncRunner 通过令牌校验
     // 注意：confirmRealWrite 内部硬编码使用 'P5-SY3B-PH'
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     // 绑定校验通过后进入 executeSync，但 MockArtifactProvider 内无对应 artifact，
     // 所以 executeRealWrite 会因加载 plan artifact 失败而返回 failed。
     // 关键断言：dryRunRunId 被正确传递，没有返回绑定错误（即校验全部通过）
@@ -249,7 +249,7 @@ describe('confirmRealWrite — 绑定校验', () => {
     const syncService = createSyncService({ repository: repo, artifactProvider, runner });
     const actions = createFn({ repository: repo, syncService, inputArtifactSource: inputSource, artifactProvider });
 
-    await expect(actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK))
+    await expect(actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN'))
       .rejects.toThrow('无权限：需要管理员角色');
   });
 });
@@ -275,7 +275,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       finishedAt: new Date(expiredAt),
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('已过期');
     expect(result.error).toContain('分钟');
@@ -289,7 +289,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       finishedAt: null,
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('缺少完成时间');
   });
@@ -303,7 +303,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       finishedAt: new Date(exactly60MinAgo),
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('已过期');
     expect(result.error).toContain('60 分钟');
@@ -324,7 +324,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     await artifactProvider.store(DR_OK, 'plan', planPrep);
 
     // Now call with country='TH' — should mismatch with plan's country='VN'
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'TH', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'TH', DR_OK, 'P5-SY8D-TH');
     expect(result.success).toBe(false);
     expect(result.error).toContain('国家不匹配');
     expect(result.error).toContain('TH');
@@ -343,7 +343,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     const planPrep = artifactProvider.prepare({ new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
     await artifactProvider.store(DR_OK, 'plan', planPrep);
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('缺少有效的 country 字段');
   });
@@ -360,7 +360,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     const planPrep = artifactProvider.prepare({ country: 123, new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
     await artifactProvider.store(DR_OK, 'plan', planPrep);
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('缺少有效的 country 字段');
     expect(result.error).toContain('123');
@@ -378,7 +378,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     const planPrep = artifactProvider.prepare({ country: '', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
     await artifactProvider.store(DR_OK, 'plan', planPrep);
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('缺少有效的 country 字段');
   });
@@ -399,7 +399,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     const planPrep = artifactProvider.prepare({ country: 'VN', new_variants: [], inventory_inserts: [], inventory_updates: [], inventory_unchanged: [], warehouse_rename_required: {} });
     await artifactProvider.store(DR_OK, 'plan', planPrep);
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('input hash 不一致');
   });
@@ -422,7 +422,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       planArtifactHash: 'sha256:EXPECTED_PLAN_HASH_XYZ', // wrong
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('plan hash 不一致');
   });
@@ -513,7 +513,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     const spy = vi.spyOn(inputSource, 'getInputArtifact');
 
     // confirmRealWrite should NOT call getInputArtifact — it loads from artifactProvider
-    await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -536,7 +536,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       planArtifactHash: planPrep.hash, // valid plan hash
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('缺少 input_artifact_hash');
     expect(result.error).toContain('无法验证输入完整性');
@@ -559,7 +559,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       planArtifactHash: null, // ← 缺失！
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('缺少 plan_artifact_hash');
     expect(result.error).toContain('无法验证计划完整性');
@@ -583,7 +583,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       planArtifactHash: planPrep.hash,
     });
 
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
 
     // 绑定校验全部通过 → 进入 executeSync
     // 注意：MockSyncRunner 可能因确认令牌等原因返回 success=false，
@@ -606,7 +606,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
   it('metadata 缺失 → 阻断（repo 返回 null）', async () => {
     const { actions } = await setupMockDryRun('admin');
     // No _injectRunDetail — metadata returns null
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_NOT_FOUND);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_NOT_FOUND, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('不存在');
   });
@@ -617,7 +617,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       mode: 'dry_run', status: 'completed', warehouseId: WH_OTHER,
       planDriftCheck: 'PASS', planDriftCount: 0,
     });
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('仓库不匹配');
   });
@@ -628,7 +628,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       mode: 'real_write', status: 'completed', warehouseId: WH_1,
       planDriftCheck: 'PASS', planDriftCount: 0,
     });
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('不是 Dry Run');
   });
@@ -638,7 +638,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
     repo._injectRunDetail(DR_OK, {
       mode: 'dry_run', status: 'failed', warehouseId: WH_1,
     });
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('未完成');
   });
@@ -649,7 +649,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       mode: 'dry_run', status: 'completed', warehouseId: WH_1,
       planDriftCheck: 'DRIFT_DETECTED',
     });
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('计划漂移未通过');
   });
@@ -661,7 +661,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       planDriftCheck: 'PASS', planDriftCount: 0,
       finishedAt: null,
     });
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('缺少完成时间');
   });
@@ -674,7 +674,7 @@ describe('confirmRealWrite — 应用层绑定校验（P5-SY9D rework）', () =>
       planDriftCheck: 'PASS', planDriftCount: 0,
       finishedAt: new Date(expiredAt),
     });
-    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK);
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', 'VN', DR_OK, 'P5-SY8B-VN');
     expect(result.success).toBe(false);
     expect(result.error).toContain('已过期');
   });
