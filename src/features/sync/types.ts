@@ -223,3 +223,41 @@ export interface SyncRunDetailAdmin extends SyncRunAdminRow {
 export type SyncRunDetailOperator = SyncRunOperatorRow;
 
 export type SyncRunDetailResponse = SyncRunDetailAdmin | SyncRunDetailOperator | null;
+
+// ─── P5-SY9D: Dry Run 审核与确认绑定 ──────────────────────────────
+
+/** 单仓 Dry Run 触发返回（含审核摘要） */
+export interface TriggerDryRunResult {
+  warehouseId: string;
+  warehouseName: string;
+  success: boolean;
+  runId: string;
+  status: string;
+  error?: string;
+  /** Dry Run 审核摘要 */
+  summary?: {
+    warehouseName: string;
+    country: string;
+    rawRowCount: number;
+    validSkuCount: number;
+    invalidSkuCount: number;
+    variantsCreated: number;
+    inventoryInserted: number;
+    inventoryUpdated: number;
+    inventoryUnchanged: number;
+    warehouseRenamed: boolean;
+    planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
+    planDriftCount: number;
+  };
+}
+
+/** 确认 Real Write 返回（绑定 Dry Run） */
+export interface ConfirmRealWriteResult {
+  warehouseId: string;
+  warehouseName: string;
+  success: boolean;
+  runId: string;
+  status: string;
+  error?: string;
+  dryRunRunId: string;
+}

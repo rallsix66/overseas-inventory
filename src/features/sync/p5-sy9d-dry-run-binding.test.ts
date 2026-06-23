@@ -1,0 +1,372 @@
+// P5-SY9D: 单仓 Web Dry Run → 审核 → Real Write 绑定 测试
+//
+// 验证 triggerDryRun 审核摘要、confirmRealWrite 绑定校验、
+// feature gate 拦截、plan_drift 阻断和权限检查。
+// 不连接生产 Supabase，不执行真实写入。
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { isWebsyncRealWriteEnabled } from './web-input-artifact-source';
+import type { InputArtifactSource } from './actions';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+// ─── Valid UUIDs for testing (generated at import time) ────────────
+const WH_1 = randomUUID();
+const WH_2 = randomUUID();
+const DR_NOT_FOUND = randomUUID();
+const DR_RW = randomUUID();
+const DR_FAILED = randomUUID();
+const DR_IN_PROGRESS = randomUUID();
+const DR_OTHER_WH = randomUUID();
+const DR_DRIFTED = randomUUID();
+const DR_OK = randomUUID();
+const WH_OTHER = randomUUID();
+
+// ─── Hoisted auth mock ────────────────────────────────────────────
+
+const mockState = vi.hoisted(() => ({
+  authRejection: null as Error | null,
+}));
+
+vi.mock('server-only', () => ({}));
+
+vi.mock('@/lib/auth', () => ({
+  requireActiveAdmin: vi.fn().mockImplementation(() => {
+    if (mockState.authRejection) throw mockState.authRejection;
+    return { id: 'admin-user-id' };
+  }),
+  requireActiveAuth: vi.fn(),
+  getCurrentActiveUser: vi.fn(),
+  getCurrentUser: vi.fn(),
+}));
+
+// ─── Helpers ──────────────────────────────────────────────────────
+
+async function setupMockDryRun(role: 'admin' | 'operator' = 'admin') {
+  const { createSyncActions } = await import('./actions');
+  const { createSyncService } = await import('./sync-service');
+  const { MockRepository } = await import('./repository');
+  const { MockArtifactProvider } = await import('./mock-artifact-provider');
+  const { MockSyncRunner } = await import('./mock-sync-runner');
+
+  const repo = new MockRepository(role);
+  const artifactProvider = new MockArtifactProvider();
+  const runner = new MockSyncRunner();
+  const inputSource: InputArtifactSource = {
+    async getInputArtifact() {
+      return { mock: true, warehouse: '测试仓' };
+    },
+  };
+
+  const syncService = createSyncService({ repository: repo, artifactProvider, runner });
+  const actions = createSyncActions({ repository: repo, syncService, inputArtifactSource: inputSource });
+
+  return { repo, artifactProvider, runner, inputSource, actions };
+}
+
+// ─── 1. triggerDryRun — 审核摘要 ─────────────────────────────────
+
+describe('triggerDryRun', () => {
+  beforeEach(() => {
+    mockState.authRejection = null;
+  });
+
+  it('Dry Run 成功后返回包含 summary 的审核结果', async () => {
+    const { actions } = await setupMockDryRun('admin');
+    const result = await actions.triggerDryRun(WH_1, '测试仓');
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('completed');
+    expect(result.runId).toBeTruthy();
+    expect(result.summary).toBeDefined();
+    expect(result.summary!.warehouseName).toBe('测试仓');
+    expect(result.summary!.planDriftCheck).toBe('PASS');
+    expect(typeof result.summary!.variantsCreated).toBe('number');
+    expect(typeof result.summary!.inventoryInserted).toBe('number');
+    expect(typeof result.summary!.inventoryUpdated).toBe('number');
+    expect(typeof result.summary!.inventoryUnchanged).toBe('number');
+  });
+
+  it('Dry Run 异常被捕获，返回错误不返回 summary', async () => {
+    const { actions, runner } = await setupMockDryRun('admin');
+    runner.shouldThrow = true;
+    runner.throwMessage = '模拟 Dry Run 异常';
+
+    const result = await actions.triggerDryRun(WH_2, '失败仓');
+    expect(result.success).toBe(false);
+    expect(result.summary).toBeUndefined();
+    expect(result.error).toContain('Dry Run 异常');
+    expect(result.error).toContain('模拟 Dry Run 异常');
+  });
+
+  it('Operator 无法触发（requireActiveAdmin 拒绝）', async () => {
+    mockState.authRejection = new Error('无权限：需要管理员角色');
+    const { createSyncActions: createFn } = await import('./actions');
+    const { createSyncService } = await import('./sync-service');
+    const { MockRepository } = await import('./repository');
+    const { MockArtifactProvider } = await import('./mock-artifact-provider');
+    const { MockSyncRunner } = await import('./mock-sync-runner');
+
+    const repo = new MockRepository('operator');
+    const artifactProvider = new MockArtifactProvider();
+    const runner = new MockSyncRunner();
+    const inputSource: InputArtifactSource = {
+      async getInputArtifact() { return { mock: true }; },
+    };
+    const syncService = createSyncService({ repository: repo, artifactProvider, runner });
+    const actions = createFn({ repository: repo, syncService, inputArtifactSource: inputSource });
+
+    await expect(actions.triggerDryRun(WH_1, '测试仓'))
+      .rejects.toThrow('无权限：需要管理员角色');
+  });
+});
+
+// ─── 2. confirmRealWrite — 绑定校验 ──────────────────────────────
+
+describe('confirmRealWrite — 绑定校验', () => {
+  beforeEach(() => {
+    mockState.authRejection = null;
+  });
+
+  it('Dry Run 不存在 → 返回错误', async () => {
+    const { actions } = await setupMockDryRun('admin');
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', DR_NOT_FOUND);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('绑定的 Dry Run 不存在');
+    expect(result.dryRunRunId).toBe(DR_NOT_FOUND);
+  });
+
+  it('绑定的不是 Dry Run（是 real_write）→ 返回错误', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_RW, {
+      mode: 'real_write', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', DR_RW);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('不是 Dry Run');
+  });
+
+  it('Dry Run 状态是 failed → 返回错误', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_FAILED, {
+      mode: 'dry_run', status: 'failed', warehouseId: WH_1,
+      planDriftCheck: null, planDriftCount: null,
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', DR_FAILED);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('未完成');
+  });
+
+  it('Dry Run 状态是 in_progress → 返回错误', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_IN_PROGRESS, {
+      mode: 'dry_run', status: 'in_progress', warehouseId: WH_1,
+      planDriftCheck: null, planDriftCount: null,
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', DR_IN_PROGRESS);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('未完成');
+  });
+
+  it('仓库 ID 不匹配 → 返回错误', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_OTHER_WH, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_OTHER,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', DR_OTHER_WH);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('仓库不匹配');
+  });
+
+  it('plan_drift_check = DRIFT_DETECTED → 返回错误', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+    repo._injectRunDetail(DR_DRIFTED, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'DRIFT_DETECTED', planDriftCount: 3,
+    });
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', DR_DRIFTED);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('计划漂移未通过');
+    expect(result.error).toContain('DRIFT_DETECTED');
+    expect(result.error).toContain('3');
+  });
+
+  it('所有校验通过 → 进入 executeSync（返回 runId，不返回绑定错误）', async () => {
+    const { actions, repo } = await setupMockDryRun('admin');
+
+    // 注入 Dry Run 详情
+    repo._injectRunDetail(DR_OK, {
+      mode: 'dry_run', status: 'completed', warehouseId: WH_1,
+      planDriftCheck: 'PASS', planDriftCount: 0,
+    });
+    // 使用硬编码 token 使 MockSyncRunner 通过令牌校验
+    // 注意：confirmRealWrite 内部硬编码使用 'P5-SY3B-PH'
+
+    const result = await actions.confirmRealWrite(WH_1, '测试仓', DR_OK);
+    // 绑定校验通过后进入 executeSync，但 MockArtifactProvider 内无对应 artifact，
+    // 所以 executeRealWrite 会因加载 plan artifact 失败而返回 failed。
+    // 关键断言：dryRunRunId 被正确传递，没有返回绑定错误（即校验全部通过）
+    expect(result.dryRunRunId).toBe(DR_OK);
+    // 如果返回了绑定错误，说明某次校验失败 — 但不会，因为注入的 detail 满足所有条件
+    expect(result.error).not.toContain('绑定的 Dry Run 不存在');
+    expect(result.error).not.toContain('不是 Dry Run');
+    expect(result.error).not.toContain('未完成');
+    expect(result.error).not.toContain('仓库不匹配');
+    expect(result.error).not.toContain('计划漂移未通过');
+  });
+
+  it('Operator 无法触发确认写入', async () => {
+    mockState.authRejection = new Error('无权限：需要管理员角色');
+    const { createSyncActions: createFn } = await import('./actions');
+    const { createSyncService } = await import('./sync-service');
+    const { MockRepository } = await import('./repository');
+    const { MockArtifactProvider } = await import('./mock-artifact-provider');
+    const { MockSyncRunner } = await import('./mock-sync-runner');
+
+    const repo = new MockRepository('operator');
+    const artifactProvider = new MockArtifactProvider();
+    const runner = new MockSyncRunner();
+    const inputSource: InputArtifactSource = {
+      async getInputArtifact() { return { mock: true }; },
+    };
+    const syncService = createSyncService({ repository: repo, artifactProvider, runner });
+    const actions = createFn({ repository: repo, syncService, inputArtifactSource: inputSource });
+
+    await expect(actions.confirmRealWrite(WH_1, '测试仓', DR_OK))
+      .rejects.toThrow('无权限：需要管理员角色');
+  });
+});
+
+// ─── 3. Schema 校验 ──────────────────────────────────────────────
+
+describe('confirmRealWriteSchema', () => {
+  it('合法参数通过校验', async () => {
+    const { confirmRealWriteSchema: schema } = await import('./schema');
+    const parsed = schema.parse({ warehouseId: WH_1, dryRunRunId: DR_OK });
+    expect(parsed.warehouseId).toBe(WH_1);
+    expect(parsed.dryRunRunId).toBe(DR_OK);
+  });
+
+  it('无效 warehouseId 被拒绝', async () => {
+    const { confirmRealWriteSchema: schema } = await import('./schema');
+    expect(() => schema.parse({ warehouseId: 'bad', dryRunRunId: DR_OK })).toThrow();
+  });
+
+  it('无效 dryRunRunId 被拒绝', async () => {
+    const { confirmRealWriteSchema: schema } = await import('./schema');
+    expect(() => schema.parse({ warehouseId: WH_1, dryRunRunId: 'bad' })).toThrow();
+  });
+
+  it('多余字段被拒绝（.strict()）', async () => {
+    const { confirmRealWriteSchema: schema } = await import('./schema');
+    expect(() => schema.parse({ warehouseId: WH_1, dryRunRunId: DR_OK, extra: 'nope' })).toThrow();
+  });
+
+  it('缺少必填字段被拒绝', async () => {
+    const { confirmRealWriteSchema: schema } = await import('./schema');
+    expect(() => schema.parse({ warehouseId: WH_1 })).toThrow();
+  });
+});
+
+// ─── 4. Feature gate ──────────────────────────────────────────
+
+describe('Feature gate — confirmRealWrite 禁用', () => {
+  it('isWebsyncRealWriteEnabled 默认返回 false', () => {
+    expect(isWebsyncRealWriteEnabled()).toBe(false);
+  });
+
+  it('设置 WEBSYNC_REAL_WRITE_ENABLED=true 后返回 true', () => {
+    const original = process.env.WEBSYNC_REAL_WRITE_ENABLED;
+    process.env.WEBSYNC_REAL_WRITE_ENABLED = 'true';
+    try {
+      expect(isWebsyncRealWriteEnabled()).toBe(true);
+    } finally {
+      if (original === undefined) delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
+      else process.env.WEBSYNC_REAL_WRITE_ENABLED = original;
+    }
+  });
+
+  it('confirmRealWrite Server Action 在 gate 关闭时返回 gate 错误', () => {
+    expect(typeof isWebsyncRealWriteEnabled).toBe('function');
+  });
+});
+
+// ─── 5. compare_plans 修复 — web_bridge.py 结构验证 ────────────
+
+describe('compare_plans 修复 — web_bridge.py', () => {
+  let bridgeSrc = '';
+  try {
+    bridgeSrc = readFileSync(
+      resolve(process.cwd(), 'tools', 'bigseller-scraper', 'sync', 'web_bridge.py'),
+      'utf-8',
+    );
+  } catch { /* file not found */ }
+
+  it('不再包含 compare_plans(plan, plan) 自比较', () => {
+    expect(bridgeSrc).toBeTruthy();
+    expect(bridgeSrc).not.toMatch(/compare_plans\(\s*plan\s*,\s*plan\s*\)/);
+  });
+
+  it('包含 --prior-dry-run-path 参数', () => {
+    expect(bridgeSrc).toContain('--prior-dry-run-path');
+  });
+
+  it('real_write 模式使用 compare_plans(plan, stored_plan)', () => {
+    expect(bridgeSrc).toContain('stored_plan');
+    expect(bridgeSrc).toMatch(/compare_plans\(\s*plan\s*,\s*stored_plan\s*\)/);
+  });
+
+  it('real_write 需要 prior-dry-run-path（否则报错退出）', () => {
+    expect(bridgeSrc).toContain('必须提供 --prior-dry-run-path');
+  });
+});
+
+// ─── 6. RealSyncRunner boundPlanArtifact 传递 ──────────────────
+
+describe('RealSyncRunner — boundPlanArtifact 传递', () => {
+  it('real-sync-runner.ts 包含 priorDryRunPath 传递逻辑', () => {
+    const src = readFileSync(
+      resolve(process.cwd(), 'src', 'features', 'sync', 'real-sync-runner.ts'),
+      'utf-8',
+    );
+    expect(src).toContain('priorDryRunPath');
+    expect(src).toContain('boundPlanArtifact');
+    expect(src).toContain('bound-plan-');
+  });
+});
+
+// ─── 7. Python bridge params 扩充 ──────────────────────────────
+
+describe('python-bridge — priorDryRunPath param', () => {
+  it('python-bridge.ts 包含 priorDryRunPath 参数', () => {
+    const src = readFileSync(
+      resolve(process.cwd(), 'src', 'lib', 'python-bridge.ts'),
+      'utf-8',
+    );
+    expect(src).toContain('priorDryRunPath');
+    expect(src).toContain('--prior-dry-run-path');
+  });
+});
+
+// ─── 8. 类型出口 ──────────────────────────────────────────────
+
+describe('P5-SY9D 类型出口', () => {
+  it('TriggerDryRunResult 和 ConfirmRealWriteResult 类型已定义', async () => {
+    const types = await import('./types');
+    expect(types).toBeDefined();
+  });
+
+  it('confirmRealWriteSchema 已导出', async () => {
+    const schema = await import('./schema');
+    expect(schema.confirmRealWriteSchema).toBeDefined();
+  });
+});

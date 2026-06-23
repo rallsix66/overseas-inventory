@@ -56,3 +56,12 @@ export const getSyncRunDetailSchema = z.object({
 });
 
 export type GetSyncRunDetailInput = z.infer<typeof getSyncRunDetailSchema>;
+
+// ─── P5-SY9D: Dry Run 审核与确认绑定 ─────────────────────
+
+export const confirmRealWriteSchema = z.object({
+  warehouseId: z.string().uuid(),
+  dryRunRunId: z.string().uuid(),
+}).strict();
+
+export type ConfirmRealWriteInput = z.infer<typeof confirmRealWriteSchema>;

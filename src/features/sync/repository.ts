@@ -101,6 +101,34 @@ export class MockRepository implements SyncRepository {
     return Array.from(MockRepository.runs.values());
   }
 
+  /** P5-SY9D: 测试辅助 — 注入自定义 run 详情供 getSyncRunDetail 返回 */
+  _injectRunDetail(runId: string, detail: Partial<MockRunRecord>) {
+    const defaults: MockRunRecord = {
+      id: runId,
+      warehouseId: 'wh-default',
+      mode: 'dry_run',
+      status: 'completed',
+      triggeredBy: 'test-user',
+      triggeredFrom: 'web',
+      leaseExpiresAt: new Date(Date.now() + 300_000),
+      heartbeatAt: new Date(),
+      startedAt: new Date(Date.now() - 60_000),
+      finishedAt: new Date(),
+      createdAt: new Date(Date.now() - 60_000),
+      exitCode: 0,
+      errorMessage: null,
+      resultSummary: null,
+      planDriftCheck: 'PASS',
+      planDriftCount: 0,
+      planDriftDifferences: [],
+      planArtifactHash: null,
+      inputArtifactHash: null,
+      dryRunRunId: null,
+      ...detail,
+    };
+    MockRepository.runs.set(runId, defaults);
+  }
+
   static _resetAll(): void {
     MockRepository.runs.clear();
   }

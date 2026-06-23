@@ -45,6 +45,8 @@ import {
   getSyncRunDetail,
   establishBigSellerSession,
   verifyBigSellerSession,
+  triggerDryRun,
+  confirmRealWrite,
 } from '@/features/sync/server-actions';
 import type {
   SyncRunAdminRow,
@@ -53,6 +55,7 @@ import type {
   SyncRunDetailAdmin,
   SyncRunDetailOperator,
   SessionHealthResult,
+  TriggerDryRunResult,
 } from '@/features/sync/types';
 
 // ─── Type helpers ──────────────────────────────────────────────
@@ -234,6 +237,12 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
     }
   }
 
+  // P5-SY9D: Dry Run review flow
+  const [dryRunResult, setDryRunResult] = useState<TriggerDryRunResult | null>(null);
+  const [dryRunSubmitting, setDryRunSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+
   function handleDetailClose() {
     setDetailOpen(false);
     setDetailData(null);
@@ -360,6 +369,49 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       toast.error(`触发同步失败: ${errMsg}`, { duration: 10000 });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // P5-SY9D: 单仓 Dry Run（审核流程）
+  async function handleTriggerDryRun(warehouseId: string) {
+    setDryRunSubmitting(true);
+    setDryRunResult(null);
+    try {
+      const result = await triggerDryRun(warehouseId);
+      setDryRunResult(result);
+      if (result.success) {
+        toast.success(`${result.warehouseName} Dry Run 完成，请审核结果`);
+        router.refresh();
+      } else {
+        toast.error(result.error || 'Dry Run 失败');
+      }
+    } catch (catchErr) {
+      const errMsg = (catchErr as Error).message || String(catchErr);
+      toast.error(`Dry Run 失败: ${errMsg}`, { duration: 10000 });
+    } finally {
+      setDryRunSubmitting(false);
+    }
+  }
+
+  // P5-SY9D: 确认 Real Write
+  async function handleConfirmRealWrite() {
+    if (!dryRunResult?.runId) return;
+    setConfirmSubmitting(true);
+    try {
+      const result = await confirmRealWrite(dryRunResult.warehouseId, dryRunResult.runId);
+      if (result.success) {
+        toast.success(`${result.warehouseName} 真实写入完成`);
+        setConfirmOpen(false);
+        setDryRunResult(null);
+        router.refresh();
+      } else {
+        toast.error(result.error || '写入失败');
+      }
+    } catch (catchErr) {
+      const errMsg = (catchErr as Error).message || String(catchErr);
+      toast.error(`写入失败: ${errMsg}`, { duration: 10000 });
+    } finally {
+      setConfirmSubmitting(false);
     }
   }
 
@@ -651,9 +703,10 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                 <Label htmlFor="trigger-warehouse">仓库 *</Label>
                 <Select
                   value={triggerForm.warehouseId}
-                  onValueChange={(v) =>
-                    setTriggerForm((prev) => ({ ...prev, warehouseId: v ?? '' }))
-                  }
+                  onValueChange={(v) => {
+                    setTriggerForm((prev) => ({ ...prev, warehouseId: v ?? '' }));
+                    setDryRunResult(null);
+                  }}
                 >
                   <SelectTrigger id="trigger-warehouse">
                     <SelectValue placeholder="选择仓库" />
@@ -668,8 +721,60 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                 </Select>
               </div>
 
+              {/* Dry Run 审核摘要 */}
+              {dryRunResult && dryRunResult.success && dryRunResult.summary && (
+                <div className="rounded-md bg-green-50 border border-green-200 p-3 space-y-1.5 text-sm">
+                  <p className="font-medium text-green-800">Dry Run 审核摘要</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-700">
+                    <span>仓库：{dryRunResult.summary.warehouseName}</span>
+                    <span>状态：<span className="font-medium text-green-800">READY</span></span>
+                    <span>新 Variant：{dryRunResult.summary.variantsCreated}</span>
+                    <span>库存新增：{dryRunResult.summary.inventoryInserted}</span>
+                    <span>库存更新：{dryRunResult.summary.inventoryUpdated}</span>
+                    <span>库存不变：{dryRunResult.summary.inventoryUnchanged}</span>
+                    {dryRunResult.summary.warehouseRenamed && (
+                      <span className="col-span-2 text-amber-600">仓库改名：是</span>
+                    )}
+                    <span className="col-span-2">
+                      计划漂移：{dryRunResult.summary.planDriftCheck === 'PASS'
+                        ? <span className="text-green-700 font-medium">✓ 一致</span>
+                        : <span className="text-red-700">{dryRunResult.summary.planDriftCheck}</span>}
+                      {dryRunResult.summary.planDriftCount > 0 && `（${dryRunResult.summary.planDriftCount} 项）`}
+                    </span>
+                  </div>
+                  <div className="pt-2 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => setConfirmOpen(true)}
+                      disabled={dryRunResult.summary.planDriftCheck !== 'PASS'}
+                      title={
+                        dryRunResult.summary.planDriftCheck !== 'PASS'
+                          ? '计划漂移未通过，无法执行真实写入'
+                          : '确认执行真实写入'
+                      }
+                    >
+                      确认写入
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDryRunResult(null)}
+                    >
+                      清除
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {dryRunResult && !dryRunResult.success && (
+                <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                  <p className="font-medium">Dry Run 失败</p>
+                  <p className="text-xs mt-1">{dryRunResult.error || '未知错误'}</p>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
-                系统将自动执行 Dry Run 验证后写入，无需手动填写令牌和 Dry Run ID
+                点击「开始 Dry Run」执行只读试跑验证，审核结果后确认写入
               </p>
             </div>
 
@@ -680,16 +785,29 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                 onClick={() => {
                   setTriggerOpen(false);
                   resetTriggerForm();
+                  setDryRunResult(null);
                 }}
-                disabled={submitting}
+                disabled={submitting || dryRunSubmitting}
               >
                 取消
               </Button>
+              {!dryRunResult?.success && (
+                <Button
+                  type="button"
+                  onClick={() => handleTriggerDryRun(triggerForm.warehouseId)}
+                  disabled={!triggerForm.warehouseId || dryRunSubmitting}
+                >
+                  {dryRunSubmitting && (
+                    <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+                  )}
+                  {dryRunSubmitting ? '执行中…' : '开始 Dry Run'}
+                </Button>
+              )}
               <Button type="submit" disabled={submitting}>
                 {submitting && (
                   <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
                 )}
-                {submitting ? '同步中…' : '开始同步'}
+                {submitting ? '同步中…' : '快速同步'}
               </Button>
             </DialogFooter>
           </form>
@@ -734,6 +852,60 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                 <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
               )}
               {syncAllSubmitting ? '同步中…' : '开始批量同步'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* P5-SY9D: 确认 Real Write Dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认真实写入</DialogTitle>
+            <DialogDescription>
+              系统将使用已审核的 Dry Run 结果执行真实数据库写入。请确认以下信息：
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {dryRunResult?.summary && (
+              <div className="rounded-md bg-gray-50 p-3 space-y-1.5 text-sm">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span>仓库：{dryRunResult.summary.warehouseName}</span>
+                  <span>Run ID：{dryRunResult.runId.slice(0, 12)}…</span>
+                  <span>新 Variant：{dryRunResult.summary.variantsCreated}</span>
+                  <span>库存新增：{dryRunResult.summary.inventoryInserted}</span>
+                  <span>库存更新：{dryRunResult.summary.inventoryUpdated}</span>
+                  <span>库存不变：{dryRunResult.summary.inventoryUnchanged}</span>
+                  <span className="col-span-2">漂移检查：{dryRunResult.summary.planDriftCheck}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+              <p>⚠ 真实写入将修改数据库中的 Variant 和 Inventory 数据，写入后不可撤销。</p>
+              <p className="text-xs mt-1">Dry Run ID：{dryRunResult?.runId} — 系统内部绑定，无需手动填写。</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={confirmSubmitting}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleConfirmRealWrite}
+              disabled={confirmSubmitting}
+              variant="default"
+            >
+              {confirmSubmitting && (
+                <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+              )}
+              {confirmSubmitting ? '写入中…' : '确认写入'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -13,6 +13,8 @@ import type {
   JsonValue,
 } from './types';
 import { callPythonBridge } from '@/lib/python-bridge';
+import path from 'node:path';
+import fs from 'node:fs';
 
 /** 仓库 ID → Python 桥接参数映射 */
 export interface WarehouseBridgeInfo {
@@ -50,6 +52,28 @@ export class RealSyncRunner implements SyncRunner {
         ? (params as SyncExecuteParamsRealWrite).confirmToken
         : wh.token;
 
+    // P5-SY9D: real_write 模式下，将 boundPlanArtifact 写入临时文件并传递给 Python bridge
+    let priorDryRunPath: string | undefined;
+    if (params.mode === 'real_write') {
+      const realParams = params as SyncExecuteParamsRealWrite;
+      if (realParams.boundPlanArtifact) {
+        const runtimeDir = path.resolve(
+          process.cwd(),
+          'tools', 'bigseller-scraper', 'runtime',
+        );
+        fs.mkdirSync(runtimeDir, { recursive: true });
+        priorDryRunPath = path.join(
+          runtimeDir,
+          `bound-plan-${realParams.dryRunRunId}.json`,
+        );
+        fs.writeFileSync(
+          priorDryRunPath,
+          JSON.stringify(realParams.boundPlanArtifact),
+          'utf-8',
+        );
+      }
+    }
+
     try {
       const bridgeResult = await callPythonBridge(
         {
@@ -59,6 +83,7 @@ export class RealSyncRunner implements SyncRunner {
           country: wh.country,
           token,
           mode: params.mode,
+          priorDryRunPath,
         },
         params.signal,
       );
@@ -95,6 +120,11 @@ export class RealSyncRunner implements SyncRunner {
       };
     } catch (err) {
       return makeErrorResult(wh.id, `Python 桥接失败: ${(err as Error).message}`);
+    } finally {
+      // 清理临时绑定的 plan 文件
+      if (priorDryRunPath) {
+        try { fs.unlinkSync(priorDryRunPath); } catch { /* best effort */ }
+      }
     }
   }
 }

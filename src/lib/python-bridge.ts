@@ -17,6 +17,8 @@ export interface PythonBridgeParams {
   country: string;
   token: string;
   mode: 'dry_run' | 'real_write';
+  /** P5-SY9D: real_write 模式下的前一次 Dry Run 基线 JSON 文件路径（用于计划漂移比较） */
+  priorDryRunPath?: string;
 }
 
 export interface PythonBridgeResult {
@@ -59,6 +61,9 @@ export async function callPythonBridge(
     '--token', params.token,
     '--mode', params.mode,
   ];
+  if (params.priorDryRunPath) {
+    args.push('--prior-dry-run-path', params.priorDryRunPath);
+  }
 
   return new Promise<PythonBridgeResult>((resolve, reject) => {
     const proc = spawn('python', args, {

@@ -40,6 +40,8 @@ def main():
     parser.add_argument('--country', required=True, help='国家代码 PH/VN/TH/MY/ID')
     parser.add_argument('--token', required=True, help='确认令牌')
     parser.add_argument('--mode', choices=['dry_run', 'real_write'], required=True)
+    parser.add_argument('--prior-dry-run-path', default=None,
+                        help='real_write 模式下的前一次 Dry Run 基线 JSON 路径（用于计划漂移比较）')
     args = parser.parse_args()
 
     # ── 设置环境变量（config.py / bigseller_scraper.py 会读取） ──
@@ -98,6 +100,11 @@ def main():
         output_path = save_json(rows, metadata, invalid_sku_rows, combo_sku_rows)
         print(f'[web_bridge] 抓取完成: {len(rows)} 行 → {output_path}', file=sys.stderr)
 
+        # 录入 scraper metadata 到结果摘要（供前端审核展示）
+        result['raw_row_count'] = (metadata or {}).get('raw_row_count', len(rows))
+        result['valid_sku_count'] = (metadata or {}).get('valid_sku_count', len(rows))
+        result['invalid_sku_count'] = (metadata or {}).get('invalid_sku_count', len(invalid_sku_rows) if invalid_sku_rows else 0)
+
         # 从保存的 JSON 读取规范化行（generate_plan 需要 sku/product_name/available_quantity 字段）
         with open(output_path, 'r', encoding='utf-8') as f:
             normalized_data = json.load(f)
@@ -152,18 +159,55 @@ def main():
         # ============================================================
         # Phase 3: 计划漂移检查
         # ============================================================
-        try:
-            compare_plans(plan, plan)
-            result['plan_drift_check'] = 'PASS'
-            result['plan_drift_count'] = 0
-        except Exception as ve:
-            result['plan_drift_check'] = 'DRIFT_DETECTED'
-            result['plan_drift_count'] = 1
-            result['plan_drift_differences'] = [str(ve)]
-            result['errors'].append(f'计划漂移: {ve}')
-            if args.mode == 'real_write':
+        if args.mode == 'real_write':
+            if not args.prior_dry_run_path:
+                result['errors'].append(
+                    'real_write 模式必须提供 --prior-dry-run-path（前一次 Dry Run 基线路径）'
+                )
                 _write_result(result)
                 sys.exit(1)
+
+            # 加载前一次 Dry Run 基线报告作为存储计划
+            if not os.path.exists(args.prior_dry_run_path):
+                result['errors'].append(
+                    f'前一次 Dry Run 基线文件不存在: {args.prior_dry_run_path}'
+                )
+                _write_result(result)
+                sys.exit(1)
+
+            try:
+                with open(args.prior_dry_run_path, 'r', encoding='utf-8') as f:
+                    stored_data = json.load(f)
+            except Exception as load_err:
+                result['errors'].append(
+                    f'无法读取前一次 Dry Run 基线: {load_err}'
+                )
+                _write_result(result)
+                sys.exit(1)
+
+            # 从存储基线中提取计划部分（去除顶层元数据键）
+            stored_plan = {
+                k: v for k, v in stored_data.items()
+                if k not in ('generated_at', 'warehouse_id', 'warehouse_name',
+                             'country', 'input_rows', 'dry_run_run_id')
+            }
+
+            # 真实差异比较：生成计划 vs 存储基线计划
+            diffs = compare_plans(plan, stored_plan)
+            if diffs:
+                result['plan_drift_check'] = 'DRIFT_DETECTED'
+                result['plan_drift_count'] = len(diffs)
+                result['plan_drift_differences'] = [str(d) for d in diffs]
+                result['errors'].append(f'计划漂移 ({len(diffs)} 项差异)')
+                _write_result(result)
+                sys.exit(1)
+            else:
+                result['plan_drift_check'] = 'PASS'
+                result['plan_drift_count'] = 0
+        else:
+            # Dry Run: 无基线比较，标记为 PASS（首次运行无漂移概念）
+            result['plan_drift_check'] = 'PASS'
+            result['plan_drift_count'] = 0
 
         # 填入摘要
         result['summary']['variants_created'] = len(plan.get('new_variants', []))

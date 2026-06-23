@@ -468,8 +468,10 @@ describe('SyncActions type', () => {
     expect(actions).toHaveProperty('triggerSync');
     expect(actions).toHaveProperty('triggerSyncAll');
     expect(actions).toHaveProperty('syncWarehouse');
+    expect(actions).toHaveProperty('triggerDryRun');    // P5-SY9D
+    expect(actions).toHaveProperty('confirmRealWrite'); // P5-SY9D
     expect(actions).toHaveProperty('getSyncRunsAction');
     expect(actions).toHaveProperty('getSyncRunDetailAction');
-    expect(Object.keys(actions).length).toBe(5);
+    expect(Object.keys(actions).length).toBe(7); // P5-SY9D: +2 methods
   });
 });

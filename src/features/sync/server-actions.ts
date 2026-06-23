@@ -19,7 +19,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -208,6 +208,85 @@ export async function syncWarehouse(warehouseId: string): Promise<{
   }
   const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
   const result = await actions.syncWarehouse(warehouseId, wh.name, wh.token);
+  if (result.success) {
+    revalidatePath('/dashboard/inventory/overseas');
+  }
+  return result;
+}
+
+// ─── P5-SY9D: 单仓 Dry Run（仅审核，不自动链 Real Write）──────────
+
+export async function triggerDryRun(warehouseId: string): Promise<TriggerDryRunResult> {
+  await requireActiveAdmin();
+
+  // ── Session health guard (P5-SY9B) ──────────────────────────
+  const health = await verifyBigSellerSession();
+  if (health.status !== 'healthy') {
+    return {
+      warehouseId,
+      warehouseName: '会话异常',
+      success: false,
+      runId: '',
+      status: 'failed',
+      error: `BigSeller 登录会话不可用：${health.message}`,
+    };
+  }
+
+  const warehouses = await getCachedOverseasWarehouses();
+  const wh = warehouses.find((w) => w.id === warehouseId);
+  if (!wh) {
+    return { warehouseId, warehouseName: '未知仓库', success: false, runId: '', status: 'failed', error: '未知仓库 ID' };
+  }
+  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
+  const result = await actions.triggerDryRun(warehouseId, wh.name);
+  if (result.success) {
+    revalidatePath('/dashboard/inventory/overseas');
+  }
+  return result;
+}
+
+// ─── P5-SY9D: 确认 Real Write（绑定已完成 Dry Run） ──────────────
+
+export async function confirmRealWrite(
+  warehouseId: string,
+  dryRunRunId: string,
+): Promise<ConfirmRealWriteResult> {
+  await requireActiveAdmin();
+
+  // ── Session health guard (P5-SY9B) ──────────────────────────
+  const health = await verifyBigSellerSession();
+  if (health.status !== 'healthy') {
+    return {
+      warehouseId,
+      warehouseName: '会话异常',
+      success: false,
+      runId: '',
+      status: 'failed',
+      error: `BigSeller 登录会话不可用：${health.message}`,
+      dryRunRunId,
+    };
+  }
+
+  // ── Feature gate (P5-SY9C) ──────────────────────────────────
+  if (!isWebsyncRealWriteEnabled()) {
+    return {
+      warehouseId,
+      warehouseName: '功能未开放',
+      success: false,
+      runId: '',
+      status: 'failed',
+      error: 'Web 同步真实写入功能尚未启用。请等待 P5-SY9E heartbeat/timeout 完成并通过 P5-SY9I 独立验收。',
+      dryRunRunId,
+    };
+  }
+
+  const warehouses = await getCachedOverseasWarehouses();
+  const wh = warehouses.find((w) => w.id === warehouseId);
+  if (!wh) {
+    return { warehouseId, warehouseName: '未知仓库', success: false, runId: '', status: 'failed', error: '未知仓库 ID', dryRunRunId };
+  }
+  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
+  const result = await actions.confirmRealWrite(warehouseId, wh.name, dryRunRunId);
   if (result.success) {
     revalidatePath('/dashboard/inventory/overseas');
   }

@@ -8,8 +8,8 @@ import 'server-only';
 
 import type { SyncRepository } from './repository';
 import type { SyncService } from './sync-service';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse } from './types';
-import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema } from './schema';
+import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult } from './types';
+import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema } from './schema';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 
 // ─── InputArtifactSource ──────────────────────────────────────────
@@ -201,6 +201,192 @@ export function createSyncActions(deps: SyncActionsDeps) {
         results,
         allSuccess: results.every((r) => r.success),
       };
+    },
+
+    // ─── P5-SY9D: 单仓 Dry Run（仅 Dry Run，不自动链 Real Write） ──
+
+    async triggerDryRun(
+      warehouseId: string,
+      warehouseName: string,
+    ): Promise<TriggerDryRunResult> {
+      const user = await requireActiveAdmin();
+      const triggeredBy = user.id;
+
+      syncWarehouseSchema.parse({ warehouseId });
+
+      try {
+        const inputArtifact = await deps.inputArtifactSource.getInputArtifact(
+          warehouseId,
+          'dry_run',
+        );
+
+        const dryRunResult = await deps.syncService.executeSync({
+          warehouseId,
+          mode: 'dry_run',
+          inputArtifact,
+          triggeredBy,
+        });
+
+        if (dryRunResult.status !== 'completed') {
+          return {
+            warehouseId,
+            warehouseName,
+            success: false,
+            runId: dryRunResult.runId,
+            status: 'failed',
+            error: dryRunResult.error || 'Dry Run 失败',
+          };
+        }
+
+        // 构造审核摘要
+        const summary = dryRunResult.runnerResult?.summary;
+        return {
+          warehouseId,
+          warehouseName,
+          success: true,
+          runId: dryRunResult.runId,
+          status: 'completed',
+          summary: {
+            warehouseName,
+            country: (dryRunResult.runnerResult?.summary as Record<string, unknown>)?.warehouseName as string ?? '',
+            rawRowCount: 0,
+            validSkuCount: 0,
+            invalidSkuCount: 0,
+            variantsCreated: summary?.variantsCreated ?? 0,
+            inventoryInserted: summary?.inventoryInserted ?? 0,
+            inventoryUpdated: summary?.inventoryUpdated ?? 0,
+            inventoryUnchanged: summary?.inventoryUnchanged ?? 0,
+            warehouseRenamed: summary?.warehouseRenamed ?? false,
+            planDriftCheck: dryRunResult.runnerResult?.planDriftCheck ?? 'PASS',
+            planDriftCount: dryRunResult.runnerResult?.planDriftCount ?? 0,
+          },
+        };
+      } catch (err) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `Dry Run 异常: ${(err as Error).message}`,
+        };
+      }
+    },
+
+    // ─── P5-SY9D: 确认 Real Write（绑定已完成 Dry Run） ───────────
+
+    async confirmRealWrite(
+      warehouseId: string,
+      warehouseName: string,
+      dryRunRunId: string,
+    ): Promise<ConfirmRealWriteResult> {
+      const user = await requireActiveAdmin();
+      const triggeredBy = user.id;
+
+      confirmRealWriteSchema.parse({ warehouseId, dryRunRunId });
+
+      // ── 绑定验证：加载 Dry Run 详情 ──────────────────────
+      const dryRunDetail = await deps.repository.getSyncRunDetail(dryRunRunId);
+      if (!dryRunDetail) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 不存在: ${dryRunRunId}`,
+          dryRunRunId,
+        };
+      }
+
+      // 验证 Dry Run 模式
+      if (dryRunDetail.mode !== 'dry_run') {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的运行不是 Dry Run（模式: ${dryRunDetail.mode}）`,
+          dryRunRunId,
+        };
+      }
+
+      // 验证 Dry Run 状态
+      if (dryRunDetail.status !== 'completed') {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 未完成（状态: ${dryRunDetail.status}）`,
+          dryRunRunId,
+        };
+      }
+
+      // 验证仓库 ID 一致
+      if (dryRunDetail.warehouse_id !== warehouseId) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 仓库不匹配（预期: ${warehouseId}, 实际: ${dryRunDetail.warehouse_id}）`,
+          dryRunRunId,
+        };
+      }
+
+      // 验证计划漂移检查
+      if (dryRunDetail.plan_drift_check !== 'PASS') {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `绑定的 Dry Run 计划漂移未通过（plan_drift_check: ${dryRunDetail.plan_drift_check}, count: ${dryRunDetail.plan_drift_count}）`,
+          dryRunRunId,
+        };
+      }
+
+      // ── 执行 Real Write ──────────────────────────────────
+      try {
+        const realInputArtifact = await deps.inputArtifactSource.getInputArtifact(
+          warehouseId,
+          'real_write',
+        );
+
+        const realResult = await deps.syncService.executeSync({
+          warehouseId,
+          mode: 'real_write',
+          inputArtifact: realInputArtifact,
+          dryRunRunId,
+          confirmToken: 'P5-SY3B-PH', // P5-SY9C: feature gate blocks this from executing
+          triggeredBy,
+        });
+
+        return {
+          warehouseId,
+          warehouseName,
+          success: realResult.status === 'completed',
+          runId: realResult.runId,
+          status: realResult.status,
+          error: realResult.error,
+          dryRunRunId,
+        };
+      } catch (err) {
+        return {
+          warehouseId,
+          warehouseName,
+          success: false,
+          runId: '',
+          status: 'failed',
+          error: `Real Write 失败: ${(err as Error).message}`,
+          dryRunRunId,
+        };
+      }
     },
 
     async syncWarehouse(
