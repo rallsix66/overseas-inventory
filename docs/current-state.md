@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~E DONE；P5-SY9F AWAITING_REVIEW 返工完成待 Codex 再验收；P5-SY9G~I PENDING。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled。）
+`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~F DONE；P5-SY9G IN PROGRESS；P5-SY9H~I PENDING。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled，P5-SY9G 完成并通过 Codex 验收前不启用。）
 
 ## Completed Tasks
 
@@ -54,11 +54,11 @@ Phase 5 — 海外仓库存同步生产化
 
 - `P5-SY9D` — 单仓 Web Dry Run → 审核 → Real Write 绑定（2026-06-23 DONE。第三次返工通过 Codex 验收：confirmRealWrite 全部绑定校验强制化 — country 校验不再条件跳过 + 查询契约除杂（SyncRunAdminRow 不含 hash）+ 60 分钟边界修复。51/51 P5-SY9D 测试，430/430 非并发同步测试，Python 85/85 通过，lint/build 通过。Web 真实写入入口保持 server-side disabled。）
 - `P5-SY9E` — heartbeat / timeout / 子进程控制（2026-06-23 DONE。Codex 独立验收通过。统一 terminate(reason) 管线 + 可注入 heartbeatIntervalMs + prepareRunnerContext 异常清理 + capabilities 抛错 release 失败 → indeterminate + 23 项测试。453/453 非并发同步测试，Python 85/85，lint/build 通过。Web 真实写入入口保持 server-side disabled。未连接生产 Supabase，未执行真实写入。）
-- `P5-SY9F` — 批量全部海外仓 Dry Run（2026-06-23 AWAITING_REVIEW。Admin 可触发"批量 Dry Run / 审核总览"；每仓独立 claim/execute/release；单仓失败不影响其他仓；返回 BatchDryRunResult 含 warehouse name/country/runId/status/fetched rows/valid/invalid SKU/new variants/inventory/warehouseRenamePlan/planDriftCheck/failureReason。planDriftCheck !== 'PASS' → status='blocked'（非 ready）。warehouseRenamePlan 包含 action/currentName/targetName/message 详情。页面"批量 Dry Run"按钮调用 triggerBatchDryRun() 而非 syncAllWarehouses()；展示逐仓审核卡片。MockSyncRunner 新增 planDriftCheck/planDriftCount/renamePlan 可配置属性。删除 __debug.test.ts。495/495 非并发同步测试（17 文件，含 +13 P5-SY9F 新增/返工测试），Python 15/15，lint 0 errors/1 pre-existing warning，build 通过。已返工 7 项修复，待 Codex 再验收。）
+- `P5-SY9F` — 批量全部海外仓 Dry Run（2026-06-23 DONE。Codex 独立复验通过（含 7 项返工）。Admin 可触发"批量 Dry Run / 审核总览"；每仓独立 claim/execute/release；单仓失败不影响其他仓；返回 BatchDryRunResult 含 warehouse name/country/runId/status/fetched rows/valid/invalid SKU/new variants/inventory/warehouseRenamePlan/planDriftCheck/failureReason。planDriftCheck !== 'PASS' → status='blocked'（非 ready）。warehouseRenamePlan 包含 action/currentName/targetName/message 详情。页面"批量 Dry Run"按钮调用 triggerBatchDryRun() 而非 syncAllWarehouses()；展示逐仓审核卡片。MockSyncRunner 新增 planDriftCheck/planDriftCount/renamePlan 可配置属性。删除 __debug.test.ts。495/495 非并发同步测试（17 文件），Python 15/15，lint 0 errors / 14 warnings，build 通过。Web 真实写入入口保持 disabled。）
 
 ## Awaiting Review
 
-- P5-SY9F — AWAITING_REVIEW（返工进行 7 项修复完成，待 Codex 再验收）
+（无 — P5-SY9F 已通过 Codex 独立复验，P5-SY9G 开发中）
 
 ## Authentication Status
 
