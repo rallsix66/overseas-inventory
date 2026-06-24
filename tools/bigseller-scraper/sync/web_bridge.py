@@ -231,10 +231,7 @@ def main():
 
             rpc_result = execute_plan_v2(
                 plan=plan,
-                warehouse=wh,
-                confirm_token=args.token,
-                dry_run_report_path=dry_run_path,
-                input_json_path=output_path,
+                sync_log_enabled=True,
             )
 
             result['summary'] = {

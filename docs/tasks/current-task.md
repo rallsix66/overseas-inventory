@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9A~I 全部 DONE（Codex 独立验收通过）。下一步：用户授权后生产启用。
+`DONE` — P5-SY9 全子任务（A~J）完成，生产启用受控验证通过。WEBSYNC_REAL_WRITE_ENABLED=true 已启用。
 
 ## 背景
 
@@ -149,6 +149,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 | P5-SY9G | 批量审核后真实写入 | 勾选 ready 仓库，强确认后逐仓写入；单仓失败不影响其他仓。confirmRealWrite 签名新增 confirmToken 参数消除硬编码 P5-SY3B-PH。新增 triggerBatchRealWrite Server Action + BatchRealWriteResult 类型。页面批量审核总览新增复选框/确认短语/批量写入按钮/写入结果展示。17 项测试。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。 | P5-SY9F | DONE（Codex 独立验收通过） |
 | P5-SY9H | 页面体验与运营可用性收口 | 当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
 | P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | DONE（Codex 独立验收通过。含一次返工：拆分 test/test:concurrency。） |
+| P5-SY9J | 生产启用受控验证 | 用户授权后启用 WEBSYNC_REAL_WRITE_ENABLED=true，PH 仓受控 Web Dry Run → 审核 → Real Write 小范围验证 | P5-SY9I | DONE（生产验证通过。PH 仓 sync_log success，new_variants_count=6。） |
 
 ## 验收标准
 

@@ -25,7 +25,7 @@
 | P5-SY8F | MY 真实写入与端到端验收 | P5-SY8E | DONE（Codex 独立验收通过。全新抓取 48 行 + invalid sidecar 1 行。首次写入：48 Variants + 48 Inventory + Warehouse 改名；幂等重跑：0 新增/48 unchanged。Phase G/I PASS，SyncLog success。239/239 Python 测试，compileall/lint/build 通过。） |
 | P5-SY8G | ID 只读抓取与 Dry Run 方案 | P5-SY8F | DONE（Codex 独立复验通过。BigSeller 抓取 35 行，warehouse=印尼-DEE仓库，autoid=warehouse_option_3。DB 仓库 `印尼仓`→`印尼-DEE仓库` 改名已确认。P5-SY8G-ID 令牌（仅 --dry-run）。Codex 返工 3 项修复通过：1) --no-dry-run 动态提示 P5-SY8H-ID（新增 `_PENDING_WRITE_TOKENS`）；2) `_DRY_RUN_ONLY_TOKENS` 一致性测试改用 ast.parse 完整解析 3 token；3) `_NO_DRY_RUN_EXCLUSIVE_TOKENS` 一致性断言不再被 `except AssertionError: pass` 吞掉。245/245 Python 测试，compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入。） |
 | P5-SY8H | ID 真实写入与端到端验收 | P5-SY8G | DONE（Codex 独立验收通过。首次 RPC 写入 35 Variants (country=ID) + 35 Inventory + Warehouse 改名 "印尼仓"→"印尼-DEE仓库"；Phase G/I PASS，SyncLog success。幂等重跑：0 新增/35 unchanged，plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试，compileall/lint/build 通过。） |
-| P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | IN_PROGRESS（P5-SY9A~I 全部 DONE。Codex 独立验收通过。下一步：用户授权后生产启用。） |
+| P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | DONE（P5-SY9A~J 全部 DONE。生产启用受控验证通过。WEBSYNC_REAL_WRITE_ENABLED=true。） |
 
 P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许批量处理全部启用海外仓，但必须先批量 Dry Run、页面审核、二次确认后再逐仓真实写入；禁止普通按钮直接自动真实写入。
 
@@ -42,6 +42,7 @@ P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许
 | **P5-SY9G** | 批量审核后真实写入：勾选 ready 仓库，强确认后逐仓写入，单仓失败不影响其他仓 | P5-SY9F | DONE（Codex 独立验收通过） |
 | **P5-SY9H** | 页面体验与运营可用性收口：当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
 | **P5-SY9I** | 独立验收与生产启用：测试、lint/build、Python tests、Codex 独立审查 | P5-SY9H | DONE（Codex 独立验收通过。含一次返工：拆分 test/test:concurrency。） |
+| **P5-SY9J** | 生产启用受控验证：用户授权后 WEBSYNC_REAL_WRITE_ENABLED=true，PH 仓受控 Dry Run → Real Write | P5-SY9I | DONE（生产验证通过。PH sync_log success，new_variants_count=6。） |
 
 ## P5-SY5 子任务拆分（V5.4 修订）
 
