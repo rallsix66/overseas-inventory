@@ -336,6 +336,62 @@ export async function runAutoPreReview(): Promise<AutoPreReviewResult> {
   return result;
 }
 
+// ─── P5-SY10E: 定时自动预审（Cron Route Handler 调用）─────────
+
+/** 定时任务触发的自动预审编排。
+ *  使用 CRON_API_KEY 鉴权（不依赖用户 session）。
+ *  仅触发 Dry Run + 规则评估，不调用 Real Write。
+ *
+ *  由 Vercel Cron GET /api/cron/dry-run 调用。
+ *  Admin 手动触发请使用 runAutoPreReview()。 */
+export async function runScheduledAutoPreReview(
+  apiKey: string,
+): Promise<AutoPreReviewResult> {
+  // ── API key 鉴权 ────────────────────────────────────────────
+  const configuredKey = process.env.CRON_API_KEY;
+  if (!configuredKey) {
+    throw new Error('CRON_API_KEY 环境变量未配置');
+  }
+  if (apiKey !== configuredKey) {
+    throw new Error('CRON_API_KEY 无效');
+  }
+
+  // ── 系统触发者 ID ──────────────────────────────────────────
+  // Cron 任务无用户 session，使用环境变量配置的系统用户 UUID。
+  // 该 UUID 必须是 Supabase auth.users 中存在的真实用户（Admin 角色），
+  // 对应 sync_run.triggered_by 字段记录。
+  const triggeredBy = process.env.CRON_SYSTEM_USER_ID;
+  if (!triggeredBy) {
+    throw new Error('CRON_SYSTEM_USER_ID 环境变量未配置');
+  }
+
+  // ── Session health guard（core 版本，无 requireActiveAdmin）─
+  const health = await _verifyBigSellerSessionCore();
+  if (health.status !== 'healthy') {
+    return {
+      items: [],
+      summary: { total: 0, pass: 0, warn: 0, block: 0, failed: 0 },
+      sessionHealth: health,
+      blockReason: `BigSeller 登录会话不可用：${health.message}`,
+    };
+  }
+
+  // ── 编排执行（复用 runAutoPreReview 内部管线）──────────────
+  const warehouses = await getCachedOverseasWarehouses();
+  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
+  const result = await actions.runAutoPreReview(
+    warehouses.map((w) => ({ id: w.id, name: w.name, country: w.country })),
+    health,
+    triggeredBy, // systemTriggeredBy — 跳过 actions.ts 内的 requireActiveAdmin()
+  );
+
+  if (result.items.some((i) => i.dryRun.status === 'ready')) {
+    revalidatePath('/dashboard/inventory/overseas');
+  }
+
+  return result;
+}
+
 // ─── P5-SY9G: 批量审核后真实写入 ────────────────────────────
 
 export async function triggerBatchRealWrite(
@@ -557,12 +613,10 @@ export async function getSyncLogDetail(
 
 const HEALTH_CHECK_TIMEOUT_MS = 60_000;
 
-/** 验证 BigSeller 登录会话是否可用于 Web headless 同步。
- *  使用与 Web 同步相同的 profile 和 headless 模式，只读检查库存页是否可访问。
- *  仅 Admin 可调用；不执行任何写入、抓取或同步操作。 */
-export async function verifyBigSellerSession(): Promise<SessionHealthResult> {
-  await requireActiveAdmin();
-
+/** 核心会话健康检查实现（不含权限校验）。
+ *  供 verifyBigSellerSession() 和定时任务 Route Handler 共用。
+ *  不执行任何写入、抓取或同步操作。 */
+async function _verifyBigSellerSessionCore(): Promise<SessionHealthResult> {
   const projectRoot = path.resolve(process.cwd());
 
   return new Promise<SessionHealthResult>((resolve) => {
@@ -641,4 +695,12 @@ export async function verifyBigSellerSession(): Promise<SessionHealthResult> {
       });
     });
   });
+}
+
+/** 验证 BigSeller 登录会话是否可用于 Web headless 同步。
+ *  使用与 Web 同步相同的 profile 和 headless 模式，只读检查库存页是否可访问。
+ *  仅 Admin 可调用；不执行任何写入、抓取或同步操作。 */
+export async function verifyBigSellerSession(): Promise<SessionHealthResult> {
+  await requireActiveAdmin();
+  return _verifyBigSellerSessionCore();
 }
