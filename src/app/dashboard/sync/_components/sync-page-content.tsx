@@ -5,7 +5,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Eye, Play, RefreshCw, LogIn, CheckCircle, AlertTriangle, ShieldAlert, Package, ArrowRight } from 'lucide-react';
+import { Eye, Play, RefreshCw, LogIn, CheckCircle, AlertTriangle, ShieldAlert, Package, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -48,6 +48,7 @@ import {
   confirmRealWrite,
   triggerBatchDryRun,
   triggerBatchRealWrite,
+  runAutoPreReview,
 } from '@/features/sync/server-actions';
 import type {
   SyncRunAdminRow,
@@ -63,6 +64,9 @@ import type {
   BatchRealWriteResult,
   BatchRealWriteItemResult,
   SyncLogRecord,
+  AutoPreReviewResult,
+  AutoPreReviewItem,
+  RuleVerdict,
 } from '@/features/sync/types';
 
 // ─── Type helpers ──────────────────────────────────────────────
@@ -148,6 +152,37 @@ function DriftBadge({ check }: { check: string | null }) {
   return <span className="text-xs text-muted-foreground">{check}</span>;
 }
 
+// ─── P5-SY10D: Rule Decision Badge ──────────────────────────────
+
+function RuleBadge({ decision }: { decision: string }) {
+  switch (decision) {
+    case 'PASS':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+          PASS
+        </span>
+      );
+    case 'WARN':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+          WARN
+        </span>
+      );
+    case 'BLOCK':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+          BLOCK
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+          {decision || '—'}
+        </span>
+      );
+  }
+}
+
 // ─── Time formatter ────────────────────────────────────────────
 
 function formatTime(iso: string | null): string {
@@ -188,20 +223,32 @@ function BatchReviewCard({
   selectable = false,
   checked = false,
   onToggle,
+  ruleVerdict,
 }: {
   item: BatchDryRunItemResult;
   selectable?: boolean;
   checked?: boolean;
   onToggle?: () => void;
+  /** P5-SY10D: 规则引擎决策，若提供则显示 RuleBadge + 可展开规则详情 */
+  ruleVerdict?: RuleVerdict;
 }) {
   const isReady = item.status === 'ready';
-  const isSelectable = selectable && isReady;
+  const isBlockedByRule = ruleVerdict?.decision === 'BLOCK';
+  const isWarnByRule = ruleVerdict?.decision === 'WARN';
+  // With ruleVerdict: PASS/WARN are selectable, BLOCK is not.
+  // Without ruleVerdict: only ready items are selectable (original behavior).
+  const isSelectable = ruleVerdict
+    ? selectable && !isBlockedByRule
+    : selectable && isReady;
 
   const statusConfig = {
     ready: { bg: 'bg-green-50 border-green-200', text: 'text-green-800', label: '✓ 就绪' },
     failed: { bg: 'bg-red-50 border-red-200', text: 'text-red-800', label: '✗ 失败' },
     blocked: { bg: 'bg-yellow-50 border-yellow-200', text: 'text-yellow-800', label: '⚠ 阻断' },
   }[item.status];
+
+  // Expand rule evaluations
+  const [ruleExpanded, setRuleExpanded] = useState(false);
 
   return (
     <div className={`rounded-md border p-3 text-sm ${statusConfig.bg}`}>
@@ -215,14 +262,27 @@ function BatchReviewCard({
               onChange={onToggle}
               disabled={!isSelectable}
               className={`w-4 h-4 rounded border-gray-300 ${isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'}`}
+              title={
+                isBlockedByRule
+                  ? `规则引擎阻断：${ruleVerdict?.evaluations.map((e) => e.message).join('；')}`
+                  : undefined
+              }
             />
           )}
           <span className="font-medium">
             {item.warehouseName}
             <span className="text-xs text-muted-foreground ml-1.5">({item.country})</span>
+            {isWarnByRule && selectable && (
+              <span title="规则预警，建议人工审核后确认">
+                <AlertTriangle className="w-3.5 h-3.5 text-yellow-600 inline ml-1" />
+              </span>
+            )}
           </span>
         </div>
-        <span className={`text-xs font-medium ${statusConfig.text}`}>{statusConfig.label}</span>
+        <div className="flex items-center gap-2">
+          {ruleVerdict && <RuleBadge decision={ruleVerdict.decision} />}
+          <span className={`text-xs font-medium ${statusConfig.text}`}>{statusConfig.label}</span>
+        </div>
       </div>
 
       {/* Run ID */}
@@ -230,6 +290,14 @@ function BatchReviewCard({
         <p className="text-xs text-muted-foreground mb-2 font-mono">
           Run ID: {item.runId.slice(0, 12)}…
         </p>
+      )}
+
+      {/* Rule Block Reason for BLOCK items */}
+      {isBlockedByRule && ruleVerdict && ruleVerdict.evaluations.length > 0 && (
+        <div className="text-xs text-red-700 bg-red-100/50 rounded px-2 py-1 mb-2">
+          🚫 阻断原因：
+          {ruleVerdict.evaluations.map((e) => e.message).join('；')}
+        </div>
       )}
 
       {/* Summary grid — only for ready/blocked (not failed with no run) */}
@@ -267,6 +335,41 @@ function BatchReviewCard({
         <p className="text-xs text-red-700 mt-1">
           {item.failureReason}
         </p>
+      )}
+
+      {/* ─── P5-SY10D: Rule detail expansion ────────────────────── */}
+      {ruleVerdict && ruleVerdict.evaluations.length > 0 && (
+        <div className="mt-2 border-t pt-2 border-gray-200/50">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setRuleExpanded((v) => !v)}
+          >
+            {ruleExpanded
+              ? <ChevronUp className="w-3 h-3" />
+              : <ChevronDown className="w-3 h-3" />
+            }
+            规则详情（{ruleVerdict.evaluations.length} 项）— {ruleVerdict.summary}
+          </button>
+          {ruleExpanded && (
+            <ul className="mt-1.5 space-y-1">
+              {ruleVerdict.evaluations.map((e, i) => (
+                <li
+                  key={i}
+                  className={`text-xs rounded px-2 py-1 ${
+                    e.level === 'BLOCK' ? 'bg-red-100/60 text-red-800' :
+                    e.level === 'WARN' ? 'bg-yellow-100/60 text-yellow-800' :
+                    'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  <span className="font-medium">{e.rule}</span>
+                  <span className="mx-1.5">—</span>
+                  {e.message}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
@@ -543,6 +646,76 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
   const [batchRealWriteSubmitting, setBatchRealWriteSubmitting] = useState(false);
   const [batchRealWriteResult, setBatchRealWriteResult] = useState<BatchRealWriteResult | null>(null);
 
+  // ─── P5-SY10D: 自动预审 ────────────────────────────────────────
+  const [autoReviewOpen, setAutoReviewOpen] = useState(false);
+  const [autoReviewSubmitting, setAutoReviewSubmitting] = useState(false);
+  const [autoReviewResult, setAutoReviewResult] = useState<AutoPreReviewResult | null>(null);
+
+  async function handleAutoPreReview() {
+    setAutoReviewSubmitting(true);
+    setAutoReviewResult(null);
+    try {
+      const result = await runAutoPreReview();
+      setAutoReviewResult(result);
+
+      if (result.blockReason) {
+        toast.error(`自动预审已阻断: ${result.blockReason}`, { duration: 8000 });
+      } else {
+        const { pass, warn, block, failed } = result.summary;
+        const parts: string[] = [];
+        if (pass > 0) parts.push(`${pass} PASS`);
+        if (warn > 0) parts.push(`${warn} WARN`);
+        if (block > 0) parts.push(`${block} BLOCK`);
+        if (failed > 0) parts.push(`${failed} 失败`);
+        toast.info(`自动预审完成：${parts.join(' / ')}`, { duration: 6000 });
+      }
+
+      // Per-warehouse toast for BLOCK items
+      if (!result.blockReason) {
+        for (const item of result.items) {
+          if (item.ruleVerdict.decision === 'BLOCK') {
+            toast.warning(
+              `${item.warehouseName}: ${item.ruleVerdict.summary}`,
+              { duration: 5000 },
+            );
+          }
+        }
+      }
+
+      if (!result.blockReason) {
+        router.refresh();
+      }
+    } catch (catchErr) {
+      const errMsg = (catchErr as Error).message || String(catchErr);
+      console.error('自动预审失败:', catchErr);
+      toast.error(`自动预审失败: ${errMsg}`, { duration: 10000 });
+    } finally {
+      setAutoReviewSubmitting(false);
+    }
+  }
+
+  /** Map AutoPreReviewItem.dryRun to BatchDryRunItemResult for BatchReviewCard reuse */
+  function toBatchDryRunItem(item: AutoPreReviewItem): BatchDryRunItemResult {
+    return {
+      warehouseId: item.warehouseId,
+      warehouseName: item.warehouseName,
+      country: item.country,
+      runId: item.dryRun.runId,
+      status: item.dryRun.status,
+      rawRowCount: item.dryRun.rawRowCount,
+      validSkuCount: item.dryRun.validSkuCount,
+      invalidSkuCount: item.dryRun.invalidSkuCount,
+      variantsCreated: item.dryRun.variantsCreated,
+      inventoryInserted: item.dryRun.inventoryInserted,
+      inventoryUpdated: item.dryRun.inventoryUpdated,
+      inventoryUnchanged: item.dryRun.inventoryUnchanged,
+      planDriftCheck: item.dryRun.planDriftCheck,
+      planDriftCount: item.dryRun.planDriftCount,
+      failureReason: item.dryRun.failureReason,
+      warehouseRenamePlan: item.dryRun.warehouseRenamePlan ?? null,
+    };
+  }
+
   function toggleReadyItem(warehouseId: string) {
     setSelectedReadyItems((prev) => {
       const next = new Set(prev);
@@ -707,6 +880,16 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
               >
                 <RefreshCw className="w-4 h-4 mr-1.5" />
                 批量 Dry Run
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => { setAutoReviewOpen(true); setAutoReviewResult(null); }}
+                disabled={isSyncDisabled}
+                title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
+              >
+                <CheckCircle className="w-4 h-4 mr-1.5" />
+                自动预审
               </Button>
               <Button
                 size="sm"
@@ -1394,6 +1577,118 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                   <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
                 )}
                 {batchDryRunSubmitting ? '执行中…' : '开始批量 Dry Run'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── P5-SY10D: 自动预审 Dialog ──────────────────────────── */}
+      <Dialog open={autoReviewOpen} onOpenChange={(open) => { if (!open) { setAutoReviewOpen(false); setAutoReviewResult(null); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>自动预审 / 规则决策</DialogTitle>
+            <DialogDescription>
+              对全部启用海外仓执行自动预审：依次 Dry Run → 规则引擎评估，产出 PASS / WARN / BLOCK 决策。不写入数据库。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* 仓库清单（未执行时） */}
+            {!autoReviewResult && !autoReviewSubmitting && (
+              <div className="rounded-md bg-gray-50 p-3">
+                <p className="text-sm font-medium text-muted-foreground mb-2">
+                  将依次对以下 {warehouses.length} 个仓库执行自动预审：
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-1.5">
+                  {warehouses.map((w) => (
+                    <li key={w.id} className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                      {w.name}
+                      <span className="text-xs text-muted-foreground/60">({w.country})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* 全局阻断 */}
+            {autoReviewResult?.blockReason && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                <p className="font-medium">⚠ 自动预审已阻断</p>
+                <p className="text-xs mt-1">{autoReviewResult.blockReason}</p>
+              </div>
+            )}
+
+            {/* 预审结果 */}
+            {autoReviewResult && !autoReviewResult.blockReason && (
+              <>
+                {/* 汇总统计：PASS/WARN/BLOCK + failed */}
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    PASS <span className="font-medium">{autoReviewResult.summary.pass}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                    WARN <span className="font-medium">{autoReviewResult.summary.warn}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                    BLOCK <span className="font-medium">{autoReviewResult.summary.block}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    失败 <span className="font-medium">{autoReviewResult.summary.failed}</span>
+                  </span>
+                </div>
+
+                {/* 逐仓预审卡片 */}
+                <div className="max-h-[50vh] overflow-y-auto space-y-3">
+                  {autoReviewResult.items.map((item) => (
+                    <BatchReviewCard
+                      key={item.warehouseId}
+                      item={toBatchDryRunItem(item)}
+                      ruleVerdict={item.ruleVerdict}
+                      selectable={item.ruleVerdict.decision !== 'BLOCK'}
+                      checked={false}
+                      onToggle={() => {}}
+                    />
+                  ))}
+                </div>
+
+                {/* 会话健康状态 */}
+                <div className="text-xs text-muted-foreground border-t pt-3">
+                  会话状态：
+                  {autoReviewResult.sessionHealth.status === 'healthy'
+                    ? <span className="text-green-600 font-medium">已登录可用</span>
+                    : <span className="text-amber-600 font-medium">{autoReviewResult.sessionHealth.status}</span>
+                  }
+                  <span className="ml-2">
+                    检查时间：{new Date(autoReviewResult.sessionHealth.checkedAt).toLocaleString('zh-CN')}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setAutoReviewOpen(false);
+                setAutoReviewResult(null);
+              }}
+              disabled={autoReviewSubmitting}
+            >
+              {autoReviewResult ? '关闭' : '取消'}
+            </Button>
+            {!autoReviewResult && (
+              <Button onClick={handleAutoPreReview} disabled={autoReviewSubmitting}>
+                {autoReviewSubmitting && (
+                  <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+                )}
+                {autoReviewSubmitting ? '预审中…' : '开始自动预审'}
               </Button>
             )}
           </DialogFooter>

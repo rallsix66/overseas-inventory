@@ -770,6 +770,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
             inventoryUnchanged: item.inventoryUnchanged,
             planDriftCheck: item.planDriftCheck,
             planDriftCount: item.planDriftCount,
+            warehouseRenamePlan: item.warehouseRenamePlan ?? null,
           },
           history,
           ruleVerdict,

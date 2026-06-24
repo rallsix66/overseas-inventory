@@ -502,6 +502,13 @@ export interface AutoPreReviewItem {
     inventoryUnchanged: number;
     planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
     planDriftCount: number;
+    /** 仓库改名计划。来自 Plan Artifact 的 warehouse_rename_required，透传供 UI 展示 */
+    warehouseRenamePlan?: {
+      action: 'rename' | 'none';
+      currentName?: string;
+      targetName?: string;
+      message?: string;
+    } | null;
   };
   /** 仓库历史同步上下文 */
   history: WarehouseHistory;
