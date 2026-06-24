@@ -384,3 +384,74 @@ export interface BatchRealWriteResult {
   /** 全局阻断原因（如 feature gate disabled / session unhealthy），此时 results 为空 */
   blockReason?: string;
 }
+
+// ─── P5-SY10A: 规则引擎 ───────────────────────────────────────────
+
+/** 规则决策级别。BLOCK > WARN > PASS。 */
+export type RuleLevel = 'PASS' | 'WARN' | 'BLOCK';
+
+/** 单条规则评估结果 */
+export interface RuleEvaluation {
+  /** 规则标识，如 'session_unhealthy' */
+  rule: string;
+  /** 该规则的决策级别 */
+  level: RuleLevel;
+  /** 中文可读描述 */
+  message: string;
+  /** 附加结构化信息（阈值、实际值等） */
+  details?: Record<string, unknown>;
+}
+
+/** 规则引擎输入 — 单个仓库的 Dry Run 结果 + 历史上下文 */
+export interface RuleInput {
+  /** BigSeller 会话健康状态 */
+  sessionHealth: SessionHealthResult;
+  /** 当前 Dry Run 执行结果 */
+  dryRun: {
+    status: 'ready' | 'failed' | 'blocked';
+    planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
+    rawRowCount: number;
+    validSkuCount: number;
+    invalidSkuCount: number;
+    variantsCreated: number;
+    inventoryInserted: number;
+    inventoryUpdated: number;
+    inventoryUnchanged: number;
+    warehouseRenamePlan: {
+      action: 'rename' | 'none';
+      currentName?: string;
+      targetName?: string;
+      message?: string;
+    } | null;
+    failureReason?: string;
+  };
+  /** 历史同步上下文 */
+  history: {
+    /** 是否有历史成功同步（至少一条 sync_log status=success） */
+    hasBaseline: boolean;
+    /** 当前 Dry Run 之前连续失败次数 */
+    consecutiveFailures: number;
+    /** 最近一次成功同步 */
+    lastSuccess: {
+      finishedAt: string;
+      newVariantsCount: number;
+    } | null;
+    /** 最近 5 次成功同步的统计均值（无历史基线时为 null） */
+    stats: {
+      avgRawRowCount: number;
+      avgValidSkuCount: number;
+      avgInvalidSkuCount: number;
+      avgVariantsCreated: number;
+    } | null;
+  };
+}
+
+/** 规则引擎输出 — 单仓预审决策 */
+export interface RuleVerdict {
+  /** 最终决策：所有命中规则中的最严重级别 */
+  decision: RuleLevel;
+  /** 全部命中的规则评估（不含 PASS，按优先级排列） */
+  evaluations: RuleEvaluation[];
+  /** 简短中文摘要（如 "全部通过" / "2 项阻断，1 项警告"） */
+  summary: string;
+}
