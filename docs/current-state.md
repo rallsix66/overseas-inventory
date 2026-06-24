@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY10` — 自动 Dry Run 预审与后续自动化分阶段框架（IN_PROGRESS — P5-SY10A DONE，P5-SY10B 返工完成待 Codex 复验。规则引擎 + 历史上下文提供器已实现。`getWarehouseHistory()` 从 sync_run 推导 hasBaseline / consecutiveFailures（仅 dry_run failed，real_write 屏障）/ lastSuccess / stats。35 项测试。621/621 TS 测试，lint 0 errors，build pass。下一步 P5-SY10C。）
+`P5-SY10` — 自动 Dry Run 预审与后续自动化分阶段框架（IN_PROGRESS — P5-SY10A DONE，P5-SY10B DONE。规则引擎 + 历史上下文提供器已实现。`getWarehouseHistory()` 从 sync_run 推导 hasBaseline / consecutiveFailures（仅 dry_run failed，real_write 屏障）/ lastSuccess / stats。35 项测试。621/621 TS 测试，lint 0 errors，build pass。下一步 P5-SY10C。）
 
 ## Completed Tasks
 
@@ -61,11 +61,11 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY9J` — 生产启用受控验证（2026-06-24 DONE，用户授权后执行。WEBSYNC_REAL_WRITE_ENABLED=true 已在 .env.local 启用。受控验证选 PH 仓（菲律宾-新创启辰自建仓）：Web Dry Run（104 行 → 6 新 variants + 80 更新 + 18 未变更）→ 审核（plan_drift_check=PASS）→ Real Write 成功（sync_log status=success，new_variants_count=6，库存更新已确认：SKU 7148556251712 数量 100,716→80,481）。修复 web_bridge.py execute_plan_v2 调用签名不匹配（移除已废弃的 warehouse/confirm_token/dry_run_report_path/input_json_path 参数）。已知小问题：execute_plan_v2 返回 summary 全为零（不影响实际写入，sync_log 记录正确），记入技术债务。）
 - `P5-SY9K` — 返工：禁用旧同步入口 + 修复 Web Real Write summary（2026-06-24 DONE。两项返工：1) syncWarehouse / syncAllWarehouses 永久禁用，不再执行真实写入，返回中文错误引导用户使用 Dry Run → 审核 → 确认写入流程；sync-page-content.tsx 移除 syncWarehouse import / handleTrigger / 「快速同步」按钮。2) web_bridge.py Real Write summary 从 rpc_result["rpc_summary"] 读取（而非直接从 rpc_result 顶级键读取），修复返回全零问题。新增 TypeScript 测试（production-wiring.test.ts 7 项源码检查 + session-health.test.ts 4 节重写）和 Python 测试（test_web_bridge_summary_reads_from_rpc_summary）。质量门：526/526 TS 测试 + 252/252 Python 测试 + lint 0 errors + build 通过。WEBSYNC_REAL_WRITE_ENABLED=false 已恢复到安全状态。）
 - `P5-SY10A` — 规则引擎核心：类型 + 纯函数 + 单元测试（2026-06-24 DONE。新增 `rules-engine.ts`：`evaluateRules(input)` 纯函数，11 条规则 R1~R11，冷启动/有基线双路径，BLOCK > WARN > PASS 决策推导。新增 `evaluateSessionHealth()` 辅助函数。新增 `types.ts` 中 `RuleLevel` / `RuleEvaluation` / `RuleInput` / `RuleVerdict` 类型。60 项测试覆盖每规则命中/不命中/边界 + 组合场景 + 冷启动双路径。质量门：586/586 TS 测试，lint 0 errors，build pass。不涉及 DB/Cron/UI/Real Write。）
-- `P5-SY10B` — 历史上下文提供器：基线追踪 + 连续失败检测（2026-06-24 返工完成待 Codex 复验。SyncRepository 接口新增 `getWarehouseHistory(warehouseId)`，MockRepository + SupabaseSyncRepository 实现。从 sync_run 推导 hasBaseline / consecutiveFailures（仅 dry_run failed，real_write 屏障）/ lastSuccess / stats（最近 5 次完成均值）。`sync-service.ts` 中 `buildResultSummary()` 将 scraperMeta 字段持久化到 result_summary JSONB。35 项测试覆盖冷启动/有基线/连续失败 1~3/real_write 屏障不穿透/成功重置/跨仓隔离/缺失 result_summary/混合格式。质量门：621/621 TS 测试，lint 0 errors，build pass。不新增 DB 表，不改 Migration。）
+- `P5-SY10B` — 历史上下文提供器：基线追踪 + 连续失败检测（2026-06-24 DONE，Codex 返工复验通过。SyncRepository 接口新增 `getWarehouseHistory(warehouseId)`，MockRepository + SupabaseSyncRepository 实现。从 sync_run 推导 hasBaseline / consecutiveFailures（仅 dry_run failed，real_write 屏障）/ lastSuccess / stats（最近 5 次完成均值）。`sync-service.ts` 中 `buildResultSummary()` 将 scraperMeta 字段持久化到 result_summary JSONB。35 项测试覆盖冷启动/有基线/连续失败 1~3/real_write 屏障不穿透/成功重置/跨仓隔离/缺失 result_summary/混合格式。质量门：621/621 TS 测试，lint 0 errors，build pass。不新增 DB 表，不改 Migration。）
 
 ## Awaiting Review
 
-- P5-SY10B 返工完成待 Codex 复验。P5-SY10C~F 待启动。P5-SY11 ProductVariant 软归档与库存视图降噪记入后置计划。
+- P5-SY10C~F 待启动。P5-SY11 ProductVariant 软归档与库存视图降噪记入后置计划。
 
 ## Authentication Status
 
