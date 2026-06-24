@@ -9,7 +9,8 @@ import 'server-only';
 import type { SyncRepository } from './repository';
 import type { SyncService } from './sync-service';
 import type { ArtifactProvider } from './artifact-provider';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchDryRunItemResult, BatchRealWriteItem, BatchRealWriteResult, BatchRealWriteItemResult } from './types';
+import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchDryRunItemResult, BatchRealWriteItem, BatchRealWriteResult, BatchRealWriteItemResult, AutoPreReviewItem, AutoPreReviewResult, SessionHealthResult, WarehouseHistory } from './types';
+import { evaluateRules } from './rules-engine';
 import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema, triggerBatchRealWriteSchema } from './schema';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 
@@ -654,6 +655,112 @@ export function createSyncActions(deps: SyncActionsDeps) {
         successCount: results.filter((r) => r.status === 'ready').length,
         failedCount: results.filter((r) => r.status === 'failed').length,
         blockedCount: results.filter((r) => r.status === 'blocked').length,
+      };
+    },
+
+    // ─── P5-SY10C: 自动预审编排 ─────────────────────────────────
+
+    /** 串联 session health → 批量 Dry Run → 逐仓历史 + 规则评估。
+     *  复用 triggerBatchDryRun 执行批量 Dry Run，每仓追加
+     *  getWarehouseHistory + evaluateRules 生成预审决策。
+     *  PASS 仍需走人工审核 + confirmRealWrite，不自动写库。 */
+    async runAutoPreReview(
+      warehouses: Array<{ id: string; name: string; country: string }>,
+      sessionHealth: SessionHealthResult,
+    ): Promise<AutoPreReviewResult> {
+      // 1. 执行批量 Dry Run（复用现有逻辑，含 requireActiveAdmin）
+      let batchResult: BatchDryRunResult;
+      try {
+        batchResult = await this.triggerBatchDryRun(warehouses);
+      } catch (err) {
+        return {
+          items: [],
+          summary: { total: 0, pass: 0, warn: 0, block: 0, failed: 0 },
+          sessionHealth,
+          blockReason: `批量 Dry Run 执行失败: ${(err as Error).message}`,
+        };
+      }
+
+      // 全局阻断（如 triggerBatchDryRun 内部异常保护）——正常情况下由
+      // Server Action 层的 session health guard 提前拦截，此处为防御性检查。
+      if (batchResult.blockReason) {
+        return {
+          items: [],
+          summary: { total: 0, pass: 0, warn: 0, block: 0, failed: 0 },
+          sessionHealth,
+          blockReason: batchResult.blockReason,
+        };
+      }
+
+      // 2. 逐仓获取历史上下文 + 规则评估
+      const items: AutoPreReviewItem[] = [];
+      for (const item of batchResult.results) {
+        // 获取历史上下文（失败不阻断，使用冷启动默认值）
+        let history: WarehouseHistory;
+        try {
+          history = await deps.repository.getWarehouseHistory(item.warehouseId);
+        } catch {
+          history = {
+            hasBaseline: false,
+            consecutiveFailures: 0,
+            lastSuccess: null,
+            stats: null,
+          };
+        }
+
+        // 规则引擎评估
+        const ruleVerdict = evaluateRules({
+          sessionHealth,
+          dryRun: {
+            status: item.status,
+            planDriftCheck: item.planDriftCheck,
+            rawRowCount: item.rawRowCount,
+            validSkuCount: item.validSkuCount,
+            invalidSkuCount: item.invalidSkuCount,
+            variantsCreated: item.variantsCreated,
+            inventoryInserted: item.inventoryInserted,
+            inventoryUpdated: item.inventoryUpdated,
+            inventoryUnchanged: item.inventoryUnchanged,
+            warehouseRenamePlan: item.warehouseRenamePlan ?? null,
+            failureReason: item.failureReason,
+          },
+          history,
+        });
+
+        items.push({
+          warehouseId: item.warehouseId,
+          warehouseName: item.warehouseName,
+          country: item.country,
+          dryRun: {
+            status: item.status,
+            runId: item.runId,
+            failureReason: item.failureReason,
+            rawRowCount: item.rawRowCount,
+            validSkuCount: item.validSkuCount,
+            invalidSkuCount: item.invalidSkuCount,
+            variantsCreated: item.variantsCreated,
+            inventoryInserted: item.inventoryInserted,
+            inventoryUpdated: item.inventoryUpdated,
+            inventoryUnchanged: item.inventoryUnchanged,
+            planDriftCheck: item.planDriftCheck,
+            planDriftCount: item.planDriftCount,
+          },
+          history,
+          ruleVerdict,
+        });
+      }
+
+      // 3. 汇总统计
+      return {
+        items,
+        summary: {
+          total: items.length,
+          pass: items.filter((i) => i.ruleVerdict.decision === 'PASS').length,
+          warn: items.filter((i) => i.ruleVerdict.decision === 'WARN').length,
+          block: items.filter((i) => i.ruleVerdict.decision === 'BLOCK').length,
+          failed: items.filter((i) => i.dryRun.status === 'failed').length,
+        },
+        sessionHealth,
       };
     },
 

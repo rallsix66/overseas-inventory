@@ -475,7 +475,7 @@ describe('SyncActions type', () => {
     expect(actions).toHaveProperty('triggerBatchDryRun'); // P5-SY9F
     expect(actions).toHaveProperty('getSyncRunsAction');
     expect(actions).toHaveProperty('getSyncRunDetailAction');
-    expect(Object.keys(actions).length).toBe(9); // P5-SY9G: +1 method (triggerBatchRealWrite)
+    expect(Object.keys(actions).length).toBe(10); // P5-SY10C: +1 method (runAutoPreReview)
   });
 });
 

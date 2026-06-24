@@ -19,7 +19,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus, AutoPreReviewResult } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -296,6 +296,40 @@ export async function triggerBatchDryRun(): Promise<BatchDryRunResult> {
   );
 
   if (result.results.some((r) => r.status === 'ready')) {
+    revalidatePath('/dashboard/inventory/overseas');
+  }
+
+  return result;
+}
+
+// ─── P5-SY10C: 自动预审编排 ───────────────────────────────────
+
+/** 自动预审编排：串联 session health → 批量 Dry Run → 逐仓历史 + 规则评估。
+ *  仅 Admin 可调用。PASS 仍需走人工审核 + confirmRealWrite，不自动写库。
+ *  返回各仓预审结果（含 Dry Run 状态、历史上下文、规则决策），
+ *  BLOCK 仓库不能进入后续批量真实写入候选。 */
+export async function runAutoPreReview(): Promise<AutoPreReviewResult> {
+  await requireActiveAdmin();
+
+  // ── Session health guard ─────────────────────────────────────
+  const health = await verifyBigSellerSession();
+  if (health.status !== 'healthy') {
+    return {
+      items: [],
+      summary: { total: 0, pass: 0, warn: 0, block: 0, failed: 0 },
+      sessionHealth: health,
+      blockReason: `BigSeller 登录会话不可用：${health.message}`,
+    };
+  }
+
+  const warehouses = await getCachedOverseasWarehouses();
+  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
+  const result = await actions.runAutoPreReview(
+    warehouses.map((w) => ({ id: w.id, name: w.name, country: w.country })),
+    health,
+  );
+
+  if (result.items.some((i) => i.dryRun.status === 'ready')) {
     revalidatePath('/dashboard/inventory/overseas');
   }
 

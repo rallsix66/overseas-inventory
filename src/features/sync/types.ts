@@ -479,3 +479,51 @@ export interface RuleVerdict {
   /** 简短中文摘要（如 "全部通过" / "2 项阻断，1 项警告"） */
   summary: string;
 }
+
+// ─── P5-SY10C: 自动预审编排 ─────────────────────────────────────────
+
+/** 单仓自动预审结果。
+ *  包含 Dry Run 执行状态、历史上下文和规则引擎决策。 */
+export interface AutoPreReviewItem {
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  /** Dry Run 执行结果摘要 */
+  dryRun: {
+    status: 'ready' | 'failed' | 'blocked';
+    runId: string;
+    failureReason?: string;
+    rawRowCount: number;
+    validSkuCount: number;
+    invalidSkuCount: number;
+    variantsCreated: number;
+    inventoryInserted: number;
+    inventoryUpdated: number;
+    inventoryUnchanged: number;
+    planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
+    planDriftCount: number;
+  };
+  /** 仓库历史同步上下文 */
+  history: WarehouseHistory;
+  /** 规则引擎决策（PASS/WARN/BLOCK） */
+  ruleVerdict: RuleVerdict;
+}
+
+/** 自动预审编排总览结果。
+ *  串联 session health → 批量 Dry Run → 逐仓历史 + 规则评估。 */
+export interface AutoPreReviewResult {
+  /** 逐仓预审结果 */
+  items: AutoPreReviewItem[];
+  /** 预审摘要统计 */
+  summary: {
+    total: number;
+    pass: number;
+    warn: number;
+    block: number;
+    failed: number;
+  };
+  /** 本次预审使用的会话健康状态 */
+  sessionHealth: SessionHealthResult;
+  /** 全局阻断原因（如 session unhealthy / 批量 Dry Run 整体失败），此时 items 为空 */
+  blockReason?: string;
+}
