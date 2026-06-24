@@ -14,12 +14,17 @@ export interface VariantItem extends VariantRow {
   productCode: string | null;
 }
 
+/** 归档筛选状态 */
+export type VariantArchiveStatus = 'active' | 'archived' | 'all';
+
 /** SKU 筛选条件 */
 export interface VariantFilters extends PaginationParams {
   country?: string;
   matchStatus?: string;
   productId?: string;
   search?: string;
+  /** 归档筛选：active（默认，仅未归档）| archived（仅已归档）| all（全部） */
+  archiveStatus?: VariantArchiveStatus;
 }
 
 /** SKU 匹配表单 */

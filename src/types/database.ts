@@ -99,6 +99,9 @@ export type Database = {
           name: string
           match_status: string
           last_sync_at: string | null
+          is_archived: boolean
+          archived_at: string | null
+          archived_by: string | null
           created_at: string
           updated_at: string
         }
@@ -110,6 +113,9 @@ export type Database = {
           name: string
           match_status?: string
           last_sync_at: string | null
+          is_archived?: boolean
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -121,6 +127,9 @@ export type Database = {
           name?: string
           match_status?: string
           last_sync_at?: string | null
+          is_archived?: boolean
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           updated_at?: string
         }

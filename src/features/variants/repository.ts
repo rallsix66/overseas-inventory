@@ -18,7 +18,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export class VariantError extends Error {
   constructor(
     message: string,
-    public code: 'INVALID_ID' | 'NOT_FOUND' | 'DB_ERROR' | 'PRODUCT_INACTIVE'
+    public code: 'INVALID_ID' | 'NOT_FOUND' | 'DB_ERROR' | 'PRODUCT_INACTIVE' | 'ARCHIVED' | 'INVALID_STATE'
   ) {
     super(message);
     this.name = 'VariantError';
@@ -44,10 +44,11 @@ function mapVariantItem(row: Record<string, unknown>): VariantItem {
 // ---- Repository ----
 
 export const variantRepository = {
-  /** 分页列表（含关联产品名） */
+  /** 分页列表（含关联产品名）
+   *  @param filters.archiveStatus 默认 'active'（仅未归档），'archived' 仅已归档，'all' 不过滤 */
   async list(filters: VariantFilters = {}): Promise<PaginatedResult<VariantItem>> {
     const supabase = await createClient();
-    const { country, matchStatus, productId, search, page = 1, pageSize = PAGE_SIZE } = filters;
+    const { country, matchStatus, productId, search, archiveStatus = 'active', page = 1, pageSize = PAGE_SIZE } = filters;
 
     let query = supabase.from('product_variant').select('*, product:product_id (name, code)', {
       count: 'exact',
@@ -59,6 +60,12 @@ export const variantRepository = {
     if (search) {
       query = query.or(`sku.ilike.%${search}%,name.ilike.%${search}%`);
     }
+    if (archiveStatus === 'active') {
+      query = query.eq('is_archived', false);
+    } else if (archiveStatus === 'archived') {
+      query = query.eq('is_archived', true);
+    }
+    // archiveStatus === 'all' → 不加 is_archived 过滤
 
     const from = (page - 1) * pageSize;
     const { data, error, count } = await query
@@ -81,13 +88,14 @@ export const variantRepository = {
     };
   },
 
-  /** 获取未匹配 + 待确认的 SKU（用于待处理列表） */
+  /** 获取未匹配 + 待确认的活跃 SKU（用于待处理列表，排除已归档） */
   async getUnmatched(): Promise<VariantItem[]> {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('product_variant')
       .select('*, product:product_id (name, code)')
       .in('match_status', ['unmatched', 'pending'])
+      .eq('is_archived', false)
       .order('last_sync_at', { ascending: false });
 
     if (error) {
@@ -118,7 +126,116 @@ export const variantRepository = {
     return mapVariantItem(data as unknown as Record<string, unknown>);
   },
 
-  /** 匹配 SKU 到标准产品 */
+  /** 批量归档 Variant（仅归档未归档项）
+   *  @returns 实际归档数量 */
+  async archive(variantIds: string[], archivedBy: string): Promise<{ archived: number }> {
+    if (variantIds.length === 0) {
+      throw new VariantError('请选择至少一个 SKU', 'INVALID_ID');
+    }
+    for (const id of variantIds) {
+      if (!validateUUID(id)) {
+        throw new VariantError(`无效的 SKU ID：${id}`, 'INVALID_ID');
+      }
+    }
+    if (!validateUUID(archivedBy)) {
+      throw new VariantError('无效的操作者 ID', 'INVALID_ID');
+    }
+
+    const uniqueIds = [...new Set(variantIds)];
+
+    const supabase = await createClient();
+    const { data: variants, error: qError } = await supabase
+      .from('product_variant')
+      .select('id, is_archived')
+      .in('id', uniqueIds);
+
+    if (qError) {
+      throw new VariantError('查询 SKU 失败', 'DB_ERROR');
+    }
+
+    const foundIds = new Set((variants ?? []).map((v) => v.id));
+    for (const id of uniqueIds) {
+      if (!foundIds.has(id)) {
+        throw new VariantError('SKU 不存在', 'NOT_FOUND');
+      }
+    }
+
+    const toArchive = (variants ?? []).filter((v) => !v.is_archived).map((v) => v.id);
+
+    if (toArchive.length === 0) {
+      return { archived: 0 };
+    }
+
+    const { error: uError } = await supabase
+      .from('product_variant')
+      .update({
+        is_archived: true,
+        archived_at: new Date().toISOString(),
+        archived_by: archivedBy,
+      })
+      .in('id', toArchive);
+
+    if (uError) {
+      throw new VariantError('归档 SKU 失败', 'DB_ERROR');
+    }
+
+    return { archived: toArchive.length };
+  },
+
+  /** 批量恢复 Variant（仅恢复已归档项，清空审计字段）
+   *  @returns 实际恢复数量 */
+  async restore(variantIds: string[]): Promise<{ restored: number }> {
+    if (variantIds.length === 0) {
+      throw new VariantError('请选择至少一个 SKU', 'INVALID_ID');
+    }
+    for (const id of variantIds) {
+      if (!validateUUID(id)) {
+        throw new VariantError(`无效的 SKU ID：${id}`, 'INVALID_ID');
+      }
+    }
+
+    const uniqueIds = [...new Set(variantIds)];
+
+    const supabase = await createClient();
+    const { data: variants, error: qError } = await supabase
+      .from('product_variant')
+      .select('id, is_archived')
+      .in('id', uniqueIds);
+
+    if (qError) {
+      throw new VariantError('查询 SKU 失败', 'DB_ERROR');
+    }
+
+    const foundIds = new Set((variants ?? []).map((v) => v.id));
+    for (const id of uniqueIds) {
+      if (!foundIds.has(id)) {
+        throw new VariantError('SKU 不存在', 'NOT_FOUND');
+      }
+    }
+
+    const toRestore = (variants ?? []).filter((v) => v.is_archived).map((v) => v.id);
+
+    if (toRestore.length === 0) {
+      return { restored: 0 };
+    }
+
+    const { error: uError } = await supabase
+      .from('product_variant')
+      .update({
+        is_archived: false,
+        archived_at: null,
+        archived_by: null,
+      })
+      .in('id', toRestore);
+
+    if (uError) {
+      throw new VariantError('恢复 SKU 失败', 'DB_ERROR');
+    }
+
+    return { restored: toRestore.length };
+  },
+
+  /** 匹配 SKU 到标准产品（已归档 Variant 拒绝匹配） */
   async match(variantId: string, productId: string): Promise<void> {
     if (!validateUUID(variantId)) {
       throw new VariantError('无效的 SKU ID', 'INVALID_ID');
@@ -129,10 +246,10 @@ export const variantRepository = {
 
     const supabase = await createClient();
 
-    // 确认 Variant 存在
+    // 确认 Variant 存在且未归档
     const { data: variant, error: vError } = await supabase
       .from('product_variant')
-      .select('id')
+      .select('id, is_archived')
       .eq('id', variantId)
       .maybeSingle();
 
@@ -141,6 +258,9 @@ export const variantRepository = {
     }
     if (!variant) {
       throw new VariantError('SKU 不存在', 'NOT_FOUND');
+    }
+    if (variant.is_archived) {
+      throw new VariantError('已归档的 SKU 无法匹配', 'ARCHIVED');
     }
 
     // 确认 Product 存在且处于启用状态
@@ -176,7 +296,7 @@ export const variantRepository = {
     }
   },
 
-  /** 取消匹配（设为 unmatched，清除 product_id） */
+  /** 取消匹配（设为 unmatched，清除 product_id，已归档 Variant 拒绝） */
   async unmatch(variantId: string): Promise<void> {
     if (!validateUUID(variantId)) {
       throw new VariantError('无效的 SKU ID', 'INVALID_ID');
@@ -184,10 +304,10 @@ export const variantRepository = {
 
     const supabase = await createClient();
 
-    // 确认 Variant 存在
+    // 确认 Variant 存在且未归档
     const { data: variant, error: vError } = await supabase
       .from('product_variant')
-      .select('id')
+      .select('id, is_archived')
       .eq('id', variantId)
       .maybeSingle();
 
@@ -196,6 +316,9 @@ export const variantRepository = {
     }
     if (!variant) {
       throw new VariantError('SKU 不存在', 'NOT_FOUND');
+    }
+    if (variant.is_archived) {
+      throw new VariantError('已归档的 SKU 无法取消匹配', 'ARCHIVED');
     }
 
     // 执行取消匹配
@@ -214,7 +337,7 @@ export const variantRepository = {
     }
   },
 
-  /** 批量匹配 — 通过 PostgreSQL 事务函数原子执行全部校验与写入 */
+  /** 批量匹配 — 先校验 Variant 存在且未归档，再通过 PostgreSQL 事务函数原子执行 */
   async batchMatch(variantIds: string[], productId: string): Promise<{ matched: number }> {
     // 1. 应用层 UUID 校验 — 非法 ID 立即整体拒绝，不传入数据库
     if (!validateUUID(productId)) {
@@ -233,8 +356,28 @@ export const variantRepository = {
     // 2. 去重，避免重复 ID 导致更新数量与请求数量误判
     const uniqueIds = [...new Set(variantIds)];
 
-    // 3. 调用 PostgreSQL 事务函数 — Product 存在/启用、Variant 存在、批量 UPDATE 在同一事务内原子执行
+    // 3. 查询所有 Variant 的 id 和 is_archived，验证存在性与归档状态
     const supabase = await createClient();
+    const { data: variants, error: vError } = await supabase
+      .from('product_variant')
+      .select('id, is_archived')
+      .in('id', uniqueIds);
+
+    if (vError) {
+      throw new VariantError('查询 SKU 失败', 'DB_ERROR');
+    }
+
+    const foundMap = new Map((variants ?? []).map((v) => [v.id, v.is_archived]));
+    for (const id of uniqueIds) {
+      if (!foundMap.has(id)) {
+        throw new VariantError('部分 SKU 不存在', 'NOT_FOUND');
+      }
+      if (foundMap.get(id)) {
+        throw new VariantError('部分 SKU 已归档，无法批量匹配', 'ARCHIVED');
+      }
+    }
+
+    // 4. 调用 PostgreSQL 事务函数 — Product 存在/启用、Variant 存在、批量 UPDATE 在同一事务内原子执行
     const { data: matchedCount, error } = await supabase.rpc(
       'batch_match_variants',
       {

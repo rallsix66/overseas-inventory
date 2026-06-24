@@ -15,6 +15,7 @@ export const variantSearchSchema = z.object({
   matchStatus: z.enum(['matched', 'unmatched', 'pending']).optional(),
   productId: z.string().uuid().optional(),
   search: z.string().optional(),
+  archiveStatus: z.enum(['active', 'archived', 'all']).optional().default('active'),
   page: z.number().int().min(1).optional().default(1),
   pageSize: z.number().int().min(1).max(100).optional().default(20),
 });

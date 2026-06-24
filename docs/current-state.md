@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY11` — ProductVariant 软归档与库存视图降噪（IN_PROGRESS — P5-SY11A~F 子任务已拆分，等待 Codex 独立设计审查后启动实现。迁移规划：新增 Migration 00011 增加 `is_archived` + `archived_at` + `archived_by` 列、部分索引、RLS 收紧。Repository 新增 archive/restore、list/getUnmatched 增加 archiveStatus 过滤（默认 active）、match/unmatch 阻止已归档操作。Server Actions 新增 archiveVariants/restoreVariants（使用 requireActiveAdmin()）。Inventory 层默认过滤已归档 Variant。Variant 页面实现列表 + 归档/恢复 UI。同步写入链路不受影响。P5-SY10 全部子任务（A~F）DONE。P5-SY9 全部子任务（A~K）DONE。）
+`P5-SY11` — ProductVariant 软归档与库存视图降噪（P5-SY11B DONE — 类型同步 + Repository 软归档能力完成。下一步 P5-SY11C。P5-SY11C~F PENDING。）
 
 ## Completed Tasks
 
@@ -68,7 +68,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-- P5-SY11 任务包设计已完成（2026-06-24），等待 Codex 独立设计审查。P5-SY10 全部子任务（A~F）DONE。P5-SY10 Phase B（PASS 仓库自动 Real Write）设计预留，当前不启用。
+- P5-SY11B DONE — 等待 Codex 独立验收（2026-06-24）。类型同步 + Repository 软归档能力：database.ts 新字段 / VariantArchiveStatus / archiveStatus 过滤 / archive() / restore() / match/unmatch/batchMatch 阻止已归档。31/31 测试通过。P5-SY11C~F PENDING。P5-SY10 全部子任务（A~F）DONE。P5-SY10 Phase B（PASS 仓库自动 Real Write）设计预留，当前不启用。
 
 ## Authentication Status
 
@@ -697,7 +697,7 @@ BigSeller 实际 VXE 结构：
 
 ## Current Task References
 
-当前 P5-SY11 任务包（IN_PROGRESS — 任务包设计完成，P5-SY11A~F 子任务已拆分，等待 Codex 独立设计审查）。P5-SY10 全部子任务（A~F）DONE。P5-SY9 全部子任务（A~K）DONE。
+当前 P5-SY11 任务包（P5-SY11B DONE — 类型同步 + Repository 软归档能力完成。P5-SY11C~F PENDING，下一步 P5-SY11C）。P5-SY10 全部子任务（A~F）DONE。P5-SY9 全部子任务（A~K）DONE。
 
 **P5-SY11 核心文件（规划）：**
 - `supabase/migrations/00011_add_variant_soft_archive.sql` — 新增 `is_archived` + `archived_at` + `archived_by` 列 + 部分索引 + RLS 调整
@@ -734,4 +734,4 @@ BigSeller 实际 VXE 结构：
 
 ## Last Updated
 
-2026-06-24（P5-SY11 任务包设计完成。P5-SY11A~F 子任务已拆分：A=Migration 00011（is_archived + 审计字段 + 索引 + RLS），B=类型+Repository，C=Server Actions，D=Inventory 过滤，E=Variant 页面 UI，F=质量门+文档。P5-SY10 全部子任务（A~F）DONE。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。P5-SY10 Phase B 设计预留。等待 Codex 独立设计审查后启动 P5-SY11A。）
+2026-06-24（P5-SY11B DONE：类型同步 + Repository 软归档能力完成 — database.ts 新增 is_archived/archived_at/archived_by + VariantArchiveStatus 类型 + archiveStatus 过滤 + archive()/restore() + match/unmatch/batchMatch 阻止已归档。31/31 测试。793/793 TS 全量测试（concurrency 需 PG 环境单独跑），lint 0 errors，build pass。P5-SY11C~F PENDING，下一步 P5-SY11C。P5-SY10 全部子任务（A~F）DONE。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。P5-SY10 Phase B 设计预留。）
