@@ -7,7 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import type { SyncRepository } from './repository';
-import type { SyncRunsResponse, SyncRunDetailResponse, DryRunBindingMetadata, SyncLogRecord } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, DryRunBindingMetadata, SyncLogRecord, WarehouseHistory } from './types';
 
 export class SupabaseSyncRepository implements SyncRepository {
   constructor(
@@ -207,5 +207,78 @@ export class SupabaseSyncRepository implements SyncRepository {
       startedAt: data.started_at,
       finishedAt: data.finished_at,
     };
+  }
+
+  /** P5-SY10B: 获取仓库历史同步上下文。
+   *  使用 serviceClient 直接查询 public.sync_run，
+   *  从 sync_run 推导 hasBaseline / consecutiveFailures / lastSuccess / stats。
+   *  不新增 DB 表，不修改 Migration。 */
+  async getWarehouseHistory(warehouseId: string): Promise<WarehouseHistory> {
+    const { data, error } = await this.serviceClient
+      .from('sync_run')
+      .select('id, mode, status, finished_at, result_summary')
+      .eq('warehouse_id', warehouseId)
+      .order('started_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      throw new Error(`查询仓库历史失败: ${error.message}`);
+    }
+
+    const runs = data ?? [];
+
+    // hasBaseline: at least one completed run
+    const hasBaseline = runs.some((r) => r.status === 'completed');
+
+    // consecutiveFailures: count consecutive failed runs from newest,
+    // stop at first non-failed (completed or in_progress)
+    let consecutiveFailures = 0;
+    for (const r of runs) {
+      if (r.status === 'failed') {
+        consecutiveFailures++;
+      } else {
+        break;
+      }
+    }
+
+    // lastSuccess: most recent completed run
+    const lastSuccessRun = runs.find((r) => r.status === 'completed');
+    const lastSuccess = lastSuccessRun
+      ? {
+          finishedAt: (lastSuccessRun.finished_at as string) ?? '',
+          newVariantsCount:
+            ((lastSuccessRun.result_summary as Record<string, unknown> | null)
+              ?.variantsCreated as number) ?? 0,
+        }
+      : null;
+
+    // stats: average of up to last 5 completed runs
+    const completedRuns = runs
+      .filter((r) => r.status === 'completed')
+      .slice(0, 5);
+
+    let stats: WarehouseHistory['stats'] = null;
+    if (completedRuns.length > 0 && hasBaseline) {
+      let sumRaw = 0;
+      let sumValid = 0;
+      let sumInvalid = 0;
+      let sumVariants = 0;
+      for (const r of completedRuns) {
+        const rs = (r.result_summary as Record<string, unknown> | null) ?? {};
+        sumRaw += (rs.rawRowCount as number) ?? 0;
+        sumValid += (rs.validSkuCount as number) ?? 0;
+        sumInvalid += (rs.invalidSkuCount as number) ?? 0;
+        sumVariants += (rs.variantsCreated as number) ?? 0;
+      }
+      const n = completedRuns.length;
+      stats = {
+        avgRawRowCount: sumRaw / n,
+        avgValidSkuCount: sumValid / n,
+        avgInvalidSkuCount: sumInvalid / n,
+        avgVariantsCreated: sumVariants / n,
+      };
+    }
+
+    return { hasBaseline, consecutiveFailures, lastSuccess, stats };
   }
 }

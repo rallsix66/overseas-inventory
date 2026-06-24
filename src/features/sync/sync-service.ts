@@ -20,6 +20,22 @@ import type {
 } from './types';
 import { validateJsonValue } from './validate-json-value';
 
+/** P5-SY10B: 构建 enriched resultSummary，合并 summary 与 scraperMeta，
+ *  使 rawRowCount / validSkuCount / invalidSkuCount 持久化到 sync_run.result_summary，
+ *  供 getWarehouseHistory 历史查询使用。 */
+function buildResultSummary(result: SyncExecuteResult): Record<string, unknown> {
+  const base = result.summary as Record<string, unknown>;
+  if (result.scraperMeta) {
+    return {
+      ...base,
+      rawRowCount: result.scraperMeta.rawRowCount,
+      validSkuCount: result.scraperMeta.validSkuCount,
+      invalidSkuCount: result.scraperMeta.invalidSkuCount,
+    };
+  }
+  return base;
+}
+
 export interface SyncServiceDeps {
   repository: SyncRepository;
   artifactProvider: ArtifactProvider;
@@ -350,7 +366,7 @@ async function executeDryRun(
         runId,
         status: 'completed',
         exitCode: 0,
-        resultSummary: result.summary as Record<string, unknown>,
+        resultSummary: buildResultSummary(result),
         planDriftCheck: result.planDriftCheck,
         planDriftCount: result.planDriftCount,
         planDriftDifferences: result.planDriftDifferences,
@@ -540,7 +556,7 @@ async function executeRealWrite(
         runId,
         status: 'completed',
         exitCode: 0,
-        resultSummary: result.summary as Record<string, unknown>,
+        resultSummary: buildResultSummary(result),
         planDriftCheck: result.planDriftCheck,
         planDriftCount: result.planDriftCount,
         planDriftDifferences: result.planDriftDifferences,

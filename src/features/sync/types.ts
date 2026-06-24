@@ -446,6 +446,30 @@ export interface RuleInput {
   };
 }
 
+// ─── P5-SY10B: 仓库历史上下文 ──────────────────────────────────────
+
+/** 仓库历史同步上下文 — 从 sync_run + sync_log 推导。
+ *  由 SyncRepository.getWarehouseHistory() 返回，
+ *  作为 RuleInput.history 的数据来源。 */
+export interface WarehouseHistory {
+  /** 是否有历史成功同步（至少一条 sync_run status='completed'） */
+  hasBaseline: boolean;
+  /** 从最近一条往前数，连续 status='failed' 的 sync_run 数量（遇到 completed 停止） */
+  consecutiveFailures: number;
+  /** 最近一次成功同步 */
+  lastSuccess: {
+    finishedAt: string;
+    newVariantsCount: number;
+  } | null;
+  /** 最近 5 次成功同步的统计均值（无历史基线时为 null） */
+  stats: {
+    avgRawRowCount: number;
+    avgValidSkuCount: number;
+    avgInvalidSkuCount: number;
+    avgVariantsCreated: number;
+  } | null;
+}
+
 /** 规则引擎输出 — 单仓预审决策 */
 export interface RuleVerdict {
   /** 最终决策：所有命中规则中的最严重级别 */
