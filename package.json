@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run --exclude='**/concurrency.test.ts'",
+    "test:concurrency": "vitest run src/features/sync/concurrency.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

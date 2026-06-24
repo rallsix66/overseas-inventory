@@ -148,7 +148,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 | P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，页面展示审核总览。planDriftCheck!='PASS'→blocked；warehouseRenamePlan 含详情 | P5-SY9E | DONE（Codex 独立复验通过） |
 | P5-SY9G | 批量审核后真实写入 | 勾选 ready 仓库，强确认后逐仓写入；单仓失败不影响其他仓。confirmRealWrite 签名新增 confirmToken 参数消除硬编码 P5-SY3B-PH。新增 triggerBatchRealWrite Server Action + BatchRealWriteResult 类型。页面批量审核总览新增复选框/确认短语/批量写入按钮/写入结果展示。17 项测试。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。 | P5-SY9F | DONE（Codex 独立验收通过） |
 | P5-SY9H | 页面体验与运营可用性收口 | 当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
-| P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | AWAITING_REVIEW（Codex 最终验收） |
+| P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | AWAITING_REVIEW（Codex 最终验收。2026-06-24 返工：拆分 test/test:concurrency 脚本。） |
 
 ## 验收标准
 
@@ -166,10 +166,10 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 - Web 真实写入入口必须在 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后，通过 server-side feature gate 启用；在此之前必须保持 disabled。
 - `verifyBigSellerSession()` 健康检查必须在 P5-SY9B 完成；Sync 页面 session unhealthy 时禁止触发任何同步操作。
 - BigSeller 抓取 0 行时必须区分失败原因并返回中文可读提示。
-- `npm run test` 通过。
+- `npm run test` 通过（排除 `**/concurrency.test.ts`，该文件需要本地 PG 环境变量；通过 `npm run test:concurrency` 单独运行）。
 - `npm run lint` 0 errors。
 - `npm run build` 通过。
-- Python tests 全部通过。
+- Python tests 全部通过（compileall + health_check + plan + verifier + executor + sync_log + cli_integration）。
 - 不重新提交 `.env.local`、`runtime/profile`、cookie、抓取产物。
 
 ## 测试要求
@@ -182,7 +182,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 - Admin / Operator 权限测试。
 - Repository 边界测试，防止页面/组件直接调用 Supabase。
 - Python CLI 现有测试不得退化。
-- `npm run test` 必须通过。
+- `npm run test` 必须通过（排除 concurrency.test.ts，见上方注释）。
 - `npm run lint` 0 errors。
 - `npm run build` 通过。
 - Python 测试全部通过。

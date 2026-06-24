@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~H DONE；P5-SY9I IN_PROGRESS。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled，P5-SY9I 完成并通过 Codex 验收前不启用。）
+`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~H DONE；P5-SY9I AWAITING_REVIEW。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled，P5-SY9I 完成并通过 Codex 验收前不启用。）
 
 ## Completed Tasks
 
@@ -60,7 +60,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-- **P5-SY9I** — 独立验收与生产启用准备，待 Codex 独立验收
+- **P5-SY9I** — 独立验收与生产启用准备，待 Codex 独立验收（2026-06-24 返工：修复 `npm run test` 退出码 — 拆分 `test`/`test:concurrency` 脚本，`concurrency.test.ts` 需要本地 PG 环境变量，默认 `npm run test` 排除之。质量门全部通过：523/523 TS 测试 + lint 0 errors + build 通过 + 242/242 Python 测试。）
 
 ## Authentication Status
 
@@ -166,7 +166,8 @@ Phase 5 — 海外仓库存同步生产化
 
 | 日期 | 变更 |
 |---|---|
-| 2026-06-24 | P5-SY9I 独立验收与生产启用准备完成（AWAITING_REVIEW）：全量质量门通过（523/523 TS + Python compileall + 15/15 health_check），架构边界合规审查通过，feature gate 保持 disabled。等待 Codex 最终验收。 |
+| 2026-06-24 | P5-SY9I 返工：修复 `npm run test` 退出码问题。原 `concurrency.test.ts` 缺少 PG 环境变量时顶层 throw 导致退出码 1。拆分测试脚本：`npm run test` 排除 `**/concurrency.test.ts`（默认无 PG 也可通过），新增 `npm run test:concurrency` 按需运行并发测试。质量门全量重跑通过：523/523 TS（18 文件）+ lint 0 errors / 15 warnings + build 通过 + 242/242 Python（compileall + health_check 15 + plan 26 + verifier 44 + executor 89 + sync_log 29 + cli_integration 39）。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。 |
+| 2026-06-24 | P5-SY9I 独立验收与生产启用准备完成（AWAITING_REVIEW）：全量质量门通过（523/523 TS + Python compileall + 15/15 health_check），架构边界合规审查通过，feature gate 保持 disabled。等待 Codex 最终验收。（已废弃 — npm run test 实际退出码为 1，见上方返工记录。） |
 | 2026-06-24 | P5-SY9H Codex 独立验收通过，标记 DONE。P5-SY9I IN_PROGRESS。 |
 | 2026-06-24 | P5-SY9H 实现完成（AWAITING_REVIEW）：6 项页面体验改进 + 12 项测试 + lint 清理。523/523 TS 测试通过。 |
 | 2026-06-24 | P5-SY9G Codex 独立验收通过，标记 DONE。P5-SY9H IN_PROGRESS：页面体验与运营可用性收口。 |

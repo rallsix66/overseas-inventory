@@ -41,7 +41,7 @@ P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许
 | **P5-SY9F** | 批量全部海外仓 Dry Run：每仓独立 sync_run，展示审核总览 | P5-SY9E | DONE（Codex 独立复验通过） |
 | **P5-SY9G** | 批量审核后真实写入：勾选 ready 仓库，强确认后逐仓写入，单仓失败不影响其他仓 | P5-SY9F | DONE（Codex 独立验收通过） |
 | **P5-SY9H** | 页面体验与运营可用性收口：当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
-| **P5-SY9I** | 独立验收与生产启用：测试、lint/build、Python tests、Codex 独立审查 | P5-SY9H | AWAITING_REVIEW（Codex 最终验收） |
+| **P5-SY9I** | 独立验收与生产启用：测试、lint/build、Python tests、Codex 独立审查 | P5-SY9H | AWAITING_REVIEW（Codex 最终验收。2026-06-24 返工：拆分 test/test:concurrency。） |
 
 ## P5-SY5 子任务拆分（V5.4 修订）
 
