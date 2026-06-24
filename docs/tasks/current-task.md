@@ -6,7 +6,7 @@
 
 ## 状态
 
-`IN_PROGRESS` — P5-SY9A~H DONE；P5-SY9I AWAITING_REVIEW（Codex 最终验收）。
+`IN_PROGRESS` — P5-SY9A~I 全部 DONE（Codex 独立验收通过）。下一步：用户授权后生产启用。
 
 ## 背景
 
@@ -148,7 +148,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 | P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，页面展示审核总览。planDriftCheck!='PASS'→blocked；warehouseRenamePlan 含详情 | P5-SY9E | DONE（Codex 独立复验通过） |
 | P5-SY9G | 批量审核后真实写入 | 勾选 ready 仓库，强确认后逐仓写入；单仓失败不影响其他仓。confirmRealWrite 签名新增 confirmToken 参数消除硬编码 P5-SY3B-PH。新增 triggerBatchRealWrite Server Action + BatchRealWriteResult 类型。页面批量审核总览新增复选框/确认短语/批量写入按钮/写入结果展示。17 项测试。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。 | P5-SY9F | DONE（Codex 独立验收通过） |
 | P5-SY9H | 页面体验与运营可用性收口 | 当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
-| P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | AWAITING_REVIEW（Codex 最终验收。2026-06-24 返工：拆分 test/test:concurrency 脚本。） |
+| P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | DONE（Codex 独立验收通过。含一次返工：拆分 test/test:concurrency。） |
 
 ## 验收标准
 

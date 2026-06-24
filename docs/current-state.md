@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~H DONE；P5-SY9I AWAITING_REVIEW。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled，P5-SY9I 完成并通过 Codex 验收前不启用。）
+`P5-SY9` — 海外仓库存同步生产化（IN_PROGRESS — P5-SY9A~I 全部 DONE。Web 真实写入入口由 WEBSYNC_REAL_WRITE_ENABLED feature gate 保持 disabled，待用户明确授权生产启用后执行受控小范围验证。）
 
 ## Completed Tasks
 
@@ -57,10 +57,11 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY9F` — 批量全部海外仓 Dry Run（2026-06-23 DONE。Codex 独立复验通过（含 7 项返工）。Admin 可触发"批量 Dry Run / 审核总览"；每仓独立 claim/execute/release；单仓失败不影响其他仓；返回 BatchDryRunResult 含 warehouse name/country/runId/status/fetched rows/valid/invalid SKU/new variants/inventory/warehouseRenamePlan/planDriftCheck/failureReason。planDriftCheck !== 'PASS' → status='blocked'（非 ready）。warehouseRenamePlan 包含 action/currentName/targetName/message 详情。页面"批量 Dry Run"按钮调用 triggerBatchDryRun() 而非 syncAllWarehouses()；展示逐仓审核卡片。MockSyncRunner 新增 planDriftCheck/planDriftCount/renamePlan 可配置属性。删除 __debug.test.ts。495/495 非并发同步测试（17 文件），Python 15/15，lint 0 errors / 14 warnings，build 通过。Web 真实写入入口保持 disabled。）
 - `P5-SY9G` — 批量审核后真实写入（2026-06-24 DONE，Codex 独立验收通过。Admin 在批量 Dry Run 审核总览中勾选 ready 仓库，输入确认短语「确认写入」后逐仓真实写入。每仓独立 claim/release/sync_log，单仓失败不影响其他仓。confirmRealWrite 签名新增 confirmToken 参数，消除硬编码 P5-SY3B-PH。新增 triggerBatchRealWrite Server Action + 17 项测试。批量写入页面 UI：就绪仓库复选框 + 全选/取消 + 确认短语输入 + 写入结果总览。511/511 非并发同步测试（17 文件），lint 0 errors / 15 warnings，build 通过。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled；Web 真实写入入口保持 server-side disabled。）
 - `P5-SY9H` — 页面体验与运营可用性收口（2026-06-24 DONE，Codex 独立验收通过。6 项体验改进：仓库聚合概览卡片 + Operator 失败原因可见 + 客户端分页 + 海外库存同步状态列 + 页间导航 + sync_log 明细。新增 SyncLogRecord/WarehouseSyncStatus 类型 + getSyncLog() repository + getOverseasWarehouseSyncStatus()/getSyncLogDetail() Server Action + 12 项测试 + 清理标记。523/523 非并发同步测试（19 文件），lint 0 errors / 15 warnings，build 通过。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
+- `P5-SY9I` — 独立验收与生产启用准备（2026-06-24 DONE，Codex 独立验收通过。含一次返工：拆分 `npm run test`/`npm run test:concurrency` 脚本解决 concurrency.test.ts 缺少 PG 环境变量时退出码 1 的问题。最终质量门：523/523 TS 测试（18 文件）+ lint 0 errors / 15 warnings + build 通过 + 242/242 Python 测试（compileall + health_check 15 + plan 26 + verifier 44 + executor 89 + sync_log 29 + cli_integration 39）。架构边界合规审查通过。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled；生产启用待用户明确授权。）
 
 ## Awaiting Review
 
-- **P5-SY9I** — 独立验收与生产启用准备，待 Codex 独立验收（2026-06-24 返工：修复 `npm run test` 退出码 — 拆分 `test`/`test:concurrency` 脚本，`concurrency.test.ts` 需要本地 PG 环境变量，默认 `npm run test` 排除之。质量门全部通过：523/523 TS 测试 + lint 0 errors + build 通过 + 242/242 Python 测试。）
+（无待审核项。P5-SY9 全子任务完成。下一步：用户授权后生产启用 — 部署环境设置 `WEBSYNC_REAL_WRITE_ENABLED=true`，执行受控 Web Dry Run → 审核 → Real Write 小范围验证。）
 
 ## Authentication Status
 
@@ -166,8 +167,7 @@ Phase 5 — 海外仓库存同步生产化
 
 | 日期 | 变更 |
 |---|---|
-| 2026-06-24 | P5-SY9I 返工：修复 `npm run test` 退出码问题。原 `concurrency.test.ts` 缺少 PG 环境变量时顶层 throw 导致退出码 1。拆分测试脚本：`npm run test` 排除 `**/concurrency.test.ts`（默认无 PG 也可通过），新增 `npm run test:concurrency` 按需运行并发测试。质量门全量重跑通过：523/523 TS（18 文件）+ lint 0 errors / 15 warnings + build 通过 + 242/242 Python（compileall + health_check 15 + plan 26 + verifier 44 + executor 89 + sync_log 29 + cli_integration 39）。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。 |
-| 2026-06-24 | P5-SY9I 独立验收与生产启用准备完成（AWAITING_REVIEW）：全量质量门通过（523/523 TS + Python compileall + 15/15 health_check），架构边界合规审查通过，feature gate 保持 disabled。等待 Codex 最终验收。（已废弃 — npm run test 实际退出码为 1，见上方返工记录。） |
+| 2026-06-24 | **P5-SY9I Codex 独立验收通过，标记 DONE。P5-SY9 全子任务（A~I）完成。** 质量门确认：523/523 TS + 242/242 Python，lint 0 errors，build 通过，架构合规。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。下一步：用户授权后生产启用。 |
 | 2026-06-24 | P5-SY9H Codex 独立验收通过，标记 DONE。P5-SY9I IN_PROGRESS。 |
 | 2026-06-24 | P5-SY9H 实现完成（AWAITING_REVIEW）：6 项页面体验改进 + 12 项测试 + lint 清理。523/523 TS 测试通过。 |
 | 2026-06-24 | P5-SY9G Codex 独立验收通过，标记 DONE。P5-SY9H IN_PROGRESS：页面体验与运营可用性收口。 |
