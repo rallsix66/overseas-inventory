@@ -6,7 +6,7 @@
 
 ## 状态
 
-`DONE` — P5-SY9 全子任务（A~K）完成。返工 P5-SY9K 通过：旧同步入口永久禁用 + Web Real Write summary 修复。WEBSYNC_REAL_WRITE_ENABLED=false。
+`DONE` — P5-SY9 全子任务（A~K）完成，全部5海外仓批量真实写入完成。返工 P5-SY9K 通过：旧同步入口永久禁用 + Web Real Write summary 修复。WEBSYNC_REAL_WRITE_ENABLED=false（已恢复安全状态）。
 
 ## 背景
 

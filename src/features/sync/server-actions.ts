@@ -104,12 +104,14 @@ const COUNTRY_TOKEN_MAP: Record<string, string> = {
   ID: 'P5-SY8H-ID',
 };
 
+// P5-SY9 batch write 2026-06-24: PH/VN/TH names changed in BigSeller.
+// DB names already match BigSeller UI names; oldName passed as current name.
 const COUNTRY_OLDNAME_MAP: Record<string, string> = {
-  PH: '菲律宾仓',
-  VN: '越南仓',
-  TH: '泰国仓',
-  MY: '马来西亚仓',
-  ID: '印尼仓',
+  PH: '菲律宾-新创启辰自建仓',
+  VN: '越南青林湾仓库',
+  TH: 'DEE-龙仔厝（ICE专属）',
+  MY: '喜运达MY仓',
+  ID: '印尼-DEE仓库',
 };
 
 async function getOverseasWarehouses(): Promise<

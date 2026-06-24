@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（DONE — 生产启用受控验证通过。P5-SY9K 返工完成：旧快速同步入口已永久禁用，Web Real Write summary 读取修复。）
+`P5-SY9` — 海外仓库存同步生产化（DONE — 全部5海外仓批量真实写入完成。P5-SY9K 返工完成：旧快速同步入口已永久禁用，Web Real Write summary 读取修复。
 
 ## Completed Tasks
 
@@ -63,7 +63,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-（无待审核项。P5-SY9 全部子任务（A~K）完成，返工通过。WEBSYNC_REAL_WRITE_ENABLED=false 已恢复。下一步：等用户确认后进入批量全部海外仓 Dry Run → 审核 → 批量 Real Write。）
+（无待审核项。P5-SY9 全部子任务（A~K）完成，全部5海外仓批量真实写入完成并通过验收。WEBSYNC_REAL_WRITE_ENABLED=false 已恢复。PH/VN/TH 仓库名称在 BigSeller 已变更（菲律宾-新创启辰自建仓/越南青林湾仓库/DEE-龙仔厝（ICE专属）），下次同步需使用更新后的名称。P5-SY10 自动 Dry Run 预审可启动。P5-SY11 ProductVariant 软归档与库存视图降噪记入后置计划。）
 
 ## Authentication Status
 

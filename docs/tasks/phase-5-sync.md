@@ -25,8 +25,9 @@
 | P5-SY8F | MY 真实写入与端到端验收 | P5-SY8E | DONE（Codex 独立验收通过。全新抓取 48 行 + invalid sidecar 1 行。首次写入：48 Variants + 48 Inventory + Warehouse 改名；幂等重跑：0 新增/48 unchanged。Phase G/I PASS，SyncLog success。239/239 Python 测试，compileall/lint/build 通过。） |
 | P5-SY8G | ID 只读抓取与 Dry Run 方案 | P5-SY8F | DONE（Codex 独立复验通过。BigSeller 抓取 35 行，warehouse=印尼-DEE仓库，autoid=warehouse_option_3。DB 仓库 `印尼仓`→`印尼-DEE仓库` 改名已确认。P5-SY8G-ID 令牌（仅 --dry-run）。Codex 返工 3 项修复通过：1) --no-dry-run 动态提示 P5-SY8H-ID（新增 `_PENDING_WRITE_TOKENS`）；2) `_DRY_RUN_ONLY_TOKENS` 一致性测试改用 ast.parse 完整解析 3 token；3) `_NO_DRY_RUN_EXCLUSIVE_TOKENS` 一致性断言不再被 `except AssertionError: pass` 吞掉。245/245 Python 测试，compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入。） |
 | P5-SY8H | ID 真实写入与端到端验收 | P5-SY8G | DONE（Codex 独立验收通过。首次 RPC 写入 35 Variants (country=ID) + 35 Inventory + Warehouse 改名 "印尼仓"→"印尼-DEE仓库"；Phase G/I PASS，SyncLog success。幂等重跑：0 新增/35 unchanged，plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试，compileall/lint/build 通过。） |
-| P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | DONE（P5-SY9A~K 全部 DONE。返工 P5-SY9K 通过。WEBSYNC_REAL_WRITE_ENABLED=false。） |
-| P5-SY10 | 自动 Dry Run 预审与后续自动化分阶段框架 | P5-SY9 全部海外仓批量真实写入完成并验收 | PLANNED（后置任务。先完成当前全部海外仓真实写入；本任务仅做自动 Dry Run、规则预审、PASS/WARN/BLOCK 决策与 Phase B 自动写入候选设计，不在首版启用自动 Real Write。） |
+| P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | DONE（P5-SY9A~K 全部 DONE。全部5海外仓批量真实写入完成（2026-06-24）：PH=104行/VN=64行/TH=73行/MY=48行/ID=36行，全部 sync_log success。PH/VN/TH 仓库名称在 BigSeller 已变更。返工 P5-SY9K 通过。WEBSYNC_REAL_WRITE_ENABLED=false。） |
+| P5-SY10 | 自动 Dry Run 预审与后续自动化分阶段框架 | P5-SY9 全部海外仓批量真实写入完成并验收 | PLANNED（后置任务。P5-SY9 全部5海外仓真实写入已完成，P5-SY10 可启动。本任务仅做自动 Dry Run、规则预审、PASS/WARN/BLOCK 决策与 Phase B 自动写入候选设计，不在首版启用自动 Real Write。） |
+| P5-SY11 | ProductVariant 软归档与库存视图降噪 | P5-SY9 全部海外仓批量真实写入完成并验收 | PLANNED（后置任务。为 Admin 提供手动归档/恢复无用 SKU 的能力；默认库存列表、低库存统计和常规 Variant 列表隐藏已归档 SKU，但同步写入链路继续更新归档 Variant 的 inventory，历史 shipment_item 不过滤。） |
 
 P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许批量处理全部启用海外仓，但必须先批量 Dry Run、页面审核、二次确认后再逐仓真实写入；禁止普通按钮直接自动真实写入。
 
@@ -67,6 +68,28 @@ P5-SY10 是 P5 后续增强任务，依赖 P5-SY9 批量全部海外仓真实写
 - 仓库改名 -> WARN，需人工确认。
 - 有历史基线后，再对新增 SKU 比例、行数变化、更新量异常做 WARN/BLOCK。
 - 同一仓连续 3 次 Dry Run 失败 -> BLOCK。
+
+## P5-SY11 ProductVariant 软归档计划（当前不启动）
+
+P5-SY11 是运营降噪任务，依赖 P5-SY9 批量全部海外仓真实写入完成并通过 Codex 独立验收。当前不插入 P5-SY9 生产收口流程，不影响同步真实写入。
+
+目标边界：
+
+- 不删除 `product_variant`，不新建过滤仓库，不改变 `Product -> ProductVariant -> Inventory` 模型。
+- 新增 `product_variant.is_archived` 软归档字段；可选记录 `archived_at` / `archived_by` 便于审计。
+- 默认库存列表、低库存统计、海外库存统计、常规 Variant 列表隐藏已归档 Variant。
+- 归档 Variant 的 `inventory` 仍允许被同步链路更新，确保恢复后数据是最新值。
+- `shipment_item` 等历史业务记录不按归档状态过滤。
+- 归档/恢复只能由 Admin 执行，Operator 只读且不显示批量操作入口。
+
+候选实现范围：
+
+- 新增 migration，不修改已执行 migration。
+- 更新 `src/types/database.ts`。
+- `src/features/variants` 增加 `showArchived: 'active' | 'archived' | 'all'` 查询参数，以及 `archiveVariants()` / `restoreVariants()` Server Actions。
+- `src/features/inventory/repository.ts` 默认过滤已归档 Variant；注意 Supabase 关联过滤必须真正过滤主记录，不能只让关联对象变空。
+- Variant 页面增加筛选：活跃 / 已归档 / 全部；Admin 可归档/恢复，Operator 只读。
+- 测试覆盖 migration 静态契约、Admin/Operator 权限、查询过滤、恢复后重新出现在库存视图、同步链路不受归档影响。
 
 ## P5-SY5 子任务拆分（V5.4 修订）
 
