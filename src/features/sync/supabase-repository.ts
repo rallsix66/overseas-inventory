@@ -230,11 +230,11 @@ export class SupabaseSyncRepository implements SyncRepository {
     // hasBaseline: at least one completed run
     const hasBaseline = runs.some((r) => r.status === 'completed');
 
-    // consecutiveFailures: count consecutive failed runs from newest,
-    // stop at first non-failed (completed or in_progress)
+    // P5-SY10B rework: consecutiveFailures 只统计 mode='dry_run' 且 status='failed'
+    // 的连续记录。遇到 real_write（不论状态）、completed、in_progress 均停止计数。
     let consecutiveFailures = 0;
     for (const r of runs) {
-      if (r.status === 'failed') {
+      if (r.mode === 'dry_run' && r.status === 'failed') {
         consecutiveFailures++;
       } else {
         break;

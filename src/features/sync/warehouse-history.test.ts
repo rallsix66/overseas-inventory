@@ -197,6 +197,82 @@ describe('getWarehouseHistory', () => {
       expect(history.consecutiveFailures).toBe(2);
       expect(history.hasBaseline).toBe(false);
     });
+
+    // ── P5-SY10B rework: mode-aware counting ─────────────────────────
+
+    it('does NOT count real_write failed runs (3 real_write fails → 0)', async () => {
+      repo._injectRunDetail('run-1', {
+        id: 'run-1', warehouseId: WH, mode: 'real_write', status: 'failed', exitCode: 1,
+        startedAt: new Date('2026-06-20T10:00:00Z'),
+        finishedAt: new Date('2026-06-20T10:01:00Z'),
+        errorMessage: '写入失败',
+      });
+      repo._injectRunDetail('run-2', {
+        id: 'run-2', warehouseId: WH, mode: 'real_write', status: 'failed', exitCode: 1,
+        startedAt: new Date('2026-06-21T10:00:00Z'),
+        finishedAt: new Date('2026-06-21T10:01:00Z'),
+        errorMessage: '写入失败',
+      });
+      repo._injectRunDetail('run-3', {
+        id: 'run-3', warehouseId: WH, mode: 'real_write', status: 'failed', exitCode: 1,
+        startedAt: new Date('2026-06-22T10:00:00Z'),
+        finishedAt: new Date('2026-06-22T10:01:00Z'),
+        errorMessage: '写入失败',
+      });
+
+      const history = await repo.getWarehouseHistory(WH);
+      expect(history.consecutiveFailures).toBe(0);
+    });
+
+    it('stops at real_write failed — does not cross real_write to count older dry_run fails', async () => {
+      // newest → oldest: real_write failed, dry_run failed, dry_run failed, completed
+      injectCompleted(repo, 'run-0', WH, new Date('2026-06-20T10:00:00Z'));
+      injectFailed(repo, 'run-1', WH, new Date('2026-06-21T10:00:00Z'));
+      injectFailed(repo, 'run-2', WH, new Date('2026-06-22T10:00:00Z'));
+      repo._injectRunDetail('run-3', {
+        id: 'run-3', warehouseId: WH, mode: 'real_write', status: 'failed', exitCode: 1,
+        startedAt: new Date('2026-06-23T10:00:00Z'),
+        finishedAt: new Date('2026-06-23T10:01:00Z'),
+        errorMessage: 'real write 失败',
+      });
+
+      const history = await repo.getWarehouseHistory(WH);
+      // most recent is real_write → stop immediately, don't cross to dry_run fails
+      expect(history.consecutiveFailures).toBe(0);
+    });
+
+    it('counts only dry_run fails after a real_write (real_write acts as barrier)', async () => {
+      // newest → oldest: dry_run failed, real_write completed, dry_run failed, dry_run failed
+      injectFailed(repo, 'run-1', WH, new Date('2026-06-20T10:00:00Z'));
+      injectFailed(repo, 'run-2', WH, new Date('2026-06-21T10:00:00Z'));
+      repo._injectRunDetail('run-3', {
+        id: 'run-3', warehouseId: WH, mode: 'real_write', status: 'completed', exitCode: 0,
+        startedAt: new Date('2026-06-22T10:00:00Z'),
+        finishedAt: new Date('2026-06-22T10:01:00Z'),
+        resultSummary: makeResultSummary({ variantsCreated: 5 }),
+      });
+      injectFailed(repo, 'run-4', WH, new Date('2026-06-23T10:00:00Z'));
+
+      const history = await repo.getWarehouseHistory(WH);
+      // most recent run-4 is dry_run failed → count=1, then run-3 is real_write → stop
+      expect(history.consecutiveFailures).toBe(1);
+    });
+
+    it('real_write completed stops chain — does not count older dry_run fails beyond it', async () => {
+      // newest → oldest: dry_run failed, real_write completed, dry_run failed
+      injectFailed(repo, 'run-1', WH, new Date('2026-06-20T10:00:00Z'));
+      repo._injectRunDetail('run-2', {
+        id: 'run-2', warehouseId: WH, mode: 'real_write', status: 'completed', exitCode: 0,
+        startedAt: new Date('2026-06-21T10:00:00Z'),
+        finishedAt: new Date('2026-06-21T10:01:00Z'),
+        resultSummary: makeResultSummary({ variantsCreated: 3 }),
+      });
+      injectFailed(repo, 'run-3', WH, new Date('2026-06-22T10:00:00Z'));
+
+      const history = await repo.getWarehouseHistory(WH);
+      // run-3 is dry_run failed → count=1, run-2 is real_write → stop
+      expect(history.consecutiveFailures).toBe(1);
+    });
   });
 
   // ── Success resets consecutive failures ────────────────────────────
