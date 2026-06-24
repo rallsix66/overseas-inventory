@@ -46,7 +46,7 @@ export type SyncWarehouseInput = z.infer<typeof syncWarehouseSchema>;
 
 export const getSyncRunsSchema = z.object({
   warehouseId: z.string().uuid().optional(),
-  limit: z.number().int().min(1).max(100).default(20),
+  limit: z.number().int().min(1).max(500).default(200),
 }).strict();
 
 export type GetSyncRunsInput = z.infer<typeof getSyncRunsSchema>;
@@ -65,6 +65,14 @@ export const confirmRealWriteSchema = z.object({
 }).strict();
 
 export type ConfirmRealWriteInput = z.infer<typeof confirmRealWriteSchema>;
+
+// ─── P5-SY9H: sync_log 详情 ─────────────────────────────
+
+export const getSyncLogDetailSchema = z.object({
+  runId: z.string().uuid(),
+});
+
+export type GetSyncLogDetailInput = z.infer<typeof getSyncLogDetailSchema>;
 
 // ─── P5-SY9G: 批量审核后真实写入 ─────────────────────────
 

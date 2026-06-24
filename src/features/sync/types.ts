@@ -351,6 +351,29 @@ export interface BatchRealWriteItemResult {
   failureReason?: string;
 }
 
+// ─── sync_log (P5-SY9H) ──────────────────────────────────────────
+
+/** 同步日志记录 — sync_log 表数据，供详情 Sheet 展示 */
+export interface SyncLogRecord {
+  id: string;
+  syncRunId: string | null;
+  warehouseId: string;
+  status: 'success' | 'failed';
+  newVariantsCount: number;
+  errorMessage: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+// ─── 海外仓同步状态 (P5-SY9H) ──────────────────────────────────
+
+/** 单个仓库的同步状态摘要（用于海外库存页同步状态列） */
+export interface WarehouseSyncStatus {
+  lastSyncStatus: 'success' | 'failed' | 'in_progress' | 'never';
+  lastSyncAt: string | null;
+  lastFailureReason: string | null;
+}
+
 /** 批量 Real Write 总览结果 */
 export interface BatchRealWriteResult {
   results: BatchRealWriteItemResult[];

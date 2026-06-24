@@ -297,6 +297,7 @@ export type Database = {
       sync_log: {
         Row: {
           id: string
+          sync_run_id: string | null
           warehouse_id: string
           status: string
           new_variants_count: number
@@ -306,15 +307,17 @@ export type Database = {
         }
         Insert: {
           id?: string
+          sync_run_id?: string | null
           warehouse_id: string
           status: string
           new_variants_count?: number
-          error_message: string | null
+          error_message?: string | null
           started_at: string
           finished_at: string
         }
         Update: {
           id?: string
+          sync_run_id?: string | null
           warehouse_id?: string
           status?: string
           new_variants_count?: number

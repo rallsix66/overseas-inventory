@@ -7,7 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import type { SyncRepository } from './repository';
-import type { SyncRunsResponse, SyncRunDetailResponse, DryRunBindingMetadata } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, DryRunBindingMetadata, SyncLogRecord } from './types';
 
 export class SupabaseSyncRepository implements SyncRepository {
   constructor(
@@ -178,5 +178,34 @@ export class SupabaseSyncRepository implements SyncRepository {
     if (!data) return null;
 
     return data as DryRunBindingMetadata;
+  }
+
+  /** P5-SY9H: 使用 serviceClient 直接查询 public.sync_log，
+   *  根据 sync_run_id 获取关联的同步日志记录。
+   *  仅供详情 Sheet 展示，不返回客户端。 */
+  async getSyncLog(runId: string): Promise<SyncLogRecord | null> {
+    const { data, error } = await this.serviceClient
+      .from('sync_log')
+      .select('id, sync_run_id, warehouse_id, status, new_variants_count, error_message, started_at, finished_at')
+      .eq('sync_run_id', runId)
+      .maybeSingle();
+
+    if (error) {
+      if ((error as { code?: string }).code === 'PGRST116') return null;
+      throw new Error(`查询 sync_log 失败: ${error.message}`);
+    }
+
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      syncRunId: data.sync_run_id,
+      warehouseId: data.warehouse_id,
+      status: data.status as 'success' | 'failed',
+      newVariantsCount: data.new_variants_count,
+      errorMessage: data.error_message,
+      startedAt: data.started_at,
+      finishedAt: data.finished_at,
+    };
   }
 }

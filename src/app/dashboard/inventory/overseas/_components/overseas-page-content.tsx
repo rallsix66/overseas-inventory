@@ -4,7 +4,7 @@
 // 处理筛选、表格渲染和分页导航
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
 import { useRouter } from 'next/navigation';
-import { Search, Package, AlertTriangle, Clock } from 'lucide-react';
+import { Search, Package, AlertTriangle, Clock, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -23,6 +23,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import type { InventoryItem, OverseasStats, WarehouseOption } from '@/features/inventory/types';
+import type { WarehouseSyncStatus } from '@/features/sync/types';
 
 const COUNTRIES = [
   { value: 'TH', label: '泰国' },
@@ -55,6 +56,7 @@ interface Props {
     page: number;
     pageSize: number;
   };
+  syncStatus: Record<string, WarehouseSyncStatus>;
   filters: Filters;
 }
 
@@ -89,7 +91,40 @@ function StatCard({
   );
 }
 
-export function OverseasPageContent({ stats, warehouses, result, filters }: Props) {
+/** P5-SY9H: 同步状态标签 */
+function SyncStatusBadge({ status, failureReason }: { status: string; failureReason?: string | null }) {
+  switch (status) {
+    case 'success':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-600">
+          同步成功
+        </span>
+      );
+    case 'failed':
+      return (
+        <span
+          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 cursor-help"
+          title={failureReason ?? undefined}
+        >
+          同步失败
+        </span>
+      );
+    case 'in_progress':
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+          同步中
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
+          未同步
+        </span>
+      );
+  }
+}
+
+export function OverseasPageContent({ stats, warehouses, result, syncStatus, filters }: Props) {
   const router = useRouter();
   const { data, total, page, pageSize } = result;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -171,11 +206,21 @@ export function OverseasPageContent({ stats, warehouses, result, filters }: Prop
   return (
     <div className="px-4 sm:px-6 py-4 sm:py-6">
       {/* 页头 */}
-      <div className="mb-5">
-        <h1 className="text-lg font-semibold text-gray-900">海外库存</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          泰国、印尼、马来西亚、菲律宾、越南五大海外仓库存概览
-        </p>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">海外库存</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            泰国、印尼、马来西亚、菲律宾、越南五大海外仓库存概览
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => router.push('/dashboard/sync')}
+        >
+          <RefreshCw className="w-4 h-4 mr-1.5" />
+          同步管理
+        </Button>
       </div>
 
       {/* 统计卡片 */}
@@ -318,11 +363,13 @@ export function OverseasPageContent({ stats, warehouses, result, filters }: Prop
                   <TableHead className="text-right">当前库存</TableHead>
                   <TableHead className="text-right">安全库存</TableHead>
                   <TableHead>库存状态</TableHead>
-                  <TableHead>最后同步</TableHead>
+                  <TableHead>同步状态</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((item) => (
+                {data.map((item) => {
+                  const whSync = syncStatus[item.warehouseId];
+                  return (
                   <TableRow key={item.id}>
                     <TableCell>
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
@@ -353,11 +400,21 @@ export function OverseasPageContent({ stats, warehouses, result, filters }: Prop
                       {item.matchStatus === 'matched' ? item.safetyStock : '—'}
                     </TableCell>
                     <TableCell>{getStatusBadge(item)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatTime(item.lastSyncAt)}
+                    {/* P5-SY9H: 同步状态（含最近同步时间和失败原因） */}
+                    <TableCell className="text-xs">
+                      <div className="flex flex-col gap-0.5">
+                        <SyncStatusBadge
+                          status={whSync?.lastSyncStatus ?? 'never'}
+                          failureReason={whSync?.lastFailureReason}
+                        />
+                        {whSync?.lastSyncAt && (
+                          <span className="text-muted-foreground">{formatTime(whSync.lastSyncAt)}</span>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                );
+                })}
               </TableBody>
             </Table>
           </div>

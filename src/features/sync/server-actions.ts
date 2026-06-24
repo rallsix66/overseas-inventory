@@ -12,14 +12,14 @@ import { SupabaseSyncRepository } from './supabase-repository';
 import { FileSystemArtifactProvider } from './file-system-artifact-provider';
 import { RealSyncRunner, type WarehouseBridgeInfo } from './real-sync-runner';
 import { WebInputArtifactSource, isWebsyncRealWriteEnabled } from './web-input-artifact-source';
-import { getSyncRunsSchema, getSyncRunDetailSchema } from './schema';
+import { getSyncRunsSchema, getSyncRunDetailSchema, getSyncLogDetailSchema } from './schema';
 import { revalidatePath } from 'next/cache';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -79,6 +79,8 @@ export async function getSyncRunDetail(
   return repository.getSyncRunDetail(parsed.runId);
 }
 
+// CLEANUP-CANDIDATE: triggerSync uses PH-only FormData schema.
+// This is a legacy path disabled since P5-SY9C. Remove after P5-SY9I passes review.
 export async function triggerSync(
   _formData: FormData,
 ): Promise<{ success: boolean; runId: string; status: string; error?: string }> {
@@ -379,6 +381,8 @@ export async function triggerBatchRealWrite(
   return result;
 }
 
+// CLEANUP-CANDIDATE: syncAllWarehouses uses PH-only confirmToken schema.
+// This is a legacy path disabled since P5-SY9C. Remove after P5-SY9I passes review.
 export async function syncAllWarehouses(): Promise<{
   results: Array<{
     warehouseId: string;
@@ -520,6 +524,66 @@ export async function establishBigSellerSession(): Promise<{
       '登录完成后浏览器会自动关闭，session cookie 将被持久化，之后网页端同步即可正常使用。' +
       `（日志: ${logFile}）`,
   };
+}
+
+// ─── P5-SY9H: 海外仓同步状态（供海外库存页使用）───────────────
+
+/** 获取每个海外仓的最新同步状态摘要。
+ *  调用 getSyncRuns 获取全部运行记录，按 warehouse_id 分组取最新状态。
+ *  Admin 和 Operator 均可查看。 */
+export async function getOverseasWarehouseSyncStatus(): Promise<
+  Record<string, WarehouseSyncStatus>
+> {
+  await requireActiveAuth();
+  const repository = await createSupabaseRepo();
+  const runs = await repository.getSyncRuns({ limit: 500 });
+
+  const statusMap: Record<string, WarehouseSyncStatus> = {};
+
+  for (const run of runs) {
+    const existing = statusMap[run.warehouse_id];
+    const runTime = run.finished_at ?? run.started_at ?? run.created_at;
+    const existingTime = existing?.lastSyncAt;
+
+    // Keep the most recent run per warehouse
+    if (!existing || (runTime && existingTime && runTime > existingTime)) {
+      const syncStatus: WarehouseSyncStatus['lastSyncStatus'] =
+        run.status === 'completed'
+          ? 'success'
+          : run.status === 'in_progress'
+            ? 'in_progress'
+            : 'failed';
+
+      const failureReason =
+        run.status === 'failed'
+          ? 'error_message' in run
+            ? (run as import('./types').SyncRunAdminRow).error_message
+            : (run as import('./types').SyncRunOperatorRow).failure_summary
+          : null;
+
+      statusMap[run.warehouse_id] = {
+        lastSyncStatus: syncStatus,
+        lastSyncAt: runTime ?? null,
+        lastFailureReason: failureReason ?? null,
+      };
+    }
+  }
+
+  return statusMap;
+}
+
+// ─── P5-SY9H: sync_log 详情（供详情 Sheet 展示）─────────────────
+
+/** 获取 sync_log 记录（通过 sync_run_id 关联）。
+ *  使用 serviceClient 直接查询 public.sync_log，仅供详情 Sheet 展示。
+ *  Admin 和 Operator 均可查看。 */
+export async function getSyncLogDetail(
+  runId: string,
+): Promise<SyncLogRecord | null> {
+  await requireActiveAuth();
+  const repository = await createSupabaseRepo();
+  const parsed = getSyncLogDetailSchema.parse({ runId });
+  return repository.getSyncLog(parsed.runId);
 }
 
 // ─── BigSeller 会话健康检查 (P5-SY9B) ──────────────────────────

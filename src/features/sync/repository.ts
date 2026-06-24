@@ -4,6 +4,7 @@ import type {
   SyncRunsResponse,
   SyncRunDetailResponse,
   DryRunBindingMetadata,
+  SyncLogRecord,
 } from './types';
 
 // ─── Repository 接口 ──────────────────────────────────────────────
@@ -63,6 +64,10 @@ export interface SyncRepository {
    *  使用 serviceClient 直接查询 public.sync_run，绕过 get_sync_run_detail RPC 的脱敏设计。
    *  仅供 Server Action confirmRealWrite 调用，不返回客户端。 */
   getDryRunBindingMetadata(runId: string): Promise<DryRunBindingMetadata | null>;
+
+  /** P5-SY9H: 获取 sync_log 记录（通过 sync_run_id 关联）。
+   *  使用 serviceClient 直接查询 public.sync_log，仅供详情 Sheet 展示。 */
+  getSyncLog(runId: string): Promise<SyncLogRecord | null>;
 }
 
 // ─── Mock Repository ──────────────────────────────────────────────
@@ -455,5 +460,33 @@ export class MockRepository implements SyncRepository {
     }
 
     return count;
+  }
+
+  // ─── P5-SY9H: sync_log mock ─────────────────────────────────────
+
+  private static syncLogs = new Map<string, SyncLogRecord>();
+
+  /** P5-SY9H 测试辅助：注入 sync_log 记录 */
+  _injectSyncLog(runId: string, log: Partial<SyncLogRecord>) {
+    const defaults: SyncLogRecord = {
+      id: `sl-${runId.slice(0, 12)}`,
+      syncRunId: runId,
+      warehouseId: 'wh-default',
+      status: 'success',
+      newVariantsCount: 0,
+      errorMessage: null,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      ...log,
+    };
+    MockRepository.syncLogs.set(runId, defaults);
+  }
+
+  static _resetSyncLogs(): void {
+    MockRepository.syncLogs.clear();
+  }
+
+  async getSyncLog(runId: string): Promise<SyncLogRecord | null> {
+    return MockRepository.syncLogs.get(runId) ?? null;
   }
 }

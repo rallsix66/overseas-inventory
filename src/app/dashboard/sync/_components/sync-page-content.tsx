@@ -5,7 +5,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Eye, Play, RefreshCw, LogIn, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Eye, Play, RefreshCw, LogIn, CheckCircle, AlertTriangle, ShieldAlert, Package, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -42,6 +42,7 @@ import {
 import {
   syncWarehouse,
   getSyncRunDetail,
+  getSyncLogDetail,
   establishBigSellerSession,
   verifyBigSellerSession,
   triggerDryRun,
@@ -62,6 +63,7 @@ import type {
   BatchRealWriteItem,
   BatchRealWriteResult,
   BatchRealWriteItemResult,
+  SyncLogRecord,
 } from '@/features/sync/types';
 
 // ─── Type helpers ──────────────────────────────────────────────
@@ -303,6 +305,79 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
     return rows.filter((r) => r.warehouse_id === filterWarehouseId);
   }, [rows, filterWarehouseId]);
 
+  // ─── P5-SY9H: 仓库聚合概览 ──────────────────────────────────────
+  const warehouseOverview = useMemo(() => {
+    const grouped = new Map<string, {
+      warehouseId: string;
+      warehouseName: string;
+      latestDryRun: { status: string; time: string | null; runId: string } | null;
+      latestRealWrite: { status: string; time: string | null; runId: string } | null;
+      lastSuccessTime: string | null;
+      lastFailureReason: string | null;
+    }>();
+
+    for (const row of rows) {
+      const entry = grouped.get(row.warehouse_id) || {
+        warehouseId: row.warehouse_id,
+        warehouseName: row.warehouse_name,
+        latestDryRun: null as { status: string; time: string | null; runId: string } | null,
+        latestRealWrite: null as { status: string; time: string | null; runId: string } | null,
+        lastSuccessTime: null as string | null,
+        lastFailureReason: null as string | null,
+      };
+
+      const rowTime = row.finished_at ?? row.started_at ?? row.created_at;
+
+      // Track latest per mode
+      if (row.mode === 'dry_run') {
+        if (!entry.latestDryRun || (rowTime && entry.latestDryRun.time && rowTime > entry.latestDryRun.time)) {
+          entry.latestDryRun = { status: row.status, time: rowTime, runId: row.id };
+        }
+      } else if (row.mode === 'real_write') {
+        if (!entry.latestRealWrite || (rowTime && entry.latestRealWrite.time && rowTime > entry.latestRealWrite.time)) {
+          entry.latestRealWrite = { status: row.status, time: rowTime, runId: row.id };
+        }
+      }
+
+      // Track last success
+      if (row.status === 'completed' && row.finished_at) {
+        if (!entry.lastSuccessTime || row.finished_at > entry.lastSuccessTime) {
+          entry.lastSuccessTime = row.finished_at;
+        }
+      }
+
+      // Track last failure reason (first failed run)
+      if (row.status === 'failed') {
+        if (!entry.lastFailureReason) {
+          const reason = isAdmin
+            ? (row as SyncRunAdminRow).error_message
+            : (row as SyncRunOperatorRow).failure_summary;
+          entry.lastFailureReason = reason ?? null;
+        }
+      }
+
+      grouped.set(row.warehouse_id, entry);
+    }
+
+    return Array.from(grouped.values());
+  }, [rows, isAdmin]);
+
+  // ─── P5-SY9H: 客户端分页 ────────────────────────────────────────
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
+  const totalFiltered = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, page]);
+
+  // Reset page when filter changes — wrap in setTimeout to avoid cascading render warning
+  useEffect(() => {
+    const timer = setTimeout(() => setPage(1), 0);
+    return () => clearTimeout(timer);
+  }, [filterWarehouseId]);
+
   // Trigger dialog
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [triggerForm, setTriggerForm] = useState(DEFAULT_TRIGGER_FORM);
@@ -313,18 +388,25 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<SyncRunDetailAdmin | SyncRunDetailOperator | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // P5-SY9H: sync_log detail
+  const [detailSyncLog, setDetailSyncLog] = useState<SyncLogRecord | null>(null);
 
   async function openDetail(runId: string) {
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailData(null);
     setDetailError(null);
+    setDetailSyncLog(null);
     try {
-      const data = await getSyncRunDetail(runId);
-      if (!data) {
+      const [runData, syncLog] = await Promise.all([
+        getSyncRunDetail(runId),
+        getSyncLogDetail(runId),
+      ]);
+      if (!runData) {
         setDetailError('未找到该同步运行记录');
       } else {
-        setDetailData(data as SyncRunDetailAdmin | SyncRunDetailOperator);
+        setDetailData(runData as SyncRunDetailAdmin | SyncRunDetailOperator);
+        setDetailSyncLog(syncLog);
       }
     } catch (err) {
       setDetailError('加载详情失败，请稍后重试');
@@ -344,6 +426,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
     setDetailOpen(false);
     setDetailData(null);
     setDetailError(null);
+    setDetailSyncLog(null);
   }
 
   function resetTriggerForm() {
@@ -620,41 +703,52 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
           </p>
         </div>
 
-        {isAdmin && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                resetTriggerForm();
-                setTriggerOpen(true);
-              }}
-              disabled={isSyncDisabled}
-              title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
-            >
-              <Play className="w-4 h-4 mr-1.5" />
-              触发同步
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setSyncAllOpen(true)}
-              disabled={isSyncDisabled}
-              title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
-            >
-              <RefreshCw className="w-4 h-4 mr-1.5" />
-              批量 Dry Run
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleEstablishSession}
-              disabled={establishing}
-            >
-              <LogIn className="w-4 h-4 mr-1.5" />
-              {establishing ? '启动中…' : '重新建立登录会话'}
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => router.push('/dashboard/inventory/overseas')}
+          >
+            <Package className="w-4 h-4 mr-1.5" />
+            海外库存
+          </Button>
+
+          {isAdmin && (
+            <>
+              <Button
+                size="sm"
+                onClick={() => {
+                  resetTriggerForm();
+                  setTriggerOpen(true);
+                }}
+                disabled={isSyncDisabled}
+                title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
+              >
+                <Play className="w-4 h-4 mr-1.5" />
+                触发同步
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setSyncAllOpen(true)}
+                disabled={isSyncDisabled}
+                title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
+              >
+                <RefreshCw className="w-4 h-4 mr-1.5" />
+                批量 Dry Run
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleEstablishSession}
+                disabled={establishing}
+              >
+                <LogIn className="w-4 h-4 mr-1.5" />
+                {establishing ? '启动中…' : '重新建立登录会话'}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* BigSeller 会话健康状态 (P5-SY9B) */}
@@ -751,6 +845,72 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
         </div>
       )}
 
+      {/* ─── P5-SY9H: 仓库同步概览 ────────────────────────────────── */}
+      {warehouseOverview.length > 0 && (
+        <div className="mb-5">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+            仓库同步概览
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {warehouseOverview.map((wh) => (
+              <button
+                key={wh.warehouseId}
+                type="button"
+                className="text-left rounded-md border bg-card p-3 hover:border-primary/50 hover:shadow-sm transition-colors cursor-pointer"
+                onClick={() => setFilterWarehouseId(wh.warehouseId)}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">
+                    {wh.warehouseName}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span>
+                    Dry Run：
+                    {wh.latestDryRun ? (
+                      <span className={
+                        wh.latestDryRun.status === 'completed' ? 'text-green-600' :
+                        wh.latestDryRun.status === 'in_progress' ? 'text-blue-600' :
+                        'text-red-600'
+                      }>
+                        {wh.latestDryRun.status === 'completed' ? '通过' :
+                         wh.latestDryRun.status === 'in_progress' ? '执行中' : '失败'}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </span>
+                  <span>
+                    Real Write：
+                    {wh.latestRealWrite ? (
+                      <span className={
+                        wh.latestRealWrite.status === 'completed' ? 'text-green-600' :
+                        wh.latestRealWrite.status === 'in_progress' ? 'text-blue-600' :
+                        'text-red-600'
+                      }>
+                        {wh.latestRealWrite.status === 'completed' ? '成功' :
+                         wh.latestRealWrite.status === 'in_progress' ? '执行中' : '失败'}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </span>
+                  <span className="col-span-2">
+                    最后成功：{wh.lastSuccessTime ? formatTime(wh.lastSuccessTime) : <span className="text-gray-400">—</span>}
+                  </span>
+                  {wh.lastFailureReason && (
+                    <span className="col-span-2 text-red-600 truncate" title={wh.lastFailureReason}>
+                      ⚠ {wh.lastFailureReason.slice(0, 80)}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 筛选栏 */}
       <div className="flex items-center gap-2 mb-5">
         <Select
@@ -782,7 +942,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       </div>
 
       {/* 空数据状态 */}
-      {filteredRows.length === 0 && (
+      {paginatedRows.length === 0 && (
         <div className="text-center py-16">
           <RefreshCw className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">
@@ -801,7 +961,8 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       )}
 
       {/* 同步运行列表 */}
-      {filteredRows.length > 0 && (
+      {paginatedRows.length > 0 && (
+        <>
         <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
@@ -812,14 +973,14 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                 <TableHead>开始时间</TableHead>
                 <TableHead>结束时间</TableHead>
                 <TableHead>计划漂移</TableHead>
+                <TableHead>失败原因</TableHead>
                 {isAdmin && <TableHead className="text-right">退出码</TableHead>}
-                {isAdmin && <TableHead>错误信息</TableHead>}
                 <TableHead>触发者</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRows.map((row) => (
+              {paginatedRows.map((row) => (
                 <TableRow key={row.id} className="hover:bg-gray-50">
                   <TableCell className="text-sm max-w-[160px] truncate">
                     {row.warehouse_name}
@@ -839,14 +1000,17 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                   <TableCell>
                     <DriftBadge check={row.plan_drift_check} />
                   </TableCell>
+                  {/* P5-SY9H: 失败原因对两个角色均可见 */}
+                  <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                    {row.status === 'failed'
+                      ? isAdmin
+                        ? (row as SyncRunAdminRow).error_message || '—'
+                        : (row as SyncRunOperatorRow).failure_summary || '—'
+                      : '—'}
+                  </TableCell>
                   {isAdmin && (
                     <TableCell className="text-right tabular-nums text-sm">
                       {(row as SyncRunAdminRow).exit_code ?? '—'}
-                    </TableCell>
-                  )}
-                  {isAdmin && (
-                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                      {(row as SyncRunAdminRow).error_message || '—'}
                     </TableCell>
                   )}
                   <TableCell className="text-xs text-muted-foreground">
@@ -869,15 +1033,36 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
             </TableBody>
           </Table>
         </div>
-      )}
 
-      {/* 页脚计数 */}
-      {filteredRows.length > 0 && (
-        <p className="text-sm text-muted-foreground mt-5">
-          {filteredRows.length === rows.length
-            ? `共 ${rows.length} 条记录`
-            : `显示 ${filteredRows.length} / ${rows.length} 条记录`}
-        </p>
+        {/* P5-SY9H: 分页控件 */}
+        <div className="flex items-center justify-between mt-5">
+          <p className="text-sm text-muted-foreground">
+            共 {totalFiltered} 条记录
+            {filterWarehouseId !== 'all' && `（仓库筛选）`}
+            {totalPages > 1 && `，第 ${page} / ${totalPages} 页`}
+          </p>
+          {totalPages > 1 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                上一页
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                下一页
+              </Button>
+            </div>
+          )}
+        </div>
+        </>
       )}
 
       {/* 触发同步 Dialog */}
@@ -1459,6 +1644,37 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                       (detailData as SyncRunDetailAdmin).plan_drift_differences!.length === 0) && (
                         <DetailField label="漂移差异" value="—" />
                       )}
+                  </div>
+                )}
+
+                {/* ─── P5-SY9H: 同步日志（sync_log） ────────────────── */}
+                {detailSyncLog && (
+                  <div className="grid gap-3">
+                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">同步日志</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <DetailField
+                        label="日志状态"
+                        value={detailSyncLog.status === 'success' ? '成功' : '失败'}
+                      />
+                      <DetailField
+                        label="同步数量"
+                        value={detailSyncLog.newVariantsCount.toString()}
+                      />
+                      <DetailField
+                        label="日志开始"
+                        value={formatTime(detailSyncLog.startedAt)}
+                      />
+                      <DetailField
+                        label="日志结束"
+                        value={formatTime(detailSyncLog.finishedAt)}
+                      />
+                    </div>
+                    {detailSyncLog.errorMessage && (
+                      <DetailField
+                        label="日志错误"
+                        value={detailSyncLog.errorMessage}
+                      />
+                    )}
                   </div>
                 )}
 

@@ -3,6 +3,7 @@
 // 查询失败时抛出错误，由 error.tsx 边界捕获
 // 客户端交互（筛选/表格/分页）委托给 OverseasPageContent
 import { getOverseasInventory } from '@/features/inventory/actions';
+import { getOverseasWarehouseSyncStatus } from '@/features/sync/server-actions';
 import { OverseasPageContent } from './_components/overseas-page-content';
 import type { Metadata } from 'next';
 
@@ -18,19 +19,23 @@ export default async function OverseasInventoryPage({
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const data = await getOverseasInventory({
-    search: sp.search,
-    country: sp.country,
-    warehouseId: sp.warehouse,
-    stockStatus: sp.stockStatus as 'normal' | 'low' | 'out_of_stock' | undefined,
-    page,
-  });
+  const [data, syncStatus] = await Promise.all([
+    getOverseasInventory({
+      search: sp.search,
+      country: sp.country,
+      warehouseId: sp.warehouse,
+      stockStatus: sp.stockStatus as 'normal' | 'low' | 'out_of_stock' | undefined,
+      page,
+    }),
+    getOverseasWarehouseSyncStatus().catch(() => ({})),
+  ]);
 
   return (
     <OverseasPageContent
       stats={data.stats}
       warehouses={data.warehouses}
       result={data.result}
+      syncStatus={syncStatus}
       filters={{
         search: sp.search ?? '',
         country: sp.country ?? '',
