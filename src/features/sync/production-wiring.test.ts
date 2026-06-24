@@ -395,3 +395,53 @@ describe('类型安全', () => {
     expect(typeof runner.execute).toBe('function');
   });
 });
+
+// ─── 9. P5-SY9K rework: syncWarehouse 禁用验证 ─────────────────
+
+describe('syncWarehouse 旧入口禁用', () => {
+  const SYNC_SERVER_ACTIONS = readSyncSrc('server-actions.ts');
+  const SYNC_PAGE_CONTENT = readPageSrc('dashboard/sync/_components/sync-page-content.tsx');
+
+  it('同步页面源码不得包含 syncWarehouse import', () => {
+    // syncWarehouse 已永久禁用，页面不得引用该旧快速同步入口
+    expect(SYNC_PAGE_CONTENT).not.toMatch(/\bsyncWarehouse\b/);
+  });
+
+  it('同步页面源码不得包含"快速同步"按钮文案', () => {
+    expect(SYNC_PAGE_CONTENT).not.toContain('快速同步');
+  });
+
+  it('server-actions.ts syncWarehouse 不得调用 actions.syncWarehouse()', () => {
+    // 验证 syncWarehouse Server Action 已移除对 actions.syncWarehouse() 的调用
+    // （使用 await actions.syncWarehouse 或 actions.syncWarehouse( 模式匹配）
+    expect(SYNC_SERVER_ACTIONS).not.toMatch(/actions\.syncWarehouse\s*\(/);
+  });
+
+  it('server-actions.ts syncWarehouse 返回禁用错误消息', () => {
+    expect(SYNC_SERVER_ACTIONS).toContain('旧快速同步入口已禁用');
+  });
+
+  it('server-actions.ts syncAllWarehouses 不得调用 actions.syncWarehouse()', () => {
+    // syncAllWarehouses 原先循环调用 actions.syncWarehouse()，现已禁用
+    // 验证无遗留调用（排除注释和字符串）
+    const lines = SYNC_SERVER_ACTIONS.split('\n');
+    const calls = lines.filter(
+      (l) => l.match(/actions\.syncWarehouse\s*\(/) && !l.includes('//') && !l.includes('*')
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('server-actions.ts syncAllWarehouses 返回禁用错误消息', () => {
+    expect(SYNC_SERVER_ACTIONS).toContain('旧批量同步入口已禁用');
+  });
+
+  it('isWebsyncRealWriteEnabled() 返回 true 时 syncWarehouse 也不执行真实写入', () => {
+    // 确认 syncWarehouse 不复用 feature gate：即使 gate=true，
+    // 旧快速同步入口也必须返回错误，而非执行 actions.syncWarehouse()
+    const fnStart = SYNC_SERVER_ACTIONS.indexOf('export async function syncWarehouse');
+    expect(fnStart).toBeGreaterThan(-1);
+    const fnBody = SYNC_SERVER_ACTIONS.slice(fnStart, fnStart + 800);
+    // 函数体中不应包含 wireRealActions 或 actions.syncWarehouse 调用
+    expect(fnBody).not.toContain('wireRealActions');
+  });
+});

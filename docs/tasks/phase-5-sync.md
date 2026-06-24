@@ -25,7 +25,8 @@
 | P5-SY8F | MY 真实写入与端到端验收 | P5-SY8E | DONE（Codex 独立验收通过。全新抓取 48 行 + invalid sidecar 1 行。首次写入：48 Variants + 48 Inventory + Warehouse 改名；幂等重跑：0 新增/48 unchanged。Phase G/I PASS，SyncLog success。239/239 Python 测试，compileall/lint/build 通过。） |
 | P5-SY8G | ID 只读抓取与 Dry Run 方案 | P5-SY8F | DONE（Codex 独立复验通过。BigSeller 抓取 35 行，warehouse=印尼-DEE仓库，autoid=warehouse_option_3。DB 仓库 `印尼仓`→`印尼-DEE仓库` 改名已确认。P5-SY8G-ID 令牌（仅 --dry-run）。Codex 返工 3 项修复通过：1) --no-dry-run 动态提示 P5-SY8H-ID（新增 `_PENDING_WRITE_TOKENS`）；2) `_DRY_RUN_ONLY_TOKENS` 一致性测试改用 ast.parse 完整解析 3 token；3) `_NO_DRY_RUN_EXCLUSIVE_TOKENS` 一致性断言不再被 `except AssertionError: pass` 吞掉。245/245 Python 测试，compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入。） |
 | P5-SY8H | ID 真实写入与端到端验收 | P5-SY8G | DONE（Codex 独立验收通过。首次 RPC 写入 35 Variants (country=ID) + 35 Inventory + Warehouse 改名 "印尼仓"→"印尼-DEE仓库"；Phase G/I PASS，SyncLog success。幂等重跑：0 新增/35 unchanged，plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试，compileall/lint/build 通过。） |
-| P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | DONE（P5-SY9A~J 全部 DONE。生产启用受控验证通过。WEBSYNC_REAL_WRITE_ENABLED=true。） |
+| P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | DONE（P5-SY9A~K 全部 DONE。返工 P5-SY9K 通过。WEBSYNC_REAL_WRITE_ENABLED=false。） |
+| P5-SY10 | 自动 Dry Run 预审与后续自动化分阶段框架 | P5-SY9 全部海外仓批量真实写入完成并验收 | PLANNED（后置任务。先完成当前全部海外仓真实写入；本任务仅做自动 Dry Run、规则预审、PASS/WARN/BLOCK 决策与 Phase B 自动写入候选设计，不在首版启用自动 Real Write。） |
 
 P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许批量处理全部启用海外仓，但必须先批量 Dry Run、页面审核、二次确认后再逐仓真实写入；禁止普通按钮直接自动真实写入。
 
@@ -43,6 +44,29 @@ P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许
 | **P5-SY9H** | 页面体验与运营可用性收口：当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
 | **P5-SY9I** | 独立验收与生产启用：测试、lint/build、Python tests、Codex 独立审查 | P5-SY9H | DONE（Codex 独立验收通过。含一次返工：拆分 test/test:concurrency。） |
 | **P5-SY9J** | 生产启用受控验证：用户授权后 WEBSYNC_REAL_WRITE_ENABLED=true，PH 仓受控 Dry Run → Real Write | P5-SY9I | DONE（生产验证通过。PH sync_log success，new_variants_count=6。） |
+| **P5-SY9K** | 返工：禁用旧同步入口 + 修复 Web Real Write summary | P5-SY9J | DONE（syncWarehouse/syncAllWarehouses 永久禁用；web_bridge summary 从 rpc_summary 读取；526/526 TS + 252/252 Python + lint 0 + build pass。） |
+
+## P5-SY10 后续自动化计划（当前不启动）
+
+P5-SY10 是 P5 后续增强任务，依赖 P5-SY9 批量全部海外仓真实写入完成并通过 Codex 独立验收。当前优先级仍是完成每个海外仓的真实写入闭环，而不是继续扩展自动化。
+
+目标边界：
+
+- Phase A：自动 Dry Run + 规则预审 + 人工确认 Real Write。
+- Phase B：仅作为设计预留；运行稳定并建立每仓基线后，才评估 PASS 仓库自动 Real Write。
+- Cron 或后台任务不得直接调用真实写入入口，不得绕过 Admin 审核、feature gate、Dry Run 绑定和 sync_run/sync_log 审计链。
+- 冷启动、新仓、首次同步、仓库改名场景不能按稳定期阈值硬拦；无历史基线时新增 SKU 高比例只 WARN，不直接 BLOCK。
+- 连续失败必须纳入阻断规则，避免定时任务反复制造无效 `sync_run` 和日志噪音。
+
+候选规则：
+
+- session unhealthy -> 全局 BLOCK。
+- `plan_drift_check != 'PASS'` -> BLOCK。
+- 全部计数为 0 -> BLOCK。
+- invalid SKU 使用比例和绝对值组合判断。
+- 仓库改名 -> WARN，需人工确认。
+- 有历史基线后，再对新增 SKU 比例、行数变化、更新量异常做 WARN/BLOCK。
+- 同一仓连续 3 次 Dry Run 失败 -> BLOCK。
 
 ## P5-SY5 子任务拆分（V5.4 修订）
 

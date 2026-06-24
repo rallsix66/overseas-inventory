@@ -234,13 +234,16 @@ def main():
                 sync_log_enabled=True,
             )
 
+            # P5-SY9K rework: summary 从 rpc_result["rpc_summary"] 读取，
+            # 而非直接从 rpc_result 读取（后者无 variants_created 等顶级键）
+            rpc_summary = rpc_result.get('rpc_summary', {}) or {}
             result['summary'] = {
-                'variants_created': rpc_result.get('variants_created', 0),
-                'variants_skipped': rpc_result.get('variants_skipped', 0),
-                'inventory_inserted': rpc_result.get('inventory_inserted', 0),
-                'inventory_updated': rpc_result.get('inventory_updated', 0),
-                'inventory_unchanged': rpc_result.get('inventory_unchanged', 0),
-                'warehouse_renamed': rpc_result.get('warehouse_renamed', False),
+                'variants_created': rpc_summary.get('variants_created', 0),
+                'variants_skipped': rpc_summary.get('variants_skipped', 0),
+                'inventory_inserted': rpc_summary.get('inventory_inserted', 0),
+                'inventory_updated': rpc_summary.get('inventory_updated', 0),
+                'inventory_unchanged': rpc_summary.get('inventory_unchanged', 0),
+                'warehouse_renamed': rpc_summary.get('warehouse_renamed', False),
             }
             print(f'[web_bridge] RPC 写入完成: {json.dumps(result["summary"])}', file=sys.stderr)
 

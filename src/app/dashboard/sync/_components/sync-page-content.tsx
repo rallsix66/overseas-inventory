@@ -40,7 +40,6 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import {
-  syncWarehouse,
   getSyncRunDetail,
   getSyncLogDetail,
   establishBigSellerSession,
@@ -381,7 +380,6 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
   // Trigger dialog
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [triggerForm, setTriggerForm] = useState(DEFAULT_TRIGGER_FORM);
-  const [submitting, setSubmitting] = useState(false);
 
   // Detail sheet
   const [detailOpen, setDetailOpen] = useState(false);
@@ -619,33 +617,6 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       toast.error(`批量写入失败: ${errMsg}`, { duration: 10000 });
     } finally {
       setBatchRealWriteSubmitting(false);
-    }
-  }
-
-  async function handleTrigger(e: React.FormEvent) {
-    e.preventDefault();
-    if (!triggerForm.warehouseId) {
-      toast.error('请选择仓库');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const result = await syncWarehouse(triggerForm.warehouseId);
-      if (result.success) {
-        toast.success(`${result.warehouseName} 同步完成（${result.runId.slice(0, 8)}…）`);
-        router.refresh();
-      } else {
-        toast.error(result.error || '同步失败');
-      }
-      setTriggerOpen(false);
-      resetTriggerForm();
-    } catch (catchErr) {
-      const errMsg = (catchErr as Error).message || String(catchErr);
-      console.error('触发同步失败:', catchErr);
-      toast.error(`触发同步失败: ${errMsg}`, { duration: 10000 });
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -1075,7 +1046,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleTrigger}>
+          <form onSubmit={(e) => e.preventDefault()}>
             <div className="grid gap-4 py-4">
               {/* 仓库选择 */}
               <div className="grid gap-2">
@@ -1166,7 +1137,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                   resetTriggerForm();
                   setDryRunResult(null);
                 }}
-                disabled={submitting || dryRunSubmitting}
+                disabled={dryRunSubmitting}
               >
                 取消
               </Button>
@@ -1182,12 +1153,6 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                   {dryRunSubmitting ? '执行中…' : '开始 Dry Run'}
                 </Button>
               )}
-              <Button type="submit" disabled={submitting}>
-                {submitting && (
-                  <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
-                )}
-                {submitting ? '同步中…' : '快速同步'}
-              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

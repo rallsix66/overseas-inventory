@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY9` — 海外仓库存同步生产化（DONE — 生产启用受控验证通过。WEBSYNC_REAL_WRITE_ENABLED=true，PH 仓 Web Dry Run → Real Write 端到端通过。）
+`P5-SY9` — 海外仓库存同步生产化（DONE — 生产启用受控验证通过。P5-SY9K 返工完成：旧快速同步入口已永久禁用，Web Real Write summary 读取修复。）
 
 ## Completed Tasks
 
@@ -59,10 +59,11 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY9H` — 页面体验与运营可用性收口（2026-06-24 DONE，Codex 独立验收通过。6 项体验改进：仓库聚合概览卡片 + Operator 失败原因可见 + 客户端分页 + 海外库存同步状态列 + 页间导航 + sync_log 明细。新增 SyncLogRecord/WarehouseSyncStatus 类型 + getSyncLog() repository + getOverseasWarehouseSyncStatus()/getSyncLogDetail() Server Action + 12 项测试 + 清理标记。523/523 非并发同步测试（19 文件），lint 0 errors / 15 warnings，build 通过。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
 - `P5-SY9I` — 独立验收与生产启用准备（2026-06-24 DONE，Codex 独立验收通过。含一次返工：拆分 `npm run test`/`npm run test:concurrency` 脚本解决 concurrency.test.ts 缺少 PG 环境变量时退出码 1 的问题。最终质量门：523/523 TS 测试（18 文件）+ lint 0 errors / 15 warnings + build 通过 + 242/242 Python 测试（compileall + health_check 15 + plan 26 + verifier 44 + executor 89 + sync_log 29 + cli_integration 39）。架构边界合规审查通过。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled；生产启用待用户明确授权。）
 - `P5-SY9J` — 生产启用受控验证（2026-06-24 DONE，用户授权后执行。WEBSYNC_REAL_WRITE_ENABLED=true 已在 .env.local 启用。受控验证选 PH 仓（菲律宾-新创启辰自建仓）：Web Dry Run（104 行 → 6 新 variants + 80 更新 + 18 未变更）→ 审核（plan_drift_check=PASS）→ Real Write 成功（sync_log status=success，new_variants_count=6，库存更新已确认：SKU 7148556251712 数量 100,716→80,481）。修复 web_bridge.py execute_plan_v2 调用签名不匹配（移除已废弃的 warehouse/confirm_token/dry_run_report_path/input_json_path 参数）。已知小问题：execute_plan_v2 返回 summary 全为零（不影响实际写入，sync_log 记录正确），记入技术债务。）
+- `P5-SY9K` — 返工：禁用旧同步入口 + 修复 Web Real Write summary（2026-06-24 DONE。两项返工：1) syncWarehouse / syncAllWarehouses 永久禁用，不再执行真实写入，返回中文错误引导用户使用 Dry Run → 审核 → 确认写入流程；sync-page-content.tsx 移除 syncWarehouse import / handleTrigger / 「快速同步」按钮。2) web_bridge.py Real Write summary 从 rpc_result["rpc_summary"] 读取（而非直接从 rpc_result 顶级键读取），修复返回全零问题。新增 TypeScript 测试（production-wiring.test.ts 7 项源码检查 + session-health.test.ts 4 节重写）和 Python 测试（test_web_bridge_summary_reads_from_rpc_summary）。质量门：526/526 TS 测试 + 252/252 Python 测试 + lint 0 errors + build 通过。WEBSYNC_REAL_WRITE_ENABLED=false 已恢复到安全状态。）
 
 ## Awaiting Review
 
-（无待审核项。P5-SY9 全部子任务（A~J）完成，生产启用受控验证通过。WEBSYNC_REAL_WRITE_ENABLED=true 已启用。下一步：批量全部海外仓 Dry Run → 审核 → 批量 Real Write。）
+（无待审核项。P5-SY9 全部子任务（A~K）完成，返工通过。WEBSYNC_REAL_WRITE_ENABLED=false 已恢复。下一步：等用户确认后进入批量全部海外仓 Dry Run → 审核 → 批量 Real Write。）
 
 ## Authentication Status
 

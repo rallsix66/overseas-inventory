@@ -166,6 +166,10 @@ function toWarehouseBridgeInfo(
   }));
 }
 
+// P5-SY9K rework: 旧快速同步入口已永久禁用。
+// syncWarehouse 原先自动串联 dry_run → real_write，
+// 违反"Dry Run → 审核 → 确认写入"安全流程。
+// 请使用 triggerDryRun → 审核 → confirmRealWrite 代替。
 export async function syncWarehouse(warehouseId: string): Promise<{
   warehouseId: string;
   warehouseName: string;
@@ -176,45 +180,14 @@ export async function syncWarehouse(warehouseId: string): Promise<{
   dryRunRunId?: string;
 }> {
   await requireActiveAdmin();
-
-  // ── Session health guard (P5-SY9B) ──────────────────────────
-  const health = await verifyBigSellerSession();
-  if (health.status !== 'healthy') {
-    return {
-      warehouseId,
-      warehouseName: '会话异常',
-      success: false,
-      runId: '',
-      status: 'failed',
-      error: `BigSeller 登录会话不可用：${health.message}`,
-    };
-  }
-
-  // ── Feature gate (P5-SY9C) ──────────────────────────────────
-  // Web 同步真实写入入口保持 server-side disabled，直到 P5-SY9E
-  // heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。
-  if (!isWebsyncRealWriteEnabled()) {
-    return {
-      warehouseId,
-      warehouseName: '功能未开放',
-      success: false,
-      runId: '',
-      status: 'failed',
-      error: 'Web 同步真实写入功能尚未启用。请等待 P5-SY9E heartbeat/timeout 完成并通过 P5-SY9I 独立验收。',
-    };
-  }
-
-  const warehouses = await getCachedOverseasWarehouses();
-  const wh = warehouses.find((w) => w.id === warehouseId);
-  if (!wh) {
-    return { warehouseId, warehouseName: '未知仓库', success: false, runId: '', status: 'failed', error: '未知仓库 ID' };
-  }
-  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
-  const result = await actions.syncWarehouse(warehouseId, wh.name, wh.token);
-  if (result.success) {
-    revalidatePath('/dashboard/inventory/overseas');
-  }
-  return result;
+  return {
+    warehouseId,
+    warehouseName: '旧快速同步入口已禁用',
+    success: false,
+    runId: '',
+    status: 'failed',
+    error: '旧快速同步入口已禁用，请使用 Dry Run → 审核 → 确认写入流程。',
+  };
 }
 
 // ─── P5-SY9D: 单仓 Dry Run（仅审核，不自动链 Real Write）──────────
@@ -381,8 +354,10 @@ export async function triggerBatchRealWrite(
   return result;
 }
 
-// CLEANUP-CANDIDATE: syncAllWarehouses uses PH-only confirmToken schema.
-// This is a legacy path disabled since P5-SY9C. Remove after P5-SY9I passes review.
+// P5-SY9K rework: 旧批量同步入口已永久禁用。
+// syncAllWarehouses 原先逐个调用 syncWarehouse（自动串联 dry_run → real_write），
+// 违反"Dry Run → 审核 → 确认写入"安全流程。
+// 请使用 triggerBatchDryRun → 审核 → triggerBatchRealWrite 代替。
 export async function syncAllWarehouses(): Promise<{
   results: Array<{
     warehouseId: string;
@@ -396,61 +371,17 @@ export async function syncAllWarehouses(): Promise<{
   allSuccess: boolean;
 }> {
   await requireActiveAdmin();
-
-  // ── Session health guard (P5-SY9B) ──────────────────────────
-  const health = await verifyBigSellerSession();
-  if (health.status !== 'healthy') {
-    return {
-      results: [{
-        warehouseId: 'all',
-        warehouseName: '全部海外仓',
-        success: false,
-        runId: '',
-        status: 'failed',
-        error: `BigSeller 登录会话不可用：${health.message}`,
-      }],
-      allSuccess: false,
-    };
-  }
-
-  // ── Feature gate (P5-SY9C) ──────────────────────────────────
-  if (!isWebsyncRealWriteEnabled()) {
-    return {
-      results: [{
-        warehouseId: 'all',
-        warehouseName: '全部海外仓',
-        success: false,
-        runId: '',
-        status: 'failed',
-        error: 'Web 同步真实写入功能尚未启用。请等待 P5-SY9E heartbeat/timeout 完成并通过 P5-SY9I 独立验收。',
-      }],
-      allSuccess: false,
-    };
-  }
-
-  const warehouses = await getCachedOverseasWarehouses();
-  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
-  const results: Array<{
-    warehouseId: string;
-    warehouseName: string;
-    success: boolean;
-    runId: string;
-    status: string;
-    error?: string;
-    dryRunRunId?: string;
-  }> = [];
-
-  for (const wh of warehouses) {
-    const r = await actions.syncWarehouse(wh.id, wh.name, wh.token);
-    results.push(r);
-  }
-
-  const allSuccess = results.every((r) => r.success);
-  if (results.some((r) => r.success)) {
-    revalidatePath('/dashboard/inventory/overseas');
-  }
-
-  return { results, allSuccess };
+  return {
+    results: [{
+      warehouseId: 'all',
+      warehouseName: '全部海外仓',
+      success: false,
+      runId: '',
+      status: 'failed',
+      error: '旧批量同步入口已禁用，请使用批量 Dry Run → 审核 → 批量确认写入流程。',
+    }],
+    allSuccess: false,
+  };
 }
 
 // ─── 重新建立 BigSeller 登录会话 ────────────────────────────────

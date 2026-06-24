@@ -318,167 +318,61 @@ async function getSyncActions() {
   return import('./server-actions');
 }
 
-describe('syncWarehouse session health guard', () => {
+describe('syncWarehouse 永久禁用', () => {
+  // P5-SY9K rework: syncWarehouse 已移除 session health guard 和 feature gate，
+  // 永久禁用，始终返回"旧快速同步入口已禁用"错误。
+
   beforeEach(() => {
     mockState.authRejection = null;
     mockState.spawnStdout = null;
     mockState.spawnStderr = null;
     mockState.spawnError = null;
     mockState.spawnExitCode = null;
-    // P5-SY9C: feature gate 默认关闭。healthy guard 测试需要
-    // 开启 gate 以验证 guard 通过后继续执行（随后因无 Supabase 而 throw）。
+  });
+
+  it('任何调用均返回"旧快速同步入口已禁用"（不进入真实同步管线）', async () => {
+    const { syncWarehouse } = await getSyncActions();
+    const result = await syncWarehouse('any-wh-id');
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('旧快速同步入口已禁用');
+    expect(result.error).toContain('Dry Run');
+    expect(result.error).toContain('确认写入');
+    expect(result.runId).toBe('');
+  });
+
+  it('disable 错误不包含 session health 或 feature gate 消息（已移除这些 guard）', async () => {
+    const { syncWarehouse } = await getSyncActions();
+    const result = await syncWarehouse('any-wh-id');
+
+    expect(result.error).not.toContain('BigSeller 登录会话不可用');
+    expect(result.error).not.toContain('功能尚未启用');
+    expect(result.error).not.toContain('P5-SY9E');
+  });
+
+  it('不依赖 WEBSYNC_REAL_WRITE_ENABLED 环境变量', async () => {
+    // gate=true 时也应返回禁用错误
     process.env.WEBSYNC_REAL_WRITE_ENABLED = 'true';
-  });
-
-  afterEach(() => {
-    delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
-  });
-
-  // ── Non-healthy → guard rejects ────────────────────────────
-
-  it('need_login 时返回中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'need_login',
-      message: '需要登录：BigSeller 登录会话已过期。请点击「重新建立登录会话」按钮。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: {},
-    }) + '\n';
-    mockState.spawnExitCode = 0;
-
-    const { syncWarehouse } = await getSyncActions();
-    const result = await syncWarehouse('any-wh-id');
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe('failed');
-    expect(result.error).toContain('BigSeller 登录会话不可用');
-    expect(result.error).toContain('需要登录');
-    // 未进入真实同步管线：runId 为空，不应有 dryRunRunId
-    expect(result.runId).toBe('');
-    expect(result.dryRunRunId).toBeUndefined();
-  });
-
-  it('profile_unavailable 时返回中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'profile_unavailable',
-      message: 'Profile 不可用：BigSeller 登录会话 cookie 文件缺失或为空。请点击「重新建立登录会话」按钮重新登录。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: { profile_dir_exists: false, profile_has_cookies: false },
-    }) + '\n';
-    mockState.spawnExitCode = 1;
-
-    const { syncWarehouse } = await getSyncActions();
-    const result = await syncWarehouse('any-wh-id');
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe('failed');
-    expect(result.error).toContain('BigSeller 登录会话不可用');
-    expect(result.error).toContain('Profile 不可用');
-    expect(result.runId).toBe('');
-  });
-
-  it('unknown_error 时返回中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = null;
-    mockState.spawnExitCode = 1;
-
-    const { syncWarehouse } = await getSyncActions();
-    const result = await syncWarehouse('any-wh-id');
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe('failed');
-    expect(result.error).toContain('BigSeller 登录会话不可用');
-    expect(result.error).toContain('无输出');
-    expect(result.runId).toBe('');
-  });
-
-  it('table_not_loaded 时返回中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'table_not_loaded',
-      message: '表格未加载：无法找到 VXE 表格。请稍后重试。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: {},
-    }) + '\n';
-    mockState.spawnExitCode = 1;
-
-    const { syncWarehouse } = await getSyncActions();
-    const result = await syncWarehouse('any-wh-id');
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe('failed');
-    expect(result.error).toContain('BigSeller 登录会话不可用');
-  });
-
-  it('need_verification 时返回中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'need_verification',
-      message: '需要验证码：BigSeller 页面出现安全验证。请点击「重新建立登录会话」按钮。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: { captcha_detected: true },
-    }) + '\n';
-    mockState.spawnExitCode = 0;
-
-    const { syncWarehouse } = await getSyncActions();
-    const result = await syncWarehouse('any-wh-id');
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe('failed');
-    expect(result.error).toContain('BigSeller 登录会话不可用');
-    expect(result.error).toContain('需要验证码');
-  });
-
-  it('page_structure_changed 时返回中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'page_structure_changed',
-      message: '页面结构异常：缺少仓库筛选入口。请检查 BigSeller 页面是否正常。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: {},
-    }) + '\n';
-    mockState.spawnExitCode = 1;
-
-    const { syncWarehouse } = await getSyncActions();
-    const result = await syncWarehouse('any-wh-id');
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe('failed');
-    expect(result.error).toContain('BigSeller 登录会话不可用');
-    expect(result.error).toContain('页面结构异常');
-  });
-
-  // ── Healthy → guard passes ─────────────────────────────────
-
-  it('healthy 时通过 guard，继续执行（随后因无 Supabase 而 throw，证明未在 guard 处阻断）', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'healthy',
-      message: '已登录可用：BigSeller 登录会话正常。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: { vxe_header_count: 13, vxe_row_count: 48 },
-    }) + '\n';
-    mockState.spawnExitCode = 0;
-
-    const { syncWarehouse } = await getSyncActions();
-
-    // healthy 应通过 guard，随后尝试 getCachedOverseasWarehouses()→Supabase
-    // 无 Supabase 环境下必然 throw；若 guard 误触发则会 return 而非 throw
-    await expect(syncWarehouse('any-wh-id')).rejects.toThrow();
-    // 错误应来自 Supabase 连接层，而非「BigSeller 登录会话不可用」
     try {
-      await syncWarehouse('any-wh-id');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      expect(msg).not.toContain('BigSeller 登录会话不可用');
+      const { syncWarehouse } = await getSyncActions();
+      const result = await syncWarehouse('any-wh-id');
+      expect(result.error).toContain('旧快速同步入口已禁用');
+    } finally {
+      delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
     }
   });
 });
 
-// ─── Feature gate interception (P5-SY9C rework) ────────────────
+// ─── syncWarehouse 旧入口禁用回归（原 feature gate 测试替换）────
 
-describe('syncWarehouse feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
+describe('syncWarehouse 旧入口禁用回归', () => {
   beforeEach(() => {
     mockState.authRejection = null;
     mockState.spawnStdout = null;
     mockState.spawnStderr = null;
     mockState.spawnError = null;
     mockState.spawnExitCode = null;
-    // 刻意不设置 WEBSYNC_REAL_WRITE_ENABLED — gate 默认关闭
     delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
   });
 
@@ -486,7 +380,7 @@ describe('syncWarehouse feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
     delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
   });
 
-  it('healthy session 但 gate 关闭 → 返回 gate 错误，不进入真实同步', async () => {
+  it('gate 关闭时返回禁用错误（非 gate 错误）', async () => {
     mockState.spawnStdout = JSON.stringify({
       status: 'healthy',
       message: '已登录可用：BigSeller 登录会话正常。',
@@ -500,12 +394,14 @@ describe('syncWarehouse feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe('failed');
-    expect(result.error).toContain('功能尚未启用');
-    expect(result.error).toContain('P5-SY9E');
+    expect(result.error).toContain('旧快速同步入口已禁用');
+    // 不再包含 feature gate 消息
+    expect(result.error).not.toContain('功能尚未启用');
     expect(result.runId).toBe('');
   });
 
-  it('healthy session 但 gate 关闭 → error 不包含 session health 消息（gate 在 health 之后拦截）', async () => {
+  it('gate 开启时同样返回禁用错误（gate=true 也不进入真实同步）', async () => {
+    process.env.WEBSYNC_REAL_WRITE_ENABLED = 'true';
     mockState.spawnStdout = JSON.stringify({
       status: 'healthy',
       message: '已登录可用。',
@@ -517,13 +413,11 @@ describe('syncWarehouse feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
     const { syncWarehouse } = await getSyncActions();
     const result = await syncWarehouse('any-wh-id');
 
-    // gate 拦截消息与 session health 无关
+    expect(result.error).toContain('旧快速同步入口已禁用');
     expect(result.error).not.toContain('BigSeller 登录会话不可用');
-    expect(result.error).not.toContain('已登录可用');
   });
 
-  it('gate 关闭时 verifyBigSellerSession 仍被调用（health guard 先于 gate）', async () => {
-    // session unhealthy → 被 health guard 拦截，gate 未到达
+  it('unhealthy session 时同样返回禁用错误（不检查 session health）', async () => {
     mockState.spawnStdout = JSON.stringify({
       status: 'need_login',
       message: '需要登录。',
@@ -535,37 +429,25 @@ describe('syncWarehouse feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
     const { syncWarehouse } = await getSyncActions();
     const result = await syncWarehouse('any-wh-id');
 
-    // health guard 先拦截，返回 session error 而非 gate error
-    expect(result.error).toContain('BigSeller 登录会话不可用');
-    expect(result.error).toContain('需要登录');
-    expect(result.error).not.toContain('功能尚未启用');
+    // 不检查 session health，直接返回禁用错误
+    expect(result.error).toContain('旧快速同步入口已禁用');
+    expect(result.error).not.toContain('BigSeller 登录会话不可用');
   });
 });
 
-describe('syncAllWarehouses session health guard', () => {
+describe('syncAllWarehouses 永久禁用', () => {
+  // P5-SY9K rework: syncAllWarehouses 已移除 session health guard 和 feature gate，
+  // 永久禁用，始终返回"旧批量同步入口已禁用"错误。
+
   beforeEach(() => {
     mockState.authRejection = null;
     mockState.spawnStdout = null;
     mockState.spawnStderr = null;
     mockState.spawnError = null;
     mockState.spawnExitCode = null;
-    // P5-SY9C: feature gate 默认关闭。healthy guard 测试需要开启 gate。
-    process.env.WEBSYNC_REAL_WRITE_ENABLED = 'true';
   });
 
-  afterEach(() => {
-    delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
-  });
-
-  it('need_login 时返回 results 含中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'need_login',
-      message: '需要登录：BigSeller 登录会话已过期。请点击「重新建立登录会话」按钮。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: {},
-    }) + '\n';
-    mockState.spawnExitCode = 0;
-
+  it('任何调用均返回"旧批量同步入口已禁用"（不进入真实同步管线）', async () => {
     const { syncAllWarehouses } = await getSyncActions();
     const result = await syncAllWarehouses();
 
@@ -573,60 +455,41 @@ describe('syncAllWarehouses session health guard', () => {
     expect(result.results).toHaveLength(1);
     expect(result.results[0].success).toBe(false);
     expect(result.results[0].status).toBe('failed');
-    expect(result.results[0].error).toContain('BigSeller 登录会话不可用');
-    expect(result.results[0].error).toContain('需要登录');
+    expect(result.results[0].error).toContain('旧批量同步入口已禁用');
+    expect(result.results[0].error).toContain('批量 Dry Run');
+    expect(result.results[0].error).toContain('批量确认写入');
     expect(result.results[0].runId).toBe('');
   });
 
-  it('profile_unavailable 时返回 results 含中文错误，不进入真实同步管线', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'profile_unavailable',
-      message: 'Profile 不可用：BigSeller 登录会话 profile 目录不存在。请先点击「重新建立登录会话」按钮。',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: { profile_dir_exists: false },
-    }) + '\n';
-    mockState.spawnExitCode = 1;
-
+  it('disable 错误不包含 session health 或 feature gate 消息', async () => {
     const { syncAllWarehouses } = await getSyncActions();
     const result = await syncAllWarehouses();
 
-    expect(result.allSuccess).toBe(false);
-    expect(result.results[0].error).toContain('BigSeller 登录会话不可用');
-    expect(result.results[0].error).toContain('Profile 不可用');
+    expect(result.results[0].error).not.toContain('BigSeller 登录会话不可用');
+    expect(result.results[0].error).not.toContain('功能尚未启用');
   });
 
-  it('healthy 时通过 guard，继续执行（随后因无 Supabase 而 throw）', async () => {
-    mockState.spawnStdout = JSON.stringify({
-      status: 'healthy',
-      message: '已登录可用',
-      checked_at: '2026-06-23T10:00:00.000Z',
-      details: {},
-    }) + '\n';
-    mockState.spawnExitCode = 0;
-
-    const { syncAllWarehouses } = await getSyncActions();
-
-    // healthy 应通过 guard，随后尝试 Supabase → throw
-    await expect(syncAllWarehouses()).rejects.toThrow();
+  it('不依赖 WEBSYNC_REAL_WRITE_ENABLED 环境变量', async () => {
+    process.env.WEBSYNC_REAL_WRITE_ENABLED = 'true';
     try {
-      await syncAllWarehouses();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      expect(msg).not.toContain('BigSeller 登录会话不可用');
+      const { syncAllWarehouses } = await getSyncActions();
+      const result = await syncAllWarehouses();
+      expect(result.results[0].error).toContain('旧批量同步入口已禁用');
+    } finally {
+      delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
     }
   });
 });
 
-// ─── Feature gate interception for syncAllWarehouses (P5-SY9C rework) ──
+// ─── syncAllWarehouses 旧入口禁用回归（原 feature gate 测试替换）──
 
-describe('syncAllWarehouses feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
+describe('syncAllWarehouses 旧入口禁用回归', () => {
   beforeEach(() => {
     mockState.authRejection = null;
     mockState.spawnStdout = null;
     mockState.spawnStderr = null;
     mockState.spawnError = null;
     mockState.spawnExitCode = null;
-    // 刻意不设置 WEBSYNC_REAL_WRITE_ENABLED — gate 默认关闭
     delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
   });
 
@@ -634,7 +497,7 @@ describe('syncAllWarehouses feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
     delete process.env.WEBSYNC_REAL_WRITE_ENABLED;
   });
 
-  it('healthy session 但 gate 关闭 → 返回 gate 错误 results', async () => {
+  it('gate 关闭时返回禁用错误（非 gate 错误）', async () => {
     mockState.spawnStdout = JSON.stringify({
       status: 'healthy',
       message: '已登录可用：BigSeller 登录会话正常。',
@@ -650,11 +513,13 @@ describe('syncAllWarehouses feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
     expect(result.results).toHaveLength(1);
     expect(result.results[0].success).toBe(false);
     expect(result.results[0].status).toBe('failed');
-    expect(result.results[0].error).toContain('功能尚未启用');
+    expect(result.results[0].error).toContain('旧批量同步入口已禁用');
+    expect(result.results[0].error).not.toContain('功能尚未启用');
     expect(result.results[0].runId).toBe('');
   });
 
-  it('healthy session 但 gate 关闭 → error 不包含 session health 消息', async () => {
+  it('gate 开启时同样返回禁用错误（gate=true 也不进入真实同步）', async () => {
+    process.env.WEBSYNC_REAL_WRITE_ENABLED = 'true';
     mockState.spawnStdout = JSON.stringify({
       status: 'healthy',
       message: '已登录可用。',
@@ -666,7 +531,7 @@ describe('syncAllWarehouses feature gate (WEBSYNC_REAL_WRITE_ENABLED)', () => {
     const { syncAllWarehouses } = await getSyncActions();
     const result = await syncAllWarehouses();
 
+    expect(result.results[0].error).toContain('旧批量同步入口已禁用');
     expect(result.results[0].error).not.toContain('BigSeller 登录会话不可用');
-    expect(result.results[0].error).not.toContain('已登录可用');
   });
 });

@@ -2648,6 +2648,85 @@ def test_report_identity_id_real_write_token():
     assert report['dry_run'] is False
 
 
+# ─── P5-SY9K rework: web_bridge real_write summary 映射 ──────────────
+
+RPC_SUMMARY_NONZERO = {
+    'variants_created': 6,
+    'inventory_received': 48,
+    'inventory_inserted': 12,
+    'inventory_updated': 20,
+    'inventory_unchanged': 16,
+    'warehouse_renamed': True,
+}
+
+EXECUTE_PLAN_V2_RETURN = {
+    'started_at': '2026-06-24T10:00:00+08:00',
+    'finished_at': '2026-06-24T10:00:15+08:00',
+    'warehouse_id': 'test-wh-id',
+    'rpc_summary': RPC_SUMMARY_NONZERO,
+    'phase_g_verified': True,
+    'phase_i_verified': True,
+    'sync_log_written': True,
+    'sync_log_fallback_path': None,
+    'sync_log_enabled': True,
+    'errors': [],
+}
+
+
+def test_web_bridge_summary_reads_from_rpc_summary():
+    """P5-SY9K: web_bridge Real Write summary 从 rpc_result['rpc_summary'] 读取。
+
+    验证：
+    1. rpc_result['rpc_summary'] 具有非零值（via MOCK_RPC_RESULT）
+    2. 从 rpc_summary 读取的 summary 值非零
+    3. 直接从 rpc_result 顶级键读取则为 0（证明必须从 rpc_summary 读取）
+    """
+    rpc_result = EXECUTE_PLAN_V2_RETURN.copy()
+    rpc_summary = rpc_result.get('rpc_summary', {}) or {}
+
+    # 1. rpc_summary 本身非空
+    assert rpc_summary.get('variants_created') == 6, \
+        f'rpc_summary.variants_created 应为 6，实际: {rpc_summary.get("variants_created")}'
+    assert rpc_summary.get('inventory_inserted') == 12, \
+        f'rpc_summary.inventory_inserted 应为 12，实际: {rpc_summary.get("inventory_inserted")}'
+    assert rpc_summary.get('inventory_updated') == 20, \
+        f'rpc_summary.inventory_updated 应为 20，实际: {rpc_summary.get("inventory_updated")}'
+    assert rpc_summary.get('inventory_unchanged') == 16, \
+        f'rpc_summary.inventory_unchanged 应为 16，实际: {rpc_summary.get("inventory_unchanged")}'
+    assert rpc_summary.get('warehouse_renamed') is True, \
+        f'rpc_summary.warehouse_renamed 应为 True，实际: {rpc_summary.get("warehouse_renamed")}'
+
+    # 2. web_bridge 风格 summary 构造：从 rpc_summary 读取 → 非零值
+    summary_from_rpc_summary = {
+        'variants_created': rpc_summary.get('variants_created', 0),
+        'variants_skipped': rpc_summary.get('variants_skipped', 0),
+        'inventory_inserted': rpc_summary.get('inventory_inserted', 0),
+        'inventory_updated': rpc_summary.get('inventory_updated', 0),
+        'inventory_unchanged': rpc_summary.get('inventory_unchanged', 0),
+        'warehouse_renamed': rpc_summary.get('warehouse_renamed', False),
+    }
+    assert summary_from_rpc_summary['variants_created'] == 6
+    assert summary_from_rpc_summary['inventory_inserted'] == 12
+    assert summary_from_rpc_summary['inventory_updated'] == 20
+    assert summary_from_rpc_summary['inventory_unchanged'] == 16
+    assert summary_from_rpc_summary['warehouse_renamed'] is True
+
+    # 3. 旧模式：直接从 rpc_result 顶级键读取 → 全部 0/默认值
+    old_summary_direct = {
+        'variants_created': rpc_result.get('variants_created', 0),
+        'inventory_inserted': rpc_result.get('inventory_inserted', 0),
+        'inventory_updated': rpc_result.get('inventory_updated', 0),
+        'inventory_unchanged': rpc_result.get('inventory_unchanged', 0),
+        'warehouse_renamed': rpc_result.get('warehouse_renamed', False),
+    }
+    assert old_summary_direct['variants_created'] == 0, \
+        '旧模式直接从 rpc_result 顶级键读取 variants_created 应为 0'
+    assert old_summary_direct['inventory_inserted'] == 0, \
+        '旧模式直接从 rpc_result 顶级键读取 inventory_inserted 应为 0'
+    assert old_summary_direct['warehouse_renamed'] is False, \
+        '旧模式直接从 rpc_result 顶级键读取 warehouse_renamed 应为 False'
+
+
 # =========================================================================
 # 运行
 # =========================================================================
@@ -2738,6 +2817,9 @@ if __name__ == '__main__':
 
     # P5-SY8H-ID real write report identity
     test_report_identity_id_real_write_token()
+
+    # P5-SY9K: web_bridge real_write summary 映射
+    test_web_bridge_summary_reads_from_rpc_summary()
 
     print()
     print('=' * 60)

@@ -6,7 +6,7 @@
 
 ## 状态
 
-`DONE` — P5-SY9 全子任务（A~J）完成，生产启用受控验证通过。WEBSYNC_REAL_WRITE_ENABLED=true 已启用。
+`DONE` — P5-SY9 全子任务（A~K）完成。返工 P5-SY9K 通过：旧同步入口永久禁用 + Web Real Write summary 修复。WEBSYNC_REAL_WRITE_ENABLED=false。
 
 ## 背景
 
@@ -150,6 +150,7 @@ Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含
 | P5-SY9H | 页面体验与运营可用性收口 | 当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
 | P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | DONE（Codex 独立验收通过。含一次返工：拆分 test/test:concurrency。） |
 | P5-SY9J | 生产启用受控验证 | 用户授权后启用 WEBSYNC_REAL_WRITE_ENABLED=true，PH 仓受控 Web Dry Run → 审核 → Real Write 小范围验证 | P5-SY9I | DONE（生产验证通过。PH 仓 sync_log success，new_variants_count=6。） |
+| P5-SY9K | 返工：禁用旧同步入口 + 修复 Web Real Write summary | 1) syncWarehouse/syncAllWarehouses 永久禁用，返回中文错误；2) sync-page-content.tsx 移除快速同步按钮；3) web_bridge.py summary 从 rpc_summary 读取 | P5-SY9J | DONE（526/526 TS + 252/252 Python + lint 0 + build pass。） |
 
 ## 验收标准
 
