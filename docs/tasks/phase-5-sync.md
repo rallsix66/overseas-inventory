@@ -26,7 +26,7 @@
 | P5-SY8G | ID 只读抓取与 Dry Run 方案 | P5-SY8F | DONE（Codex 独立复验通过。BigSeller 抓取 35 行，warehouse=印尼-DEE仓库，autoid=warehouse_option_3。DB 仓库 `印尼仓`→`印尼-DEE仓库` 改名已确认。P5-SY8G-ID 令牌（仅 --dry-run）。Codex 返工 3 项修复通过：1) --no-dry-run 动态提示 P5-SY8H-ID（新增 `_PENDING_WRITE_TOKENS`）；2) `_DRY_RUN_ONLY_TOKENS` 一致性测试改用 ast.parse 完整解析 3 token；3) `_NO_DRY_RUN_EXCLUSIVE_TOKENS` 一致性断言不再被 `except AssertionError: pass` 吞掉。245/245 Python 测试，compileall 通过，npm lint 0 errors，npm build 通过。未执行真实写入。） |
 | P5-SY8H | ID 真实写入与端到端验收 | P5-SY8G | DONE（Codex 独立验收通过。首次 RPC 写入 35 Variants (country=ID) + 35 Inventory + Warehouse 改名 "印尼仓"→"印尼-DEE仓库"；Phase G/I PASS，SyncLog success。幂等重跑：0 新增/35 unchanged，plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试，compileall/lint/build 通过。） |
 | P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | DONE（P5-SY9A~K 全部 DONE。全部5海外仓批量真实写入完成（2026-06-24）：PH=104行/VN=64行/TH=73行/MY=48行/ID=36行，全部 sync_log success。PH/VN/TH 仓库名称在 BigSeller 已变更。返工 P5-SY9K 通过。WEBSYNC_REAL_WRITE_ENABLED=false。） |
-| P5-SY10 | 自动 Dry Run 预审与后续自动化分阶段框架 | P5-SY9 全部海外仓批量真实写入完成并验收 | PLANNED（后置任务。P5-SY9 全部5海外仓真实写入已完成，P5-SY10 可启动。本任务仅做自动 Dry Run、规则预审、PASS/WARN/BLOCK 决策与 Phase B 自动写入候选设计，不在首版启用自动 Real Write。） |
+| P5-SY10 | 自动 Dry Run 预审与后续自动化分阶段框架 | P5-SY9 全部海外仓批量真实写入完成并验收 | IN_PROGRESS（P5-SY10A~F 子任务已拆分。规则引擎设计：11 条规则优先级 R1~R11，冷启动/有基线双路径，session unhealthy / plan_drift / all_zero / consecutive_failures → BLOCK；warehouse_rename / high_new / high_invalid / row_anomaly → WARN；PASS 仍需人工确认 Real Write。首版仅 Phase A，Phase B 自动 Real Write 设计预留。） |
 | P5-SY11 | ProductVariant 软归档与库存视图降噪 | P5-SY9 全部海外仓批量真实写入完成并验收 | PLANNED（后置任务。为 Admin 提供手动归档/恢复无用 SKU 的能力；默认库存列表、低库存统计和常规 Variant 列表隐藏已归档 SKU，但同步写入链路继续更新归档 Variant 的 inventory，历史 shipment_item 不过滤。） |
 
 P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许批量处理全部启用海外仓，但必须先批量 Dry Run、页面审核、二次确认后再逐仓真实写入；禁止普通按钮直接自动真实写入。
@@ -47,11 +47,11 @@ P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许
 | **P5-SY9J** | 生产启用受控验证：用户授权后 WEBSYNC_REAL_WRITE_ENABLED=true，PH 仓受控 Dry Run → Real Write | P5-SY9I | DONE（生产验证通过。PH sync_log success，new_variants_count=6。） |
 | **P5-SY9K** | 返工：禁用旧同步入口 + 修复 Web Real Write summary | P5-SY9J | DONE（syncWarehouse/syncAllWarehouses 永久禁用；web_bridge summary 从 rpc_summary 读取；526/526 TS + 252/252 Python + lint 0 + build pass。） |
 
-## P5-SY10 后续自动化计划（当前不启动）
+## P5-SY10 自动 Dry Run 预审与后续自动化分阶段框架（IN_PROGRESS）
 
-P5-SY10 是 P5 后续增强任务，依赖 P5-SY9 批量全部海外仓真实写入完成并通过 Codex 独立验收。当前优先级仍是完成每个海外仓的真实写入闭环，而不是继续扩展自动化。
+P5-SY10 依赖 P5-SY9 已满足。首版仅做自动 Dry Run、规则预审和人工确认 Real Write，不启用自动真实写入。
 
-目标边界：
+### 目标边界
 
 - Phase A：自动 Dry Run + 规则预审 + 人工确认 Real Write。
 - Phase B：仅作为设计预留；运行稳定并建立每仓基线后，才评估 PASS 仓库自动 Real Write。
@@ -59,15 +59,35 @@ P5-SY10 是 P5 后续增强任务，依赖 P5-SY9 批量全部海外仓真实写
 - 冷启动、新仓、首次同步、仓库改名场景不能按稳定期阈值硬拦；无历史基线时新增 SKU 高比例只 WARN，不直接 BLOCK。
 - 连续失败必须纳入阻断规则，避免定时任务反复制造无效 `sync_run` 和日志噪音。
 
-候选规则：
+### 规则引擎（11 条规则，优先级 R1→R11）
 
-- session unhealthy -> 全局 BLOCK。
-- `plan_drift_check != 'PASS'` -> BLOCK。
-- 全部计数为 0 -> BLOCK。
-- invalid SKU 使用比例和绝对值组合判断。
-- 仓库改名 -> WARN，需人工确认。
-- 有历史基线后，再对新增 SKU 比例、行数变化、更新量异常做 WARN/BLOCK。
-- 同一仓连续 3 次 Dry Run 失败 -> BLOCK。
+| # | 规则标识 | 条件 | 决策 | 冷启动行为 |
+|---|---------|------|------|-----------|
+| R1 | `session_unhealthy` | session health != healthy | **BLOCK** | 同（全局阻断） |
+| R2 | `all_zero` | rawRowCount=0 && validSkuCount=0 | **BLOCK** | 同 |
+| R3 | `plan_drift` | planDriftCheck != 'PASS' | **BLOCK** | 同 |
+| R4 | `dry_run_failed` | Dry Run status = failed | **BLOCK** | 同 |
+| R5 | `consecutive_failures` | 同仓连续 ≥3 次失败 | **BLOCK** | 同 |
+| R6 | `warehouse_rename` | warehouseRenamePlan.action = rename | **WARN** | 同 |
+| R7 | `cold_start_high_new` | !hasBaseline && variantsCreated/validSkuCount > 0.5 | **WARN** | 生效 |
+| R8 | `high_invalid_sku` | hasBaseline && invalidSkuCount/rawRowCount > 0.1 | **WARN** | 跳过 |
+| R9 | `high_new_variants` | hasBaseline && variantsCreated > max(5, avg*3) | **WARN** | 跳过 |
+| R10 | `row_count_anomaly` | hasBaseline && 行数波动 > 50% | **WARN** | 跳过 |
+| R11 | `high_invalid_sku_cold` | !hasBaseline && invalidSkuCount > rawRowCount*0.3 | **WARN** | 生效 |
+
+最终决策 = evaluations 中最严重级别（BLOCK > WARN > PASS）。默认 PASS。
+
+### 子任务拆分
+
+| Sub-Task ID | 任务 | 目标 | 依赖 | 状态 |
+|---|---|---|---|---|
+| **P5-SY10A** | 规则引擎核心：类型 + 纯函数 + 单元测试 | 实现 `evaluateRules()` 纯函数，11 条规则 + 冷启动/有基线双路径，100% 单元测试覆盖 | P5-SY9 | PENDING |
+| **P5-SY10B** | 历史上下文提供器：基线追踪 + 连续失败检测 | 实现 `getWarehouseHistory()` 从 sync_run/sync_log 推导历史基线；走 Repository 接口 | P5-SY10A | PENDING |
+| **P5-SY10C** | 自动预审编排：Server Action 串联 health → batch Dry Run → rule eval | 新增 `runAutoPreReview()` Server Action，返回 `AutoPreReviewResult` | P5-SY10B | PENDING |
+| **P5-SY10D** | 预审页面 UI：扩展批量 Dry Run 对话框展示规则决策 | BatchReviewCard 新增 PASS/WARN/BLOCK 决策徽标 + 规则详情展开 + WARN 可选/BLOCK 不可选 | P5-SY10C | PENDING |
+| **P5-SY10E** | 调度机制：Vercel Cron Route Handler + 手动触发入口 | `src/app/api/cron/dry-run/route.ts` + `vercel.json` + Sync 页面「自动预审」按钮 | P5-SY10D | PENDING |
+| **P5-SY10F** | 独立验收与生产就绪 | 全量测试 + lint/build + Codex 独立审查 + 架构合规 | P5-SY10E | PENDING |
+
 
 ## P5-SY11 ProductVariant 软归档计划（当前不启动）
 

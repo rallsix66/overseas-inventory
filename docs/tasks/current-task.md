@@ -2,214 +2,437 @@
 
 ## Task ID
 
-`P5-SY9` — 海外仓库存同步生产化
+`P5-SY10` — 自动 Dry Run 预审与后续自动化分阶段框架
 
 ## 状态
 
-`DONE` — P5-SY9 全子任务（A~K）完成，全部5海外仓批量真实写入完成。返工 P5-SY9K 通过：旧同步入口永久禁用 + Web Real Write summary 修复。WEBSYNC_REAL_WRITE_ENABLED=false（已恢复安全状态）。
+`IN_PROGRESS` — 任务包设计阶段。P5-SY9 全部子任务（A~K）DONE，全部 5 海外仓批量真实写入完成。P5-SY10 依赖已满足，进入任务包设计与实现阶段。
 
 ## 背景
 
-P5-SY8A~H 已完成逐仓扩展：VN/TH/MY/ID 均已完成真实写入或 Dry Run 验证。当前阶段确认继续使用 Supabase 作为生产数据库，但必须保留未来迁移到国内 PostgreSQL 兼容数据库的可能性。
+P5-SY9 已完成全部 5 海外仓的生产化批量 Dry Run → 审核 → 批量真实写入闭环。当前同步流程依赖 Admin 手动触发：登录 → 检查 session → 点击批量 Dry Run → 逐仓审核 → 勾选 → 输入确认短语 → 写入。
 
-本任务目标不是继续零散扩仓，而是把"海外仓库存 + 同步"整块做成可直接日常使用的生产功能。BigSeller 已有库存趋势、预测日销量、预计可售天数等数据，当前任务不新增 `inventory_snapshots` 或大规模历史快照表。
+P5-SY10 的目标不是替换这个人工审核闭环，而是在其上层增加一个**自动预审层**：定时自动执行 Dry Run、规则引擎自动评估、产出 PASS/WARN/BLOCK 决策。**PASS 仓库仍需 Admin 人工确认后才执行 Real Write**，不自动写库。
+
+本任务仅做 Phase A（自动 Dry Run + 规则预审 + 人工确认 Real Write）。Phase B（PASS 仓库自动 Real Write）仅作为设计预留，不在首版启用。
 
 ## 任务目标
 
-1. 完善海外仓库存页面，使其可日常使用（仓库筛选、国家筛选、SKU 搜索、同步状态、失败原因）。
-2. 完善同步页面，使其能安全执行 Dry Run、查看结果、二次确认后真实写入。
-3. 修复 Web 同步上线阻塞项：Dry Run 绑定、自动真实写入、生产 Mock、heartbeat/timeout。
-4. 保持 Supabase 可用，但不得把业务层绑死在 Supabase SDK 上。
+1. **自动 Dry Run 调度与预审**：定时或手动触发全部海外仓 Dry Run，自动执行规则评估。
+2. **规则引擎输出 PASS / WARN / BLOCK**：每个仓库产出明确决策，附带规则命中详情和中文原因。
+3. **PASS 也只进入人工确认 Real Write**：不自动写库，不绕过 Admin 审核。即使规则引擎判定 PASS，Real Write 仍需 Admin 勾选 + 输入「确认写入」。
+4. **保留 P5-SY9 全部安全边界**：feature gate（`WEBSYNC_REAL_WRITE_ENABLED`）、Admin 审核、Dry Run 绑定、`sync_run`/`sync_log` 审计链、逐仓独立 claim/release。
+5. **冷启动、新仓、首次同步、仓库改名不能按稳定期阈值硬拦**：无历史基线时新增 SKU 高比例只 WARN，不直接 BLOCK。仓库改名只 WARN，需人工确认。
+6. **连续失败、session unhealthy、plan_drift != PASS 必须进入阻断规则**：避免定时任务反复制造无效 `sync_run` 和日志噪音。
+7. **P5-SY11 软归档不启动**，只保留在后置计划。
 
 ## 强制架构边界
 
-- 页面、Client Component、Server Component、SyncService、Runner 不得散落 `supabase.from()`。
-- Supabase SDK 只允许出现在 Repository / Adapter / `src/lib` 边界。
-- Server Actions 只能调用 service / repository wrapper。
-- 真实写入只能 Admin 执行；Operator 只能查看。
+- 规则引擎为纯 TypeScript 函数，不依赖数据库、网络或文件系统。输入数据由调用方提供，输出为确定性决策。
+- Cron / 后台任务不得直接调用真实写入入口，不得绕过 Admin 审核、feature gate、Dry Run 绑定和 sync_run/sync_log 审计链。
+- 定时触发的 Dry Run 使用与手动触发相同的 `triggerBatchDryRun` 内部管线（claim → execute → release），不新建绕过路径。
+- 新增 Server Action 必须校验 Admin 权限（手动触发）或 API key（定时触发）。
+- 历史数据查询走 Repository 接口，不直接访问 Supabase。
+- 不新增数据库表（Phase A 从 `sync_run` + `sync_log` 推导历史基线）。
+- 不修改已执行 Migration。
 - `service_role` 不得进入前端、不得进入 client bundle、不得输出到日志。
-- 不得重新提交 `.env.local`、`runtime/profile`、浏览器 cookie、抓取产物。
 
-## 上线阻塞项（必须修复）
+## 规则引擎设计
 
-以下四项全部修复后，Web 真实写入才可上线：
+### 核心类型
 
-### 1. Dry Run 真实绑定
+```typescript
+// 规则决策级别
+type RuleLevel = 'PASS' | 'WARN' | 'BLOCK';
 
-- Real Write 必须绑定某次已完成、未漂移、未过期的 Dry Run。
-- 必须使用该 Dry Run 的 input artifact + plan artifact；不得重新抓取或重新生成新计划绕过绑定。
-- 必须校验 `dryRunRunId`、`warehouse_id`、`country`、`input_hash`、`plan_hash`、`plan_drift_check=PASS`。
-- 删除 `compare_plans(plan, plan)` 等假比较逻辑（`web_bridge.py` line 156 已知 Bug）。
+// 单条规则评估结果
+interface RuleEvaluation {
+  rule: string;       // 规则标识，如 'session_unhealthy'
+  level: RuleLevel;
+  message: string;    // 中文可读描述
+  details?: Record<string, unknown>;
+}
 
-### 2. 禁止自动真实写入
+// 规则引擎输入（逐仓）
+interface RuleInput {
+  // 会话健康
+  sessionHealth: SessionHealthResult;
+  
+  // 当前 Dry Run 结果
+  dryRun: {
+    status: 'ready' | 'failed' | 'blocked';
+    planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
+    rawRowCount: number;
+    validSkuCount: number;
+    invalidSkuCount: number;
+    variantsCreated: number;
+    inventoryInserted: number;
+    inventoryUpdated: number;
+    inventoryUnchanged: number;
+    warehouseRenamePlan: { action: 'rename' | 'none'; currentName?: string; targetName?: string; message?: string } | null;
+    failureReason?: string;
+  };
 
-- Web 流程必须是：Dry Run → 展示摘要/差异/风险 → 用户二次确认 → Real Write。
-- 不得点击一次按钮自动写库。
-- 批量同步必须有更强确认（勾选 ready 仓库 + 输入确认短语）。
-- 修复 `syncWarehouse` 当前自动串联 dry_run → real_write 的行为。
+  // 历史上下文（来自 sync_run / sync_log）
+  history: {
+    /** 是否有历史成功同步 */
+    hasBaseline: boolean;
+    /** 连续 Dry Run 失败次数（不含当前） */
+    consecutiveFailures: number;
+    /** 最近一次成功同步 */
+    lastSuccess: {
+      finishedAt: string;
+      newVariantsCount: number;
+    } | null;
+    /** 历史统计（最近 5 次成功同步的均值） */
+    stats: {
+      avgRawRowCount: number;
+      avgValidSkuCount: number;
+      avgInvalidSkuCount: number;
+      avgVariantsCreated: number;
+    } | null;
+  };
+}
 
-### 3. 移除生产 Mock
+// 规则引擎输出
+interface RuleVerdict {
+  /** 最终决策：取所有规则中最严重的级别 */
+  decision: RuleLevel;
+  /** 所有命中的规则评估（不含 PASS 规则，PASS 隐含） */
+  evaluations: RuleEvaluation[];
+  /** 阻断规则的简短摘要（供列表视图展示） */
+  summary: string;
+}
+```
 
-- production wiring 不得使用 `MockArtifactProvider`、`MockInputArtifactSource`、`MockSyncRunner`。
-- 必须实现真实 `ArtifactProvider` / `InputArtifactSource` / `RealSyncRunner` 组合。
-- `wireActions()` 当前默认走 MockSyncRunner，必须改为 production wiring。
-- 测试环境可用 Mock，但生产路径必须有结构性测试防止 Mock 混入。
+### 规则优先级（从高到低）
 
-### 4. heartbeat / timeout
+| # | 规则标识 | 条件 | 决策 | 说明 |
+|---|---------|------|------|------|
+| R1 | `session_unhealthy` | `sessionHealth.status !== 'healthy'` | **BLOCK** | 全局阻断，不进入逐仓评估。所有仓库直接 BLOCK。 |
+| R2 | `all_zero` | `rawRowCount === 0 && validSkuCount === 0` | **BLOCK** | 抓取完全为空（非正常状态，可能是登录过期但 health check 遗漏、页面结构变更等） |
+| R3 | `plan_drift` | `planDriftCheck !== 'PASS'` | **BLOCK** | 计划漂移，数据不可信 |
+| R4 | `dry_run_failed` | `dryRun.status === 'failed'` | **BLOCK** | Dry Run 执行本身失败 |
+| R5 | `consecutive_failures` | `history.consecutiveFailures >= 3` | **BLOCK** | 同仓连续 3 次及以上 Dry Run 失败，需人工排查后手动重置 |
+| R6 | `warehouse_rename` | `dryRun.warehouseRenamePlan?.action === 'rename'` | **WARN** | 仓库改名需要人工确认，不自动处理 |
+| R7 | `cold_start_high_new` | `!history.hasBaseline && ratio > 0.5` (variantsCreated / validSkuCount) | **WARN** | 冷启动/首次同步新增 SKU 比例高是正常的，不阻断 |
+| R8 | `high_invalid_sku` | `history.hasBaseline && ratio > 0.1` (invalidSkuCount / rawRowCount) | **WARN** | 无效 SKU 比例异常升高 |
+| R9 | `high_new_variants` | `history.hasBaseline && variantsCreated > max(5, stats.avgVariantsCreated * 3)` | **WARN** | 有历史基线后新增 Variant 数量异常 |
+| R10 | `row_count_anomaly` | `history.hasBaseline && abs(rawRowCount - stats.avgRawRowCount) / stats.avgRawRowCount > 0.5` | **WARN** | 行数波动超过 50% |
+| R11 | `high_invalid_sku_cold` | `!history.hasBaseline && invalidSkuCount > rawRowCount * 0.3` | **WARN** | 冷启动时无效 SKU 过多（>30%），需人工关注 |
+| — | *default* | 以上规则均未命中 | **PASS** | 所有检查通过，可进入人工审核确认写入 |
 
-- 长任务必须周期性 heartbeat（续租 `sync_run.lease_expires_at`）。
-- Python 子进程 / 浏览器必须有 timeout。
-- timeout / abort 时必须终止子进程，并 release 为 `failed` 或进入明确 `indeterminate` 状态。
-- 防止 lease 过期后同仓任务被误回收或并发重入。
+**规则引擎核心约束**：
+- 按 R1→R11 顺序评估，首个 BLOCK 规则命中后继续评估 WARN 规则（收集所有警告），但决策已定为 BLOCK。
+- 所有命中规则的 `evaluation` 均返回（含 WARN 和 BLOCK），PASS 规则不返回。
+- 冷启动（`!hasBaseline`）场景：R8/R9/R10 自动跳过（无历史基线可比），R7/R11 使用放宽阈值且仅 WARN。
+- 最终 `decision` = evaluations 中最严重的级别（BLOCK > WARN > PASS）。
 
-### 5. BigSeller Session 复用不可靠
+### 与 P5-SY9 现有 status 字段的关系
 
-- `establishBigSellerSession()` 使用 **headed** Chrome（`BS_HEADLESS=0`，`BS_SESSION_ONLY=1`）直接调用 `bigseller_scraper.py`。
-- Web 同步（`callPythonBridge` → `web_bridge.py`）使用 **headless** Chrome（`BS_HEADLESS=1`）。
-- 两者使用同一 profile 目录（`tools/bigseller-scraper/runtime/profile`），但 headed ↔ headless 之间的 cookie/session 持久化可能不可靠。
-- 当前无 `verifyBigSellerSession()` Server Action 或 health check：无法在同步前确认 session 是否有效。
-- Web 同步抓取 0 行时，错误提示仅说"登录会话已过期或需要验证码"，无法区分：未登录 / 需要验证码 / profile 不可用 / 页面结构异常 / 表格未加载。
-- `session-establish.log` 仅记录 headed 浏览器输出，无法证明 headless 同步可正常复用 profile。
-- `establishBigSellerSession()` 使用 `proc.unref()` 不等待结果，Server Action 立即返回 success，但实际登录可能未完成；当前无 API 查询登录是否完成。
-- 两条路径（`establishBigSellerSession` 与 `callPythonBridge`→`web_bridge.py`）均已传入 `PYTHONIOENCODING='utf-8'`，编码环境无差异；实际差距在于 headed/headless 模式不同、`proc.unref()` 不等待登录完成、无 `verifyBigSellerSession` 健康检查、0 行错误无法分类。
+P5-SY9 的 `BatchDryRunItemResult.status` 是 `'ready' | 'failed' | 'blocked'`，由 Dry Run 执行结果直接决定：
+- `planDriftCheck !== 'PASS'` → `blocked`
+- 执行异常 → `failed`
+- 其它 → `ready`
 
-## 页面功能要求
-
-### 海外仓库存页面（`/dashboard/inventory`）
-
-- 当前库存可用。
-- 支持仓库筛选、国家筛选、SKU 搜索。
-- 显示最近同步时间。
-- 显示同步状态：成功 / 失败 / 进行中 / 未同步。
-- 显示失败原因摘要。
-- 当前不做 `inventory_snapshots`，只展示最新库存。
-
-### 同步页面（`/dashboard/sync`）
-
-- 显示所有海外仓。
-- 每个仓显示：最近 Dry Run、最近 Real Write、最后成功时间、最后失败原因。
-- Admin 可触发 Dry Run（单仓或全部海外仓）。
-- Admin 在 Dry Run PASS 后可二次确认真实写入。
-- Operator 只能查看历史和详情。
-- 支持查看 `sync_run` / `sync_log` 详情。
-- 失败提示必须中文可读。
-
-#### 批量 Dry Run 审核总览
-
-Admin 点击"同步全部海外仓"后，展示审核总览，每个仓库包含：
-
-- warehouse name
-- country
-- fetched rows
-- valid SKU count
-- invalid SKU count
-- new variants
-- inventory inserted / updated / unchanged
-- warehouse rename plan
-- `plan_drift_check`
-- status: `ready` / `blocked` / `failed`
-- failure reason
-
-#### 批量真实写入
-
-1. Admin 勾选 `ready` 仓库。
-2. Admin 输入确认短语。
-3. 系统内部根据所选 dry run runId 自动绑定 Real Write。
-4. 每仓独立 claim / release / sync_log，不使用跨仓大事务。
-5. 单仓失败不影响其他仓继续执行。
-6. 最终展示总报告：成功 / 失败 / 跳过 / 每仓写入数量 / 失败原因。
-
-## 权限要求
-
-- Admin 可触发 Dry Run 和 Real Write。
-- Operator 只能查看库存、Dry Run 结果、同步历史、失败原因。
-- 未登录、停用账号、非 Admin 写入必须被 Server Action 拒绝。
-- 权限不能只靠前端隐藏按钮。
-- Server Action、Repository、RPC/RLS 权限链必须一致。
-
-## 数据与日志要求
-
-- 每仓必须独立 `sync_run`。
-- 每仓真实写入必须写 `sync_log`。
-- `sync_run` 必须记录：触发人、来源、模式、状态、退出码、错误信息、结果摘要。
-- 不新增 `inventory_snapshots`。
-- 不把大 JSON 长期塞数据库；artifact/report 可继续文件化。
-- 不提交 `.env.local`、`runtime/profile`、浏览器 cookie、抓取产物。
+P5-SY10 的规则引擎不修改这些 status。它在上层新增一个独立的 `RuleVerdict`：
+- `BatchDryRunItemResult.status === 'ready'` 的仓库，规则引擎可能判定 WARN（如仓库改名、冷启动高新增比例）或 PASS。
+- `BatchDryRunItemResult.status === 'blocked'` 的仓库，规则引擎必然判定 BLOCK（规则 R3 直接命中）。
+- 页面展示时同时显示 Dry Run 执行状态和规则引擎决策，二者互补。
 
 ## 子任务拆分
 
 | Sub-Task ID | 任务 | 目标 | 依赖 | 状态 |
 |---|---|---|---|---|
-| P5-SY9A | 现状审查与任务包落地 | 梳理 Web sync 与 CLI 差距，标记 Web real_write 为生产化待修复，确认验收标准 | P5-SY8H | DONE（7 维度差距已标记：4 CRITICAL / 1 HIGH / 1 MEDIUM / 1 PASS；含 BigSeller Session 复用不可靠） |
-| P5-SY9B | BigSeller Session Health Check | 新增 `verifyBigSellerSession()` Server Action + `health_check.py` + `profile_unavailable` 真实分类 + `checked_at→checkedAt` 转换 + syncWarehouse/syncAllWarehouses 服务端 session health guard | P5-SY9A | DONE（Codex 独立复验通过） |
-| P5-SY9C | 真实 Provider / InputSource / Production wiring | 替换生产 Mock，建立真实 artifact 存取和生产 wiring 测试 | P5-SY9B | DONE（Codex 独立复验通过） |
-| P5-SY9D | 单仓 Web Dry Run → 审核 → Real Write 绑定 | 用户无需输入 token/runId/hash；系统内部绑定 Dry Run；plan drift 阻断。已实现 Dry Run→Real Write 绑定逻辑，但 Web 真实写入入口必须保持 server-side disabled / feature gated，直到 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后才允许启用。 | P5-SY9C | DONE（Codex 验收通过） |
-| P5-SY9E | heartbeat / timeout / 子进程控制 | 实现 heartbeat、timeout、abort、失败落库和并发锁测试 | P5-SY9D | DONE（Codex 独立验收通过） |
-| P5-SY9F | 批量全部海外仓 Dry Run | 一键为全部启用海外仓生成独立 Dry Run，页面展示审核总览。planDriftCheck!='PASS'→blocked；warehouseRenamePlan 含详情 | P5-SY9E | DONE（Codex 独立复验通过） |
-| P5-SY9G | 批量审核后真实写入 | 勾选 ready 仓库，强确认后逐仓写入；单仓失败不影响其他仓。confirmRealWrite 签名新增 confirmToken 参数消除硬编码 P5-SY3B-PH。新增 triggerBatchRealWrite Server Action + BatchRealWriteResult 类型。页面批量审核总览新增复选框/确认短语/批量写入按钮/写入结果展示。17 项测试。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。 | P5-SY9F | DONE（Codex 独立验收通过） |
-| P5-SY9H | 页面体验与运营可用性收口 | 当前库存、同步状态、历史、失败原因、明细展开、权限体验 | P5-SY9G | DONE（Codex 独立验收通过） |
-| P5-SY9I | 独立验收与生产启用 | 全量测试、lint/build、Python 测试、Codex 独立审查 | P5-SY9H | DONE（Codex 独立验收通过。含一次返工：拆分 test/test:concurrency。） |
-| P5-SY9J | 生产启用受控验证 | 用户授权后启用 WEBSYNC_REAL_WRITE_ENABLED=true，PH 仓受控 Web Dry Run → 审核 → Real Write 小范围验证 | P5-SY9I | DONE（生产验证通过。PH 仓 sync_log success，new_variants_count=6。） |
-| P5-SY9K | 返工：禁用旧同步入口 + 修复 Web Real Write summary | 1) syncWarehouse/syncAllWarehouses 永久禁用，返回中文错误；2) sync-page-content.tsx 移除快速同步按钮；3) web_bridge.py summary 从 rpc_summary 读取 | P5-SY9J | DONE（526/526 TS + 252/252 Python + lint 0 + build pass。） |
+| **P5-SY10A** | 规则引擎核心：类型 + 纯函数 + 单元测试 | 实现 `evaluateRules()` 纯函数，含全部 11 条规则 + 冷启动/有基线双路径。100% 单元测试覆盖每条规则和组合场景。 | P5-SY9 | PENDING |
+| **P5-SY10B** | 历史上下文提供器：基线追踪 + 连续失败检测 | 实现 `getWarehouseHistory()` 从 sync_run + sync_log 推导 hasBaseline / consecutiveFailures / lastSuccess / stats。走 Repository 接口。 | P5-SY10A | PENDING |
+| **P5-SY10C** | 自动预审编排：Server Action 串联 health → batch Dry Run → rule eval | 新增 `runAutoPreReview()` Server Action，调用 session health → triggerBatchDryRun → 逐仓 evaluateRules → 返回 `AutoPreReviewResult`。保留 session health guard + feature gate。 | P5-SY10B | PENDING |
+| **P5-SY10D** | 预审页面 UI：扩展批量 Dry Run 对话框展示规则决策 | 在 BatchReviewCard 上新增规则决策徽标（PASS 绿 / WARN 黄 / BLOCK 红）。新增规则详情展开区。WARN 仓库仍可选（带警告提示），BLOCK 仓库不可选。扩展批量 Dry Run 对话框统计栏。 | P5-SY10C | PENDING |
+| **P5-SY10E** | 调度机制：Vercel Cron Route Handler + 手动触发入口 | 新增 `src/app/api/cron/dry-run/route.ts`（API key 认证，非用户 session）。`vercel.json` cron 配置。Sync 页面新增「自动预审」按钮。 | P5-SY10D | PENDING |
+| **P5-SY10F** | 独立验收与生产就绪 | 全量测试（TS + Python）+ lint/build + Codex 独立审查。架构边界合规审查。生产启用文档。 | P5-SY10E | PENDING |
+
+## 子任务详细规格
+
+### P5-SY10A — 规则引擎核心
+
+**新文件**：
+- `src/features/sync/rules-engine.ts` — 纯函数 `evaluateRules(input: RuleInput): RuleVerdict`
+- `src/features/sync/rules-engine.test.ts` — 每条规则独立测试 + 组合场景
+
+**关键实现**：
+```typescript
+export function evaluateRules(input: RuleInput): RuleVerdict {
+  const evaluations: RuleEvaluation[] = [];
+
+  // R1: session unhealthy → BLOCK (global, called before per-warehouse loop)
+  // R2: all zero → BLOCK
+  // R3: plan drift → BLOCK
+  // R4: dry run failed → BLOCK
+  // R5: consecutive failures >= 3 → BLOCK
+  // R6: warehouse rename → WARN
+  // R7–R11: conditional on hasBaseline
+
+  const decision = deriveDecision(evaluations);
+  return { decision, evaluations, summary: buildSummary(evaluations) };
+}
+```
+
+**验收标准**：
+- 每条规则至少 3 项测试（命中 / 临界不命中 / 边界）
+- 冷启动路径 R7/R11 仅 WARN，R8/R9/R10 自动跳过
+- 有基线路径全部规则生效
+- 多规则同时命中时 evaluations 包含全部命中规则
+- decision 取最严重级别
+- 纯函数，无副作用，可确定性测试
+
+### P5-SY10B — 历史上下文提供器
+
+**新文件/修改**：
+- `src/features/sync/repository.ts` — SyncRepository 接口新增 `getWarehouseHistory(warehouseId: string): Promise<WarehouseHistory>`
+- `src/features/sync/supabase-repository.ts` — 实现：查 sync_run（最近 10 条）+ sync_log（最近成功 5 条）
+- `src/features/sync/types.ts` — 新增 `WarehouseHistory` 类型
+- MockRepository 同步实现
+
+**关键逻辑**：
+```typescript
+interface WarehouseHistory {
+  hasBaseline: boolean;
+  consecutiveFailures: number;
+  lastSuccess: { finishedAt: string; newVariantsCount: number } | null;
+  stats: { avgRawRowCount, avgValidSkuCount, avgInvalidSkuCount, avgVariantsCreated } | null;
+}
+```
+
+- `hasBaseline`：是否存在 status='success' 的 sync_log
+- `consecutiveFailures`：从最近一条往前数，连续 status='failed' 的 sync_run 数量（遇到 completed 或 real_write 停止）
+- `stats`：最近 5 次 success sync_log 对应 sync_run 的 result_summary 均值
+
+**验收标准**：
+- 冷启动场景（无任何 sync_log）返回 `hasBaseline: false, consecutiveFailures: 0, stats: null`
+- 3 次连续失败后 `consecutiveFailures === 3`
+- 中间穿插成功则从成功之后重新计数
+- stats 正确聚合最近 5 次成功数据
+
+### P5-SY10C — 自动预审编排
+
+**修改文件**：
+- `src/features/sync/server-actions.ts` — 新增 `runAutoPreReview()` Server Action
+- `src/features/sync/types.ts` — 新增 `AutoPreReviewResult`、`AutoPreReviewItem` 类型
+
+**Server Action 签名**：
+```typescript
+export async function runAutoPreReview(): Promise<AutoPreReviewResult>
+```
+
+**执行流程**：
+1. `requireActiveAdmin()`（手动触发）或 API key 验证（cron 触发）
+2. Session health check → unhealthy 则全部 BLOCK，不执行 Dry Run
+3. `getCachedOverseasWarehouses()` → 获取全部活跃海外仓
+4. `triggerBatchDryRun(warehouses)` — 复用 P5-SY9F 管线
+5. 逐仓 `getWarehouseHistory(warehouseId)` → `evaluateRules(input)` 
+6. 返回 `AutoPreReviewResult`
+
+**类型**：
+```typescript
+interface AutoPreReviewItem {
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  dryRunRunId: string;
+  // Dry Run 执行结果（来自 BatchDryRunItemResult）
+  dryRunStatus: 'ready' | 'failed' | 'blocked';
+  rawRowCount: number;
+  validSkuCount: number;
+  invalidSkuCount: number;
+  variantsCreated: number;
+  inventoryInserted: number;
+  inventoryUpdated: number;
+  inventoryUnchanged: number;
+  warehouseRenamePlan: ... | null;
+  planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
+  // 规则引擎决策
+  ruleDecision: 'PASS' | 'WARN' | 'BLOCK';
+  ruleEvaluations: RuleEvaluation[];
+  ruleSummary: string;
+}
+
+interface AutoPreReviewResult {
+  results: AutoPreReviewItem[];
+  allPassed: boolean;           // 全部 PASS
+  passCount: number;
+  warnCount: number;
+  blockCount: number;
+  failedCount: number;          // Dry Run 执行失败
+  globalBlockReason?: string;   // session unhealthy 等全局阻断
+  preReviewAt: string;          // ISO 时间戳
+}
+```
+
+**验收标准**：
+- session unhealthy → 全局 BLOCK，不执行任何 Dry Run
+- 正常流程：Dry Run → 逐仓规则评估 → 完整 AutoPreReviewResult
+- 单仓 Dry Run 失败不影响其他仓的规则评估
+- 不触发任何 Real Write
+- Admin 权限校验有效
+
+### P5-SY10D — 预审页面 UI
+
+**修改文件**：
+- `src/app/dashboard/sync/_components/sync-page-content.tsx` — 主要修改
+
+**变更内容**：
+1. **BatchReviewCard 扩展**：
+   - 卡片顶部新增规则决策徽标：PASS（绿）/ WARN（黄）/ BLOCK（红）
+   - 新增可展开的「规则详情」区域，列出每条命中规则的 message
+   - WARN 仓库复选框保持可用（勾选时旁边显示警告图标 + tooltip）
+   - BLOCK 仓库复选框禁用（灰色 + 阻断原因）
+
+2. **批量 Dry Run 对话框扩展**：
+   - 统计栏新增 PASS/WARN/BLOCK 三色计数
+   - 新增「自动预审」按钮（调用 `runAutoPreReview()` 而非 `triggerBatchDryRun()`）
+   - 保留原有「批量 Dry Run」按钮（仅执行 Dry Run，不运行规则引擎）
+
+3. **仓库概览卡片扩展**（可选，P5-SY9H 的 warehouse overview cards）：
+   - 显示最近一次预审决策徽标
+
+4. **新增规则决策徽标组件** — `RuleBadge`（PASS 绿 / WARN 黄 / BLOCK 红，参考现有 `StatusBadge`/`DriftBadge` 模式）
+
+**验收标准**：
+- 三种决策徽标颜色和标签正确
+- WARN 卡片可勾选（带警告提示），BLOCK 卡片不可勾选
+- 规则详情展开/折叠正常
+- 统计计数与逐仓决策一致
+- 自动预审按钮与手动批量 Dry Run 按钮共存，行为区分清晰
+- Operator 只读，无操作按钮
+
+### P5-SY10E — 调度机制
+
+**新文件**：
+- `src/app/api/cron/dry-run/route.ts` — Vercel Cron Route Handler
+- `vercel.json` — cron 配置（项目根目录）
+
+**Route Handler 设计**：
+```typescript
+// GET /api/cron/dry-run
+// Authorization: Bearer <CRON_API_KEY>
+export async function GET(request: NextRequest) {
+  // 1. 验证 API key
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader || authHeader !== `Bearer ${process.env.CRON_API_KEY}`) {
+    return Response.json({ error: '未授权' }, { status: 401 });
+  }
+  
+  // 2. 调用 runAutoPreReview 内部逻辑（不经过 requireActiveAdmin）
+  //    使用系统账号 UUID 作为 triggeredBy
+  
+  // 3. 返回 AutoPreReviewResult（不含敏感信息）
+}
+```
+
+**vercel.json**：
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/dry-run",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
+```
+
+> 注意：Vercel Hobby 计划仅支持每日一次 cron。生产环境可调整为更高频。cron 时间使用 UTC，需在注释中标注对应的北京时间。
+
+**Sync 页面手动入口**：
+- 在 session health 状态栏旁新增「自动预审」按钮（仅 Admin 可见）
+- 点击后调用 `runAutoPreReview()`，展示预审结果对话框
+- 对话框与批量 Dry Run 对话框结构一致，但统计栏和卡片额外显示规则决策
+
+**验收标准**：
+- Route Handler 正确验证 API key（错误 key → 401）
+- Route Handler 不依赖用户 session
+- `vercel.json` 格式正确，`npm run build` 通过
+- 手动「自动预审」按钮功能正常
+- 定时触发使用的 triggeredBy 为系统账号
+- Route Handler 不调用真实写入
+
+### P5-SY10F — 独立验收与生产就绪
+
+**质量门**：
+- `npm run test` 全部通过（排除 `**/concurrency.test.ts`）
+- `npm run lint` 0 errors
+- `npm run build` 通过
+- Python 测试全部通过（compileall + 所有 test_*.py）
+- 架构边界合规：规则引擎为纯函数、Repository 隔离、无前端直调 Supabase、无生产 Mock
+
+**测试覆盖要求**：
+- 规则引擎：每条规则 ≥3 项测试，组合场景 ≥5 项
+- 历史上下文：≥10 项测试（冷启动/有基线/连续失败/混合/边界）
+- 预审编排：≥15 项测试（正常流程/health block/单仓失败/权限/feature gate）
+- 调度 Route Handler：≥8 项测试（auth/key/系统账号/响应结构）
+- 不退化现有 526 项 TS 测试 + 252 项 Python 测试
+
+**文档同步**：
+- `docs/current-state.md`：P5-SY10 进度
+- `docs/tasks/current-task.md`：子任务状态
+- `docs/tasks/phase-5-sync.md`：P5-SY10 更新
+- 明确记录：Phase B（自动 Real Write）仅设计预留，不实现
 
 ## 验收标准
 
-- 批量 Dry Run 不发生真实写入。
-- Real Write 必须绑定对应 Dry Run（含 hash 校验和 plan_drift_check=PASS）。
-- 用户无需手填 token、runId、hash、路径或 CLI 参数。
-- Web 真实写入必须二次确认。
-- `blocked` / `failed` 仓库无法写入。
-- 单仓失败不影响其他仓。
-- 每仓都有独立 `sync_run` 和 `sync_log`。
-- 页面能展示总览、明细、失败原因和最终结果。
-- Admin / Operator 权限正确。
-- 生产路径无 Mock。
-- heartbeat / timeout 正常。
-- Web 真实写入入口必须在 P5-SY9E heartbeat/timeout 完成且 P5-SY9I 独立验收通过后，通过 server-side feature gate 启用；在此之前必须保持 disabled。
-- `verifyBigSellerSession()` 健康检查必须在 P5-SY9B 完成；Sync 页面 session unhealthy 时禁止触发任何同步操作。
-- BigSeller 抓取 0 行时必须区分失败原因并返回中文可读提示。
-- `npm run test` 通过（排除 `**/concurrency.test.ts`，该文件需要本地 PG 环境变量；通过 `npm run test:concurrency` 单独运行）。
+- 规则引擎纯函数可测试，每条规则独立验证。
+- 冷启动/新仓场景不按稳定期阈值硬拦（R7/R11 仅 WARN，R8/R9/R10 自动跳过）。
+- 连续 3 次失败、session unhealthy、plan_drift != PASS、全零计数均 BLOCK。
+- 仓库改名只 WARN，需人工确认。
+- PASS 仓库仍需 Admin 勾选 + 输入「确认写入」后才执行 Real Write。
+- 定时触发或手动触发均不自动 Real Write。
+- 定时触发使用 API key 认证，不依赖用户 session。
+- Dry Run 绑定、sync_run/sync_log 审计链、feature gate 完整保留。
+- 规则引擎决策与 Dry Run 执行状态分别展示，互补不冲突。
+- Admin / Operator 权限正确（Operator 只读，无操作按钮）。
+- `npm run test` 通过（排除 concurrency.test.ts）。
 - `npm run lint` 0 errors。
 - `npm run build` 通过。
-- Python tests 全部通过（compileall + health_check + plan + verifier + executor + sync_log + cli_integration）。
+- Python tests 全部通过。
+- 不新增数据库表（Phase A）。
+- 不修改已执行 Migration。
 - 不重新提交 `.env.local`、`runtime/profile`、cookie、抓取产物。
 
 ## 测试要求
 
-- Dry Run artifact 与 Real Write 绑定测试。
-- plan drift 阻断真实写入测试。
-- Web 二次确认测试。
-- production wiring 不含 Mock 测试。
-- heartbeat / timeout 测试。
-- Admin / Operator 权限测试。
-- Repository 边界测试，防止页面/组件直接调用 Supabase。
-- Python CLI 现有测试不得退化。
-- `npm run test` 必须通过（排除 concurrency.test.ts，见上方注释）。
-- `npm run lint` 0 errors。
-- `npm run build` 通过。
-- Python 测试全部通过。
+- 规则引擎单元测试：每条规则命中/不命中/边界 ≥3 项，多规则组合 ≥5 项。
+- 历史上下文测试：≥10 项（MockRepository 注入不同历史数据）。
+- 预审编排测试：≥15 项（含 session health block / 单仓失败 / 权限 / feature gate）。
+- Route Handler 测试：≥8 项（含 API key 认证 / 系统账号 / 响应结构）。
+- 现有 526 项 TS 测试 + 252 项 Python 测试不退化。
 
 ## 文档同步要求
 
-- `docs/current-state.md`：Current Task 改为 P5-SY9，说明当前为任务包设计/待审查阶段。
-- `docs/tasks/phase-5-sync.md`：新增或更新 P5-SY9 状态。
-- 明确记录：Supabase 是当前生产数据库，但保留数据库供应商隔离，未来切国内数据库时替换 Repository/Adapter。
-- 明确记录：当前不新增 `inventory_snapshots`，趋势数据优先复用 BigSeller 可抓取数据。
+- `docs/current-state.md`：Current Task 改为 P5-SY10，状态更新。
+- `docs/tasks/phase-5-sync.md`：P5-SY10 状态更新，子任务拆分表新增。
+- `docs/implementation-plan.md`：如涉及，记录规则引擎决策逻辑摘要。
+- 明确记录 Phase B（PASS 仓库自动 Real Write）为设计预留，不在 P5-SY10 实现。
 
 ## 停止条件
 
-- 本轮已完成 P5-SY9E 返工：(1) python-bridge.ts 统一 terminate(reason) 管线（timeout/abort → SIGTERM → 5s grace → SIGKILL，settled 标志幂等，close/error 清理，中文错误）；(2) SyncServiceDeps 可注入 heartbeatIntervalMs，测试 20ms 间隔真实触发 heartbeat ≥1 次；(3) prepareRunnerContext 异常清理 heartbeat + release failed，dry_run/real_write 双路径；(4) MockSyncRunner shouldThrowCapabilities + 新增 child_process spawn mock SIGTERM→SIGKILL 测试。20/20 P5-SY9E 测试，450/450 非并发同步测试，Python 85/85，lint/build 通过。
-- 不连接生产 Supabase。
-- 不执行真实写入。
-- 不提交 runtime/artifacts、__pycache__、bound-plan-*.json、.env.local、profile、cookie、抓取产物。
-- 不开始 P5-SY9E。
-- 不修改已执行 migration。
-- 保留 DB claim_sync_run 二次防御。
-- 完成后 P5-SY9D 保持 AWAITING_REVIEW，等待 Codex 独立复验。
+- P5-SY10A~E 全部完成后停止，等待 Codex 独立验收（P5-SY10F）。
+- 不启用 Phase B 自动 Real Write。
+- 不连接生产 Supabase 执行真实写入。
+- 不修改已执行 Migration。
+- 不新增数据库表。
+- 不启动 P5-SY11。
+- WEBSYNC_REAL_WRITE_ENABLED 保持 false。
 
 ## 依赖
 
-- P5-SY8A~H（DONE）
-- Migration 00006/00007/00008/00009（已执行）
-- P5-SY5 Sync Feature Module（DONE）
-- Supabase 当前生产数据库配置
+- P5-SY9 全部子任务（A~K）DONE — 全部 5 海外仓批量真实写入完成。
+- P5-SY6 运行时设计文档（`docs/tasks/archive/p5-sy6-runtime-design.md`）— Vercel Cron 推荐方案。
+- Sync Feature Module（`src/features/sync/`）— 现有 types / actions / server-actions / repository / sync-service。
+- Migration 00006/00007/00008/00009（已执行）。
+- Supabase 当前生产数据库配置。
+- `COUNTRY_TOKEN_MAP` / `COUNTRY_OLDNAME_MAP`（`server-actions.ts`）— 海外仓 token 和名称映射。
+
+## 后置计划
+
+- **P5-SY11** — ProductVariant 软归档与库存视图降噪（依赖 P5-SY9，当前不启动）。
+- **P5-SY10 Phase B** — PASS 仓库自动 Real Write（设计预留，需运行稳定并建立每仓基线后评估）。
