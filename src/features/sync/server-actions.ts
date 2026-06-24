@@ -12,6 +12,7 @@ import { SupabaseSyncRepository } from './supabase-repository';
 import { FileSystemArtifactProvider } from './file-system-artifact-provider';
 import { RealSyncRunner, type WarehouseBridgeInfo } from './real-sync-runner';
 import { WebInputArtifactSource, isWebsyncRealWriteEnabled } from './web-input-artifact-source';
+import { evaluateRules } from './rules-engine';
 import { getSyncRunsSchema, getSyncRunDetailSchema, getSyncLogDetailSchema } from './schema';
 import { revalidatePath } from 'next/cache';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
@@ -19,7 +20,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus, AutoPreReviewResult } from './types';
+import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus, AutoPreReviewResult, AutoPreReviewItem, WarehouseHistory, RuleVerdict } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -336,11 +337,17 @@ export async function runAutoPreReview(): Promise<AutoPreReviewResult> {
   return result;
 }
 
-// ─── P5-SY10E: 定时自动预审（Cron Route Handler 调用）─────────
+// ─── P5-SY10E rework: 定时自动预审（Cron Route Handler 调用）─────────
 
 /** 定时任务触发的自动预审编排。
  *  使用 CRON_API_KEY 鉴权（不依赖用户 session）。
  *  仅触发 Dry Run + 规则评估，不调用 Real Write。
+ *
+ *  P5-SY10E rework: 不再通过 createSyncActions 工厂（该工厂强制 requireActiveAdmin）。
+ *  直接构造带 _systemClaimConfig 的 SyncService，使用 service_role
+ *  claim_sync_run_system RPC 替代 auth.uid() 绑定的 claim_sync_run。
+ *
+ *  system path 能力仅在此函数内存在，不暴露给普通 Web/Admin 调用路径。
  *
  *  由 Vercel Cron GET /api/cron/dry-run 调用。
  *  Admin 手动触发请使用 runAutoPreReview()。 */
@@ -357,9 +364,6 @@ export async function runScheduledAutoPreReview(
   }
 
   // ── 系统触发者 ID ──────────────────────────────────────────
-  // Cron 任务无用户 session，使用环境变量配置的系统用户 UUID。
-  // 该 UUID 必须是 Supabase auth.users 中存在的真实用户（Admin 角色），
-  // 对应 sync_run.triggered_by 字段记录。
   const triggeredBy = process.env.CRON_SYSTEM_USER_ID;
   if (!triggeredBy) {
     throw new Error('CRON_SYSTEM_USER_ID 环境变量未配置');
@@ -376,20 +380,230 @@ export async function runScheduledAutoPreReview(
     };
   }
 
-  // ── 编排执行（复用 runAutoPreReview 内部管线）──────────────
+  // ── 仓库列表 ───────────────────────────────────────────────
   const warehouses = await getCachedOverseasWarehouses();
-  const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
-  const result = await actions.runAutoPreReview(
-    warehouses.map((w) => ({ id: w.id, name: w.name, country: w.country })),
-    health,
-    triggeredBy, // systemTriggeredBy — 跳过 actions.ts 内的 requireActiveAdmin()
-  );
+  const bridgeInfo = toWarehouseBridgeInfo(warehouses);
 
-  if (result.items.some((i) => i.dryRun.status === 'ready')) {
+  // ── 系统 claim wiring（不经过 createSyncActions）─────────
+  const repository = await createSupabaseRepo();
+  const artifactProvider = new FileSystemArtifactProvider();
+  const runner = new RealSyncRunner(bridgeInfo);
+  const inputArtifactSource = new WebInputArtifactSource(bridgeInfo);
+  const systemSyncService = createSyncService({
+    repository,
+    artifactProvider,
+    runner,
+    _systemClaimConfig: { enabled: true, triggeredBy },
+  });
+
+  // ── 逐仓预取历史上下文（在 Dry Run 之前）────────────────
+  const preRunHistory = new Map<string, { history: WarehouseHistory | null; error?: string }>();
+  for (const wh of warehouses) {
+    try {
+      const history = await repository.getWarehouseHistory(wh.id);
+      preRunHistory.set(wh.id, { history });
+    } catch (err) {
+      preRunHistory.set(wh.id, { history: null, error: (err as Error).message });
+    }
+  }
+
+  // ── 执行批量 Dry Run（逐仓，system claim）───────────────
+  const dryRunResults: Array<{
+    whId: string;
+    whName: string;
+    whCountry: string;
+    runId: string;
+    status: 'ready' | 'failed' | 'blocked';
+    failureReason?: string;
+    rawRowCount: number;
+    validSkuCount: number;
+    invalidSkuCount: number;
+    variantsCreated: number;
+    inventoryInserted: number;
+    inventoryUpdated: number;
+    inventoryUnchanged: number;
+    planDriftCheck: 'PASS' | 'DRIFT_DETECTED' | null;
+    planDriftCount: number;
+    warehouseRenamePlan: AutoPreReviewItem['dryRun']['warehouseRenamePlan'];
+  }> = [];
+
+  for (const wh of warehouses) {
+    try {
+      const inputArtifact = await inputArtifactSource.getInputArtifact(wh.id, 'dry_run');
+      const dryRunResult = await systemSyncService.executeSync({
+        warehouseId: wh.id,
+        mode: 'dry_run',
+        inputArtifact,
+        triggeredBy,
+      });
+
+      if (dryRunResult.status !== 'completed') {
+        dryRunResults.push({
+          whId: wh.id,
+          whName: wh.name,
+          whCountry: wh.country,
+          runId: dryRunResult.runId,
+          status: 'failed',
+          failureReason: dryRunResult.error || 'Dry Run 失败',
+          rawRowCount: 0,
+          validSkuCount: 0,
+          invalidSkuCount: 0,
+          variantsCreated: 0,
+          inventoryInserted: 0,
+          inventoryUpdated: 0,
+          inventoryUnchanged: 0,
+          planDriftCheck: null,
+          planDriftCount: 0,
+          warehouseRenamePlan: null,
+        });
+        continue;
+      }
+
+      const summary = dryRunResult.runnerResult?.summary;
+      const planContent = dryRunResult.runnerResult?.planArtifact as Record<string, unknown> | undefined;
+      const scraperMeta = dryRunResult.runnerResult?.scraperMeta;
+      const planDriftCheck = dryRunResult.runnerResult?.planDriftCheck ?? 'PASS';
+      const renameRequired = planContent?.warehouse_rename_required as Record<string, unknown> | undefined;
+
+      let warehouseRenamePlan: AutoPreReviewItem['dryRun']['warehouseRenamePlan'] = null;
+      if (renameRequired) {
+        warehouseRenamePlan = {
+          action: (renameRequired.action === 'rename' ? 'rename' : 'none') as 'rename' | 'none',
+          currentName: renameRequired.current_name as string | undefined,
+          targetName: renameRequired.target_name as string | undefined,
+          message: renameRequired.message as string | undefined,
+        };
+      }
+
+      const isBlocked = planDriftCheck !== 'PASS';
+
+      dryRunResults.push({
+        whId: wh.id,
+        whName: wh.name,
+        whCountry: (planContent?.country as string) || wh.country,
+        runId: dryRunResult.runId,
+        status: isBlocked ? 'blocked' : 'ready',
+        failureReason: isBlocked ? `计划漂移未通过（plan_drift_check=${planDriftCheck}，${dryRunResult.runnerResult?.planDriftCount ?? 0} 项差异）` : undefined,
+        rawRowCount: scraperMeta?.rawRowCount ?? 0,
+        validSkuCount: scraperMeta?.validSkuCount ?? 0,
+        invalidSkuCount: scraperMeta?.invalidSkuCount ?? 0,
+        variantsCreated: summary?.variantsCreated ?? 0,
+        inventoryInserted: summary?.inventoryInserted ?? 0,
+        inventoryUpdated: summary?.inventoryUpdated ?? 0,
+        inventoryUnchanged: summary?.inventoryUnchanged ?? 0,
+        planDriftCheck,
+        planDriftCount: dryRunResult.runnerResult?.planDriftCount ?? 0,
+        warehouseRenamePlan,
+      });
+    } catch (err) {
+      dryRunResults.push({
+        whId: wh.id,
+        whName: wh.name,
+        whCountry: wh.country,
+        runId: '',
+        status: 'failed',
+        failureReason: `Dry Run 异常: ${(err as Error).message}`,
+        rawRowCount: 0,
+        validSkuCount: 0,
+        invalidSkuCount: 0,
+        variantsCreated: 0,
+        inventoryInserted: 0,
+        inventoryUpdated: 0,
+        inventoryUnchanged: 0,
+        planDriftCheck: null,
+        planDriftCount: 0,
+        warehouseRenamePlan: null,
+      });
+    }
+  }
+
+  // ── 逐仓规则评估 ─────────────────────────────────────────
+  const items: AutoPreReviewItem[] = [];
+  for (const dr of dryRunResults) {
+    const cached = preRunHistory.get(dr.whId);
+
+    let history: WarehouseHistory;
+    let ruleVerdict: RuleVerdict;
+
+    if (cached?.history) {
+      history = cached.history;
+      ruleVerdict = evaluateRules({
+        sessionHealth: health,
+        dryRun: {
+          status: dr.status,
+          planDriftCheck: dr.planDriftCheck,
+          rawRowCount: dr.rawRowCount,
+          validSkuCount: dr.validSkuCount,
+          invalidSkuCount: dr.invalidSkuCount,
+          variantsCreated: dr.variantsCreated,
+          inventoryInserted: dr.inventoryInserted,
+          inventoryUpdated: dr.inventoryUpdated,
+          inventoryUnchanged: dr.inventoryUnchanged,
+          warehouseRenamePlan: dr.warehouseRenamePlan ?? null,
+          failureReason: dr.failureReason,
+        },
+        history,
+      });
+    } else {
+      history = {
+        hasBaseline: false,
+        consecutiveFailures: 0,
+        lastSuccess: null,
+        stats: null,
+      };
+      ruleVerdict = {
+        decision: 'BLOCK',
+        evaluations: [
+          {
+            rule: 'history_unavailable',
+            level: 'BLOCK',
+            message: `历史上下文读取失败，无法安全预审${cached?.error ? `：${cached.error}` : ''}`,
+          },
+        ],
+        summary: '1 项阻断',
+      };
+    }
+
+    items.push({
+      warehouseId: dr.whId,
+      warehouseName: dr.whName,
+      country: dr.whCountry,
+      dryRun: {
+        status: dr.status,
+        runId: dr.runId,
+        failureReason: dr.failureReason,
+        rawRowCount: dr.rawRowCount,
+        validSkuCount: dr.validSkuCount,
+        invalidSkuCount: dr.invalidSkuCount,
+        variantsCreated: dr.variantsCreated,
+        inventoryInserted: dr.inventoryInserted,
+        inventoryUpdated: dr.inventoryUpdated,
+        inventoryUnchanged: dr.inventoryUnchanged,
+        planDriftCheck: dr.planDriftCheck,
+        planDriftCount: dr.planDriftCount,
+        warehouseRenamePlan: dr.warehouseRenamePlan,
+      },
+      history,
+      ruleVerdict,
+    });
+  }
+
+  // ── 汇总统计 ─────────────────────────────────────────────
+  if (items.some((i) => i.dryRun.status === 'ready')) {
     revalidatePath('/dashboard/inventory/overseas');
   }
 
-  return result;
+  return {
+    items,
+    summary: {
+      total: items.length,
+      pass: items.filter((i) => i.ruleVerdict.decision === 'PASS').length,
+      warn: items.filter((i) => i.ruleVerdict.decision === 'WARN').length,
+      block: items.filter((i) => i.ruleVerdict.decision === 'BLOCK').length,
+      failed: items.filter((i) => i.dryRun.status === 'failed').length,
+    },
+    sessionHealth: health,
+  };
 }
 
 // ─── P5-SY9G: 批量审核后真实写入 ────────────────────────────

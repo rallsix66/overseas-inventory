@@ -81,6 +81,35 @@ export class SupabaseSyncRepository implements SyncRepository {
     if (error) throw new Error(`heartbeat_sync_run RPC 失败: ${error.message}`);
   }
 
+  /** P5-SY10E rework: 系统路径 dry_run claim — 使用 service_role 调用
+   *  claim_sync_run_system RPC。
+   *  与 claimSyncRun 的关键差异：
+   *  - 使用 serviceClient (service_role) 而非 authClient (authenticated)
+   *  - 仅允许 dry_run 模式
+   *  - 内部验证 triggeredBy 是激活的 admin，而非通过 auth.uid() */
+  async claimSyncRunSystem(params: {
+    warehouseId: string;
+    runId: string;
+    leaseDuration: number;
+    triggeredBy: string;
+    triggeredFrom: 'web';
+    inputArtifactHash?: string;
+  }): Promise<string | null> {
+    const { data, error } = await this.serviceClient.rpc('claim_sync_run_system', {
+      p_warehouse_id: params.warehouseId,
+      p_mode: 'dry_run',
+      p_run_id: params.runId,
+      p_lease_duration: params.leaseDuration,
+      p_triggered_by: params.triggeredBy,
+      p_triggered_from: params.triggeredFrom,
+      p_input_artifact_hash: params.inputArtifactHash ?? null,
+    });
+
+    if (error) throw new Error(`claim_sync_run_system RPC 失败: ${error.message}`);
+
+    return data as string | null;
+  }
+
   async getSyncRuns(params: {
     warehouseId?: string;
     limit: number;

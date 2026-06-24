@@ -435,6 +435,18 @@ export type Database = {
         }
         Returns: string | null
       }
+      claim_sync_run_system: {
+        Args: {
+          p_warehouse_id: string
+          p_mode: string
+          p_run_id: string
+          p_lease_duration: number
+          p_triggered_by: string
+          p_triggered_from: string
+          p_input_artifact_hash?: string | null
+        }
+        Returns: string | null
+      }
       release_sync_run: {
         Args: {
           p_run_id: string

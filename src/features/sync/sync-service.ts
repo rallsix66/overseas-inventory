@@ -43,6 +43,15 @@ export interface SyncServiceDeps {
   /** P5-SY9E rework: 可注入 heartbeat 间隔（毫秒），供测试使用。
    *  生产默认 = LEASE_DURATION * 1000 / 3 ≈ 100s。 */
   heartbeatIntervalMs?: number;
+  /** P5-SY10E rework: 系统 claim 配置。enabled 时 SyncService
+   *  使用 service_role claim_sync_run_system RPC 而非
+   *  auth.uid() 绑定的 claim_sync_run。
+   *  仅供 server-side Cron/system wiring 设置，从不通过
+   *  createSyncActions 对客户端暴露。 */
+  _systemClaimConfig?: {
+    enabled: true;
+    triggeredBy: string;
+  };
 }
 
 const LEASE_DURATION = 300; // 5 minutes (seconds)
@@ -117,6 +126,7 @@ export function createSyncService(deps: SyncServiceDeps) {
           artifactProvider,
           runner,
           deps.heartbeatIntervalMs,
+          deps._systemClaimConfig,
         );
       }
 
@@ -131,6 +141,7 @@ export function createSyncService(deps: SyncServiceDeps) {
           artifactProvider,
           runner,
           deps.heartbeatIntervalMs,
+          deps._systemClaimConfig,
         );
       }
 
@@ -211,17 +222,28 @@ async function executeDryRun(
   artifactProvider: ArtifactProvider,
   runner: SyncRunner,
   heartbeatIntervalMs?: number,
+  systemClaimConfig?: SyncServiceDeps['_systemClaimConfig'],
 ): Promise<SyncServiceResult> {
-  // a. claim
-  const claimed = await repo.claimSyncRun({
-    runId,
-    warehouseId: input.warehouseId,
-    mode: 'dry_run',
-    leaseDuration: LEASE_DURATION,
-    triggeredBy: input.triggeredBy,
-    triggeredFrom: 'web',
-    inputArtifactHash: inputHash,
-  });
+  // a. claim (system or user path)
+  const useSystemClaim = systemClaimConfig?.enabled === true;
+  const claimed = useSystemClaim
+    ? await repo.claimSyncRunSystem({
+        runId,
+        warehouseId: input.warehouseId,
+        leaseDuration: LEASE_DURATION,
+        triggeredBy: systemClaimConfig!.triggeredBy,
+        triggeredFrom: 'web',
+        inputArtifactHash: inputHash,
+      })
+    : await repo.claimSyncRun({
+        runId,
+        warehouseId: input.warehouseId,
+        mode: 'dry_run',
+        leaseDuration: LEASE_DURATION,
+        triggeredBy: input.triggeredBy,
+        triggeredFrom: 'web',
+        inputArtifactHash: inputHash,
+      });
 
   if (!claimed) {
     return makeFailed(runId, '仓库被占用或无可回收槽位');
@@ -421,7 +443,13 @@ async function executeRealWrite(
   artifactProvider: ArtifactProvider,
   runner: SyncRunner,
   heartbeatIntervalMs?: number,
+  systemClaimConfig?: SyncServiceDeps['_systemClaimConfig'],
 ): Promise<SyncServiceResult> {
+  // P5-SY10E rework: 系统路径不得执行 real_write
+  if (systemClaimConfig?.enabled) {
+    return makeFailed(runId, '系统路径禁止执行 Real Write，仅允许 Dry Run');
+  }
+
   // a. Load bound Dry Run artifacts via ArtifactProvider.get()
   let planArtifact_dr: { content: JsonValue; hash: string };
   try {

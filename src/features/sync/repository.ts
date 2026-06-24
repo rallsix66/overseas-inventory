@@ -66,6 +66,18 @@ export interface SyncRepository {
    *  仅供 Server Action confirmRealWrite 调用，不返回客户端。 */
   getDryRunBindingMetadata(runId: string): Promise<DryRunBindingMetadata | null>;
 
+  /** P5-SY10E rework: 系统路径 dry_run claim（service_role，不依赖 auth.uid()）。
+   *  仅供 Cron/定时任务通过 service_role 调用 claim_sync_run_system RPC。
+   *  仅允许 dry_run，禁止 real_write。 */
+  claimSyncRunSystem(params: {
+    warehouseId: string;
+    runId: string;
+    leaseDuration: number;
+    triggeredBy: string;
+    triggeredFrom: 'web';
+    inputArtifactHash?: string;
+  }): Promise<string | null>;
+
   /** P5-SY9H: 获取 sync_log 记录（通过 sync_run_id 关联）。
    *  使用 serviceClient 直接查询 public.sync_log，仅供详情 Sheet 展示。 */
   getSyncLog(runId: string): Promise<SyncLogRecord | null>;
@@ -207,6 +219,61 @@ export class MockRepository implements SyncRepository {
       planArtifactHash: null,
       inputArtifactHash: params.inputArtifactHash ?? null,
       dryRunRunId: params.dryRunRunId ?? null,
+    };
+
+    MockRepository.runs.set(params.runId, newRun);
+    return params.runId;
+  }
+
+  async claimSyncRunSystem(params: {
+    warehouseId: string;
+    runId: string;
+    leaseDuration: number;
+    triggeredBy: string;
+    triggeredFrom: 'web';
+    inputArtifactHash?: string;
+  }): Promise<string | null> {
+    if (params.leaseDuration < 30 || params.leaseDuration > 900) {
+      throw new Error('leaseDuration 必须在 [30, 900] 范围内');
+    }
+
+    const now = this.clock();
+
+    // Check if any in_progress run exists for this warehouse with a valid lease
+    for (const run of MockRepository.runs.values()) {
+      if (run.warehouseId === params.warehouseId && run.status === 'in_progress') {
+        if (run.leaseExpiresAt > now) {
+          return null; // warehouse locked by another active run
+        }
+        // Expired lease — reclaimable
+        run.status = 'failed';
+        run.exitCode = 2;
+        run.finishedAt = new Date(now.getTime());
+        run.errorMessage = '租约过期，被后续 claim 回收';
+      }
+    }
+
+    const newRun: MockRunRecord = {
+      id: params.runId,
+      warehouseId: params.warehouseId,
+      mode: 'dry_run', // system path always dry_run
+      status: 'in_progress',
+      triggeredBy: params.triggeredBy,
+      triggeredFrom: params.triggeredFrom,
+      leaseExpiresAt: new Date(now.getTime() + params.leaseDuration * 1000),
+      heartbeatAt: now,
+      startedAt: now,
+      finishedAt: null,
+      createdAt: now,
+      exitCode: null,
+      errorMessage: null,
+      resultSummary: null,
+      planDriftCheck: null,
+      planDriftCount: null,
+      planDriftDifferences: null,
+      planArtifactHash: null,
+      inputArtifactHash: params.inputArtifactHash ?? null,
+      dryRunRunId: null, // system path never has dry_run_run_id
     };
 
     MockRepository.runs.set(params.runId, newRun);

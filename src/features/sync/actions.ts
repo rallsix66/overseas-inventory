@@ -543,13 +543,10 @@ export function createSyncActions(deps: SyncActionsDeps) {
 
     // ─── P5-SY9F: 批量全部海外仓 Dry Run ───────────────────────
 
-    /** systemTriggeredBy: 定时任务/系统调用提供的触发者 ID。
-     *  提供时跳过 requireActiveAdmin()，由调用方保证鉴权已完成。 */
     async triggerBatchDryRun(
       warehouses: Array<{ id: string; name: string; country: string }>,
-      systemTriggeredBy?: string,
     ): Promise<BatchDryRunResult> {
-      const triggeredBy = systemTriggeredBy ?? (await requireActiveAdmin()).id;
+      const triggeredBy = (await requireActiveAdmin()).id;
 
       const results: BatchDryRunItemResult[] = [];
 
@@ -665,14 +662,10 @@ export function createSyncActions(deps: SyncActionsDeps) {
     /** 串联 session health → 逐仓预取历史 → 批量 Dry Run → 规则评估。
      *  在 triggerBatchDryRun 之前先获取各仓历史上下文并缓存，
      *  确保本次 Dry Run 不会污染规则评估所用的 history 数据。
-     *  PASS 仍需走人工审核 + confirmRealWrite，不自动写库。
-     *
-     *  systemTriggeredBy: 定时任务/系统调用提供的触发者 ID。
-     *  提供时传递给 triggerBatchDryRun，跳过 requireActiveAdmin()。 */
+     *  PASS 仍需走人工审核 + confirmRealWrite，不自动写库。 */
     async runAutoPreReview(
       warehouses: Array<{ id: string; name: string; country: string }>,
       sessionHealth: SessionHealthResult,
-      systemTriggeredBy?: string,
     ): Promise<AutoPreReviewResult> {
       // 1. 逐仓预取历史上下文（必须在 triggerBatchDryRun 之前，
       //    避免本次 Dry Run 写入的 sync_run 记录污染历史判断）。
@@ -686,10 +679,10 @@ export function createSyncActions(deps: SyncActionsDeps) {
         }
       }
 
-      // 2. 执行批量 Dry Run（systemTriggeredBy 提供时跳过 requireActiveAdmin）
+      // 2. 执行批量 Dry Run
       let batchResult: BatchDryRunResult;
       try {
-        batchResult = await this.triggerBatchDryRun(warehouses, systemTriggeredBy);
+        batchResult = await this.triggerBatchDryRun(warehouses);
       } catch (err) {
         return {
           items: [],
