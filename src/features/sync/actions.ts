@@ -9,7 +9,7 @@ import 'server-only';
 import type { SyncRepository } from './repository';
 import type { SyncService } from './sync-service';
 import type { ArtifactProvider } from './artifact-provider';
-import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchDryRunItemResult, BatchRealWriteItem, BatchRealWriteResult, BatchRealWriteItemResult, AutoPreReviewItem, AutoPreReviewResult, SessionHealthResult, WarehouseHistory } from './types';
+import type { JsonValue, SyncRunsResponse, SyncRunDetailResponse, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchDryRunItemResult, BatchRealWriteItem, BatchRealWriteResult, BatchRealWriteItemResult, AutoPreReviewItem, AutoPreReviewResult, SessionHealthResult, WarehouseHistory, RuleVerdict } from './types';
 import { evaluateRules } from './rules-engine';
 import { triggerSyncSchema, triggerSyncAllSchema, syncWarehouseSchema, getSyncRunsSchema, getSyncRunDetailSchema, confirmRealWriteSchema, triggerBatchRealWriteSchema } from './schema';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
@@ -660,15 +660,27 @@ export function createSyncActions(deps: SyncActionsDeps) {
 
     // ─── P5-SY10C: 自动预审编排 ─────────────────────────────────
 
-    /** 串联 session health → 批量 Dry Run → 逐仓历史 + 规则评估。
-     *  复用 triggerBatchDryRun 执行批量 Dry Run，每仓追加
-     *  getWarehouseHistory + evaluateRules 生成预审决策。
+    /** 串联 session health → 逐仓预取历史 → 批量 Dry Run → 规则评估。
+     *  在 triggerBatchDryRun 之前先获取各仓历史上下文并缓存，
+     *  确保本次 Dry Run 不会污染规则评估所用的 history 数据。
      *  PASS 仍需走人工审核 + confirmRealWrite，不自动写库。 */
     async runAutoPreReview(
       warehouses: Array<{ id: string; name: string; country: string }>,
       sessionHealth: SessionHealthResult,
     ): Promise<AutoPreReviewResult> {
-      // 1. 执行批量 Dry Run（复用现有逻辑，含 requireActiveAdmin）
+      // 1. 逐仓预取历史上下文（必须在 triggerBatchDryRun 之前，
+      //    避免本次 Dry Run 写入的 sync_run 记录污染历史判断）。
+      const preRunHistory = new Map<string, { history: WarehouseHistory | null; error?: string }>();
+      for (const wh of warehouses) {
+        try {
+          const history = await deps.repository.getWarehouseHistory(wh.id);
+          preRunHistory.set(wh.id, { history });
+        } catch (err) {
+          preRunHistory.set(wh.id, { history: null, error: (err as Error).message });
+        }
+      }
+
+      // 2. 执行批量 Dry Run（复用现有逻辑，含 requireActiveAdmin）
       let batchResult: BatchDryRunResult;
       try {
         batchResult = await this.triggerBatchDryRun(warehouses);
@@ -692,40 +704,54 @@ export function createSyncActions(deps: SyncActionsDeps) {
         };
       }
 
-      // 2. 逐仓获取历史上下文 + 规则评估
+      // 3. 逐仓规则评估（使用预取的 pre-run history，不查当前 run 后的状态）
       const items: AutoPreReviewItem[] = [];
       for (const item of batchResult.results) {
-        // 获取历史上下文（失败不阻断，使用冷启动默认值）
+        const cached = preRunHistory.get(item.warehouseId);
+
         let history: WarehouseHistory;
-        try {
-          history = await deps.repository.getWarehouseHistory(item.warehouseId);
-        } catch {
+        let ruleVerdict: RuleVerdict;
+
+        if (cached?.history) {
+          // 历史上下文获取成功 — 使用预取历史进行规则评估
+          history = cached.history;
+          ruleVerdict = evaluateRules({
+            sessionHealth,
+            dryRun: {
+              status: item.status,
+              planDriftCheck: item.planDriftCheck,
+              rawRowCount: item.rawRowCount,
+              validSkuCount: item.validSkuCount,
+              invalidSkuCount: item.invalidSkuCount,
+              variantsCreated: item.variantsCreated,
+              inventoryInserted: item.inventoryInserted,
+              inventoryUpdated: item.inventoryUpdated,
+              inventoryUnchanged: item.inventoryUnchanged,
+              warehouseRenamePlan: item.warehouseRenamePlan ?? null,
+              failureReason: item.failureReason,
+            },
+            history,
+          });
+        } else {
+          // 历史上下文获取失败 — 该仓必须 BLOCK，不使用冷启动默认值
           history = {
             hasBaseline: false,
             consecutiveFailures: 0,
             lastSuccess: null,
             stats: null,
           };
+          ruleVerdict = {
+            decision: 'BLOCK',
+            evaluations: [
+              {
+                rule: 'history_unavailable',
+                level: 'BLOCK',
+                message: `历史上下文读取失败，无法安全预审${cached?.error ? `：${cached.error}` : ''}`,
+              },
+            ],
+            summary: '1 项阻断',
+          };
         }
-
-        // 规则引擎评估
-        const ruleVerdict = evaluateRules({
-          sessionHealth,
-          dryRun: {
-            status: item.status,
-            planDriftCheck: item.planDriftCheck,
-            rawRowCount: item.rawRowCount,
-            validSkuCount: item.validSkuCount,
-            invalidSkuCount: item.invalidSkuCount,
-            variantsCreated: item.variantsCreated,
-            inventoryInserted: item.inventoryInserted,
-            inventoryUpdated: item.inventoryUpdated,
-            inventoryUnchanged: item.inventoryUnchanged,
-            warehouseRenamePlan: item.warehouseRenamePlan ?? null,
-            failureReason: item.failureReason,
-          },
-          history,
-        });
 
         items.push({
           warehouseId: item.warehouseId,
@@ -750,7 +776,7 @@ export function createSyncActions(deps: SyncActionsDeps) {
         });
       }
 
-      // 3. 汇总统计
+      // 4. 汇总统计
       return {
         items,
         summary: {

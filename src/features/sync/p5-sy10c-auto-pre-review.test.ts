@@ -1,7 +1,8 @@
 // P5-SY10C: 自动预审编排 测试
 //
-// 验证: runAutoPreReview 正确串联 batch Dry Run → getWarehouseHistory → evaluateRules /
-// session unhealthy 全局阻断 / 单仓失败不影响其他仓 / getWarehouseHistory 逐仓调用 /
+// 验证: runAutoPreReview 正确串联 逐仓预取历史 → batch Dry Run → evaluateRules /
+// 预取历史不包含当前 Dry Run / session unhealthy 全局阻断 / 单仓失败不影响其他仓 /
+// getWarehouseHistory 逐仓调用（在 Dry Run 之前） /
 // evaluateRules 逐仓调用且 decision 进入结果 / Operator 不可调用 /
 // 不触发 Real Write / production wiring 不含 Mock。
 // 使用 MockRepository + MockSyncRunner，不连接生产 Supabase，不执行真实写入。
@@ -199,9 +200,10 @@ describe('P5-SY10C — happy path: 多仓预审', () => {
   });
 
   it('consecutive failures ≥ 3 → BLOCK via R5', async () => {
-    // Inject 3 consecutive failed Dry Runs for WH_PH AFTER deps creation
-    // (makeDeps() calls _resetAll(), so we must inject after).
-    // Make the current batch Dry Run also fail so it adds to the chain.
+    // Inject 3 consecutive failed Dry Runs for WH_PH AFTER deps creation.
+    // Pre-run history will see 3 consecutive failures (fetched BEFORE Dry Run).
+    // The current batch Dry Run also fails for WH_PH, which adds R4 (dry_run_failed).
+    // R5 triggers when consecutiveFailures >= 3 from pre-run history.
     const deps = buildActionsDeps({
       inputArtifactSource: {
         getInputArtifact: async (whId) => {
@@ -225,8 +227,7 @@ describe('P5-SY10C — happy path: 多仓预审', () => {
 
     const ph = result.items.find((i) => i.warehouseId === WH_PH.id);
     expect(ph).toBeDefined();
-    // Failed Dry Run adds to consecutiveFailures (3 historical + 1 current)
-    // R5 triggers BLOCK when consecutiveFailures >= 3.
+    // R5 triggers BLOCK when consecutiveFailures >= 3 (from pre-run history)
     expect(ph!.ruleVerdict.decision).toBe('BLOCK');
     expect(ph!.ruleVerdict.evaluations.some((e) => e.rule === 'consecutive_failures')).toBe(true);
   });
@@ -255,11 +256,12 @@ describe('P5-SY10C — happy path: 多仓预审', () => {
   });
 
   it('all PASS when clean history + healthy session + no anomalies', async () => {
-    const repo = new MockRepository('admin');
-    // Inject a single successful Dry Run as baseline
+    const deps = buildActionsDeps();
+    // Inject a single successful Dry Run as baseline AFTER buildActionsDeps
+    // (buildActionsDeps → makeDeps → _resetAll clears static runs)
+    const repo = deps.repository as MockRepository;
     injectCompleted(repo, 'baseline-1', WH_PH.id, new Date(Date.now() - 60_000));
 
-    const deps = buildActionsDeps({ repository: repo });
     const actions = createSyncActions(deps);
 
     const result = await actions.runAutoPreReview(
@@ -445,13 +447,13 @@ describe('P5-SY10C — getWarehouseHistory 逐仓调用', () => {
     expect(calls).toContain(WH_TH.id);
   });
 
-  it('history data flows into AutoPreReviewItem', async () => {
-    const repo = new MockRepository('admin');
-    // Give WH_PH a pre-existing successful baseline
+  it('history data flows into AutoPreReviewItem — uses pre-run history', async () => {
+    const deps = buildActionsDeps();
+    // Give WH_PH a pre-existing successful baseline AFTER buildActionsDeps
+    const repo = deps.repository as MockRepository;
     injectCompleted(repo, 'ph-1', WH_PH.id, new Date(Date.now() - 120_000));
     // WH_VN has no pre-existing history (cold start)
 
-    const deps = buildActionsDeps({ repository: repo });
     const actions = createSyncActions(deps);
 
     const result = await actions.runAutoPreReview(
@@ -460,18 +462,18 @@ describe('P5-SY10C — getWarehouseHistory 逐仓调用', () => {
     );
 
     const ph = result.items.find((i) => i.warehouseId === WH_PH.id);
-    // PH has pre-existing baseline + the current batch Dry Run success
+    // PH has pre-existing baseline from pre-run history
     expect(ph!.history.hasBaseline).toBe(true);
     expect(ph!.history.lastSuccess).not.toBeNull();
 
     const vn = result.items.find((i) => i.warehouseId === WH_VN.id);
-    // VN gets baseline from the current batch Dry Run (which succeeds)
-    expect(vn!.history.hasBaseline).toBe(true);
-    // VN has no pre-existing stats before this run
-    expect(vn!.history.stats).not.toBeNull();
+    // VN is cold start — pre-run history has no baseline (fetched BEFORE Dry Run)
+    expect(vn!.history.hasBaseline).toBe(false);
+    expect(vn!.history.lastSuccess).toBeNull();
+    expect(vn!.history.stats).toBeNull();
   });
 
-  it('getWarehouseHistory failure → cold-start defaults, does not block', async () => {
+  it('getWarehouseHistory failure → BLOCK with history_unavailable rule', async () => {
     const repo = new MockRepository('admin');
     repo.getWarehouseHistory = async () => {
       throw new Error('DB 查询失败');
@@ -481,20 +483,63 @@ describe('P5-SY10C — getWarehouseHistory 逐仓调用', () => {
     const actions = createSyncActions(deps);
 
     const result = await actions.runAutoPreReview(
-      [WH_PH],
+      [WH_PH, WH_VN],
       healthySession,
     );
 
-    expect(result.items).toHaveLength(1);
-    const item = result.items[0];
-    // Should fall back to cold-start defaults
-    expect(item.history.hasBaseline).toBe(false);
-    expect(item.history.consecutiveFailures).toBe(0);
-    expect(item.history.lastSuccess).toBeNull();
-    expect(item.history.stats).toBeNull();
-    // Rule evaluation still runs
-    expect(item.ruleVerdict).toBeDefined();
-    expect(item.ruleVerdict.decision).toBeDefined();
+    // Both warehouses had history fetch failure → both BLOCK
+    expect(result.items).toHaveLength(2);
+
+    for (const item of result.items) {
+      // Must BLOCK, not cold-start defaults
+      expect(item.ruleVerdict.decision).toBe('BLOCK');
+      expect(item.ruleVerdict.evaluations).toHaveLength(1);
+      expect(item.ruleVerdict.evaluations[0].rule).toBe('history_unavailable');
+      expect(item.ruleVerdict.evaluations[0].level).toBe('BLOCK');
+      expect(item.ruleVerdict.evaluations[0].message).toContain('历史上下文读取失败');
+      // History placeholder values
+      expect(item.history.hasBaseline).toBe(false);
+    }
+
+    // Both BLOCK, none pass/warn
+    expect(result.summary.block).toBe(2);
+    expect(result.summary.pass).toBe(0);
+    expect(result.summary.warn).toBe(0);
+  });
+
+  it('single getWarehouseHistory failure → only that warehouse BLOCKed, others continue', async () => {
+    const repo = new MockRepository('admin');
+    const origGetWh = repo.getWarehouseHistory.bind(repo);
+    repo.getWarehouseHistory = async (whId) => {
+      if (whId === WH_TH.id) throw new Error('TH 仓历史查询异常');
+      return origGetWh(whId);
+    };
+
+    const deps = buildActionsDeps({ repository: repo });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.runAutoPreReview(
+      [WH_PH, WH_VN, WH_TH],
+      healthySession,
+    );
+
+    expect(result.items).toHaveLength(3);
+
+    // TH should be BLOCKed due to history_unavailable
+    const th = result.items.find((i) => i.warehouseId === WH_TH.id);
+    expect(th!.ruleVerdict.decision).toBe('BLOCK');
+    expect(th!.ruleVerdict.evaluations[0].rule).toBe('history_unavailable');
+    expect(th!.ruleVerdict.evaluations[0].message).toContain('TH 仓历史查询异常');
+
+    // PH and VN should proceed normally
+    const others = result.items.filter((i) => i.warehouseId !== WH_TH.id);
+    for (const item of others) {
+      expect(item.ruleVerdict.evaluations.every((e) => e.rule !== 'history_unavailable')).toBe(true);
+    }
+
+    // Summary: 1 BLOCK (TH), others pass/warn as normal
+    expect(result.summary.block).toBeGreaterThanOrEqual(1);
+    expect(result.summary.total).toBe(3);
   });
 });
 
@@ -544,11 +589,10 @@ describe('P5-SY10C — evaluateRules 逐仓调用', () => {
     expect(result.summary.warn).toBe(0);
   });
 
-  it('cold start (no baseline) → R7/R11 may trigger rules', async () => {
+  it('cold start (no baseline) → hasBaseline=false, rules evaluate correctly', async () => {
     // Use a repo with NO pre-existing history to simulate true cold start.
-    // The batch Dry Run creates a completed record, so hasBaseline will be true
-    // AFTER the run. We test that pre-run cold start state still produces
-    // correct rule evaluation.
+    // History is fetched BEFORE the batch Dry Run, so hasBaseline stays false
+    // even after a successful Dry Run.
     const deps = buildActionsDeps();
     const actions = createSyncActions(deps);
 
@@ -558,10 +602,85 @@ describe('P5-SY10C — evaluateRules 逐仓调用', () => {
     );
 
     const item = result.items[0];
-    // The batch Dry Run creates a completed record → hasBaseline is true
-    expect(item.history.hasBaseline).toBe(true);
+    // Pre-run history: no baseline (fetched BEFORE Dry Run executes)
+    expect(item.history.hasBaseline).toBe(false);
+    expect(item.history.consecutiveFailures).toBe(0);
+    expect(item.history.lastSuccess).toBeNull();
+    expect(item.history.stats).toBeNull();
     // Rule verdict exists and is one of PASS/WARN/BLOCK
+    // (with default MockSyncRunner values: validSkuCount=91, variantsCreated=1,
+    //  invalidSkuCount=0 — no rule thresholds exceeded → PASS)
     expect(['PASS', 'WARN', 'BLOCK']).toContain(item.ruleVerdict.decision);
+  });
+
+  it('cold start with high new variant ratio → R7 WARN', async () => {
+    // R7: !hasBaseline && validSkuCount > 0 && variantsCreated/validSkuCount > 0.5 → WARN
+    const runner = new MockSyncRunner();
+    const origExecute = runner.execute.bind(runner);
+    runner.execute = async (params) => {
+      const result = await origExecute(params);
+      if (params.mode === 'dry_run' && result.success) {
+        result.summary.variantsCreated = 60;
+        if (result.scraperMeta) {
+          result.scraperMeta.validSkuCount = 100;
+        }
+      }
+      return result;
+    };
+
+    const deps = buildActionsDeps({
+      syncService: createSyncService(makeDeps({ runner })),
+    });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.runAutoPreReview(
+      [WH_PH],
+      healthySession,
+    );
+
+    expect(result.items).toHaveLength(1);
+    const item = result.items[0];
+    expect(item.history.hasBaseline).toBe(false);
+    // R7: cold_start_high_new (60/100 = 0.6 > 0.5)
+    expect(item.ruleVerdict.evaluations.some((e) => e.rule === 'cold_start_high_new')).toBe(true);
+    // Cold start R7 is WARN only, not BLOCK
+    expect(item.ruleVerdict.decision).toBe('WARN');
+  });
+
+  it('cold start with high invalid SKU ratio → R11 WARN', async () => {
+    // R11: !hasBaseline && rawRowCount > 0 && invalidSkuCount/rawRowCount > 0.3 → WARN
+    const runner = new MockSyncRunner();
+    const origExecute = runner.execute.bind(runner);
+    runner.execute = async (params) => {
+      const result = await origExecute(params);
+      if (params.mode === 'dry_run' && result.success) {
+        result.summary.variantsCreated = 1; // keep low to avoid R7
+        if (result.scraperMeta) {
+          result.scraperMeta.rawRowCount = 100;
+          result.scraperMeta.validSkuCount = 100;
+          result.scraperMeta.invalidSkuCount = 40; // 40/100 = 0.4 > 0.3
+        }
+      }
+      return result;
+    };
+
+    const deps = buildActionsDeps({
+      syncService: createSyncService(makeDeps({ runner })),
+    });
+    const actions = createSyncActions(deps);
+
+    const result = await actions.runAutoPreReview(
+      [WH_PH],
+      healthySession,
+    );
+
+    expect(result.items).toHaveLength(1);
+    const item = result.items[0];
+    expect(item.history.hasBaseline).toBe(false);
+    // R11: high_invalid_sku_cold (40/100 = 0.4 > 0.3)
+    expect(item.ruleVerdict.evaluations.some((e) => e.rule === 'high_invalid_sku_cold')).toBe(true);
+    // R11 is WARN only
+    expect(item.ruleVerdict.decision).toBe('WARN');
   });
 
   it('history with consecutive failures triggers R5 BLOCK', async () => {
@@ -591,10 +710,53 @@ describe('P5-SY10C — evaluateRules 逐仓调用', () => {
 
     expect(result.items).toHaveLength(1);
     const item = result.items[0];
-    // 3 historical + 1 current = 4 consecutive failed dry runs
+    // 3 consecutive failed dry runs from pre-run history
     expect(item.history.consecutiveFailures).toBeGreaterThanOrEqual(3);
     expect(item.ruleVerdict.decision).toBe('BLOCK');
     expect(item.ruleVerdict.evaluations.some((e) => e.rule === 'consecutive_failures')).toBe(true);
+  });
+
+  it('pre-run history excludes current Dry Run record', async () => {
+    // Inject a pre-existing completed run with known variantsCreated=5.
+    // The batch Dry Run will create a new completed run with variantsCreated=1 (default).
+    // Pre-run history stats should reflect ONLY the pre-existing run (avg=5),
+    // NOT the current run (which would make avg=3).
+    const deps = buildActionsDeps();
+    const repo = deps.repository as MockRepository;
+    injectCompleted(repo, 'baseline-1', WH_PH.id, new Date('2026-06-23T10:00:00Z'), {
+      warehouseId: WH_PH.id,
+      warehouseName: WH_PH.name,
+      variantsCreated: 5,
+      variantsSkipped: 0,
+      inventoryInserted: 3,
+      inventoryUpdated: 50,
+      inventoryUnchanged: 10,
+      warehouseRenamed: false,
+      rawRowCount: 80,
+      validSkuCount: 75,
+      invalidSkuCount: 5,
+    });
+
+    const actions = createSyncActions(deps);
+
+    const result = await actions.runAutoPreReview(
+      [WH_PH],
+      healthySession,
+    );
+
+    expect(result.items).toHaveLength(1);
+    const item = result.items[0];
+    // Pre-run history: has baseline from pre-existing run
+    expect(item.history.hasBaseline).toBe(true);
+    expect(item.history.lastSuccess).not.toBeNull();
+    // stats should reflect ONLY the pre-existing run (variantsCreated=5),
+    // NOT the current run (variantsCreated=1 default from MockSyncRunner)
+    expect(item.history.stats).not.toBeNull();
+    expect(item.history.stats!.avgVariantsCreated).toBe(5);
+    // rawRowCount from pre-existing run only
+    expect(item.history.stats!.avgRawRowCount).toBe(80);
+    expect(item.history.stats!.avgValidSkuCount).toBe(75);
+    expect(item.history.stats!.avgInvalidSkuCount).toBe(5);
   });
 });
 
