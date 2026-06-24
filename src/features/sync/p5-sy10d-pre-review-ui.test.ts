@@ -14,7 +14,7 @@ import { MockRepository } from './repository';
 import { MockArtifactProvider } from './mock-artifact-provider';
 import { MockSyncRunner } from './mock-sync-runner';
 import { createSyncService, type SyncServiceDeps } from './sync-service';
-import type { SessionHealthResult, AutoPreReviewItem, AutoPreReviewResult } from './types';
+import type { SessionHealthResult } from './types';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -514,5 +514,97 @@ describe('P5-SY10D — session health info in result', () => {
     );
 
     expect(result.summary.total).toBe(result.items.length);
+  });
+});
+
+// ─── 9. 自动预审复选框行为（源码检查）────────────────────────────────
+
+describe('P5-SY10D — 自动预审复选框行为', () => {
+  const pageSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/app/dashboard/sync/_components/sync-page-content.tsx'),
+    'utf-8',
+  );
+
+  it('存在 autoReviewSelectedItems 独立选择状态', () => {
+    // 必须使用独立的 Set 管理预审勾选状态，不与 selectedReadyItems 混淆
+    expect(pageSrc).toContain('autoReviewSelectedItems');
+    expect(pageSrc).toContain('useState<Set<string>>(new Set())');
+  });
+
+  it('存在 toggleAutoReviewItem 切换函数', () => {
+    expect(pageSrc).toContain('toggleAutoReviewItem');
+    // 必须使用函数式 setState 模式
+    expect(pageSrc).toContain('setAutoReviewSelectedItems');
+  });
+
+  it('PASS 仓库可选且 checked 状态由 autoReviewSelectedItems 驱动', () => {
+    // selectable 条件必须同时检查 decision !== 'BLOCK' 和 status === 'ready'
+    expect(pageSrc).toContain("decision !== 'BLOCK'");
+    expect(pageSrc).toContain("status === 'ready'");
+    // checked 必须读取 autoReviewSelectedItems
+    expect(pageSrc).toContain('autoReviewSelectedItems.has');
+    // onToggle 必须调用 toggleAutoReviewItem
+    expect(pageSrc).toContain('toggleAutoReviewItem(');
+  });
+
+  it('WARN 仓库可选且有警告提示', () => {
+    // BatchReviewCard 中 WARN 决策显示 AlertTriangle 图标
+    expect(pageSrc).toContain('isWarnByRule');
+    expect(pageSrc).toContain('AlertTriangle');
+    // WARN 提示文字
+    expect(pageSrc).toContain('规则预警');
+  });
+
+  it('BLOCK 仓库不可选且 checkbox disabled', () => {
+    // BLOCK 决策应导致 isBlockedByRule 为 true → checkbox disabled
+    expect(pageSrc).toContain('isBlockedByRule');
+    expect(pageSrc).toContain('disabled={!isSelectable}');
+    // BLOCK 项阻断原因提示
+    expect(pageSrc).toContain('阻断原因');
+  });
+
+  it('failed/blocked 状态仓库不可选（selectable 检查 dryRun.status）', () => {
+    // selectable 必须同时检查 status === 'ready'
+    // 确保 failed/blocked 仓库即使 PASS/WARN 也不可选
+    const selectablePattern = /selectable=\{.*status\s*===?\s*['"]ready['"]/;
+    expect(selectablePattern.test(pageSrc)).toBe(true);
+  });
+
+  it('handleAutoPreReview 不调用 triggerBatchRealWrite 或 confirmRealWrite', () => {
+    // 自动预审 Dialog 不得触发真实写入
+    // handleAutoPreReview 函数体内不应出现 triggerBatchRealWrite / confirmRealWrite
+    const fnStart = pageSrc.indexOf('async function handleAutoPreReview');
+    expect(fnStart).toBeGreaterThan(0);
+
+    // 找到下一个顶层函数定义作为边界
+    const afterFn = pageSrc.slice(fnStart);
+    const nextFn = afterFn.search(/\n  async function (?!handleAutoPreReview)/);
+    const fnBody = nextFn > 0 ? afterFn.slice(0, nextFn) : afterFn;
+
+    expect(fnBody).not.toContain('triggerBatchRealWrite');
+    expect(fnBody).not.toContain('confirmRealWrite');
+  });
+
+  it('自动预审 Dialog 不包含批量写入操作区', () => {
+    // 自动预审 Dialog 区域不应包含 Real Write 按钮或确认短语输入
+    const dialogStart = pageSrc.indexOf('自动预审 Dialog');
+    expect(dialogStart).toBeGreaterThan(0);
+
+    const afterDialog = pageSrc.slice(dialogStart);
+    // 找到下一个 Dialog 或 Sheet 作为边界（"确认 Real Write Dialog"）
+    const nextBoundary = afterDialog.indexOf('确认 Real Write Dialog');
+    const dialogSection = nextBoundary > 0 ? afterDialog.slice(0, nextBoundary) : afterDialog;
+
+    expect(dialogSection).not.toContain('triggerBatchRealWrite');
+    expect(dialogSection).not.toContain('confirmRealWrite');
+    expect(dialogSection).not.toContain('确认短语');
+  });
+
+  it('对话框打开/关闭/重新执行时重置选择状态', () => {
+    // 三个清除点：按钮 onClick、Dialog onOpenChange、handleAutoPreReview 开头
+    const clearPattern = /setAutoReviewSelectedItems\s*\(\s*new\s+Set\s*\(\s*\)\s*\)/g;
+    const matches = pageSrc.match(clearPattern);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(3);
   });
 });

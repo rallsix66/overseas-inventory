@@ -62,7 +62,6 @@ import type {
   BatchDryRunItemResult,
   BatchRealWriteItem,
   BatchRealWriteResult,
-  BatchRealWriteItemResult,
   SyncLogRecord,
   AutoPreReviewResult,
   AutoPreReviewItem,
@@ -650,10 +649,12 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
   const [autoReviewOpen, setAutoReviewOpen] = useState(false);
   const [autoReviewSubmitting, setAutoReviewSubmitting] = useState(false);
   const [autoReviewResult, setAutoReviewResult] = useState<AutoPreReviewResult | null>(null);
+  const [autoReviewSelectedItems, setAutoReviewSelectedItems] = useState<Set<string>>(new Set());
 
   async function handleAutoPreReview() {
     setAutoReviewSubmitting(true);
     setAutoReviewResult(null);
+    setAutoReviewSelectedItems(new Set());
     try {
       const result = await runAutoPreReview();
       setAutoReviewResult(result);
@@ -718,6 +719,18 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
 
   function toggleReadyItem(warehouseId: string) {
     setSelectedReadyItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(warehouseId)) {
+        next.delete(warehouseId);
+      } else {
+        next.add(warehouseId);
+      }
+      return next;
+    });
+  }
+
+  function toggleAutoReviewItem(warehouseId: string) {
+    setAutoReviewSelectedItems((prev) => {
       const next = new Set(prev);
       if (next.has(warehouseId)) {
         next.delete(warehouseId);
@@ -884,7 +897,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => { setAutoReviewOpen(true); setAutoReviewResult(null); }}
+                onClick={() => { setAutoReviewOpen(true); setAutoReviewResult(null); setAutoReviewSelectedItems(new Set()); }}
                 disabled={isSyncDisabled}
                 title={isSyncDisabled ? 'BigSeller 登录会话不可用，请先检查会话状态' : undefined}
               >
@@ -1584,7 +1597,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       </Dialog>
 
       {/* ─── P5-SY10D: 自动预审 Dialog ──────────────────────────── */}
-      <Dialog open={autoReviewOpen} onOpenChange={(open) => { if (!open) { setAutoReviewOpen(false); setAutoReviewResult(null); } }}>
+      <Dialog open={autoReviewOpen} onOpenChange={(open) => { if (!open) { setAutoReviewOpen(false); setAutoReviewResult(null); setAutoReviewSelectedItems(new Set()); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>自动预审 / 规则决策</DialogTitle>
@@ -1649,9 +1662,9 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
                       key={item.warehouseId}
                       item={toBatchDryRunItem(item)}
                       ruleVerdict={item.ruleVerdict}
-                      selectable={item.ruleVerdict.decision !== 'BLOCK'}
-                      checked={false}
-                      onToggle={() => {}}
+                      selectable={item.ruleVerdict.decision !== 'BLOCK' && item.dryRun.status === 'ready'}
+                      checked={autoReviewSelectedItems.has(item.warehouseId)}
+                      onToggle={() => toggleAutoReviewItem(item.warehouseId)}
                     />
                   ))}
                 </div>

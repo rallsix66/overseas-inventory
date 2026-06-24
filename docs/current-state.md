@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY10` — 自动 Dry Run 预审与后续自动化分阶段框架（IN_PROGRESS — P5-SY10A DONE，P5-SY10B DONE，P5-SY10C DONE，P5-SY10D AWAITING_REVIEW。规则引擎 + 历史上下文提供器 + 自动预审编排 + 预审页面 UI 已实现。Sync 页面新增「自动预审」入口，调用 `runAutoPreReview()`，展示 PASS/WARN/BLOCK 规则决策徽标 + 可展开规则详情。21 项新测试。672/672 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。下一步 P5-SY10E。）
+`P5-SY10` — 自动 Dry Run 预审与后续自动化分阶段框架（IN_PROGRESS — P5-SY10A DONE，P5-SY10B DONE，P5-SY10C DONE，P5-SY10D AWAITING_REVIEW。规则引擎 + 历史上下文提供器 + 自动预审编排 + 预审页面 UI 已实现。Sync 页面新增「自动预审」入口，调用 `runAutoPreReview()`，展示 PASS/WARN/BLOCK 规则决策徽标 + 可展开规则详情。复选框逻辑：独立 `autoReviewSelectedItems` Set，PASS/WARN + status=ready 可选，BLOCK/failed/blocked 不可选。29 项新测试。681/681 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。下一步 P5-SY10E。）
 
 ## Completed Tasks
 
@@ -63,7 +63,7 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY10A` — 规则引擎核心：类型 + 纯函数 + 单元测试（2026-06-24 DONE。新增 `rules-engine.ts`：`evaluateRules(input)` 纯函数，11 条规则 R1~R11，冷启动/有基线双路径，BLOCK > WARN > PASS 决策推导。新增 `evaluateSessionHealth()` 辅助函数。新增 `types.ts` 中 `RuleLevel` / `RuleEvaluation` / `RuleInput` / `RuleVerdict` 类型。60 项测试覆盖每规则命中/不命中/边界 + 组合场景 + 冷启动双路径。质量门：586/586 TS 测试，lint 0 errors，build pass。不涉及 DB/Cron/UI/Real Write。）
 - `P5-SY10B` — 历史上下文提供器：基线追踪 + 连续失败检测（2026-06-24 DONE，Codex 返工复验通过。SyncRepository 接口新增 `getWarehouseHistory(warehouseId)`，MockRepository + SupabaseSyncRepository 实现。从 sync_run 推导 hasBaseline / consecutiveFailures（仅 dry_run failed，real_write 屏障）/ lastSuccess / stats（最近 5 次完成均值）。`sync-service.ts` 中 `buildResultSummary()` 将 scraperMeta 字段持久化到 result_summary JSONB。35 项测试覆盖冷启动/有基线/连续失败 1~3/real_write 屏障不穿透/成功重置/跨仓隔离/缺失 result_summary/混合格式。质量门：621/621 TS 测试，lint 0 errors，build pass。不新增 DB 表，不改 Migration。）
 - `P5-SY10C` — 自动预审编排 Server Action（2026-06-24 DONE，Codex 独立复验通过。返工完成：① 在 triggerBatchDryRun 之前逐仓预取 getWarehouseHistory 并缓存，确保 cold start 仓库 hasBaseline=false，已有历史仓库 stats 不含当前 run；② history 获取失败 → BLOCK（history_unavailable 规则），含中文原因，不 fallback 冷启动；③ 新增冷启动 R7/R11 路径测试 + 预取历史排他性测试。`runAutoPreReview` Server Action：requireActiveAdmin + session health guard + wireRealActions。30 项测试。质量门：651/651 TS 测试，lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
-- `P5-SY10D` — 预审页面 UI（2026-06-24 AWAITING_REVIEW，待 Codex 独立验收。Sync 页面新增「自动预审」入口（调用 `runAutoPreReview()`）。BatchReviewCard 扩展：RuleBadge（PASS 绿/WARN 黄/BLOCK 红）+ 可展开规则详情（evaluations[].message）+ WARN 可选带警告 / BLOCK 不可选含阻断原因。统计栏 PASS/WARN/BLOCK 三色计数。保留「批量 Dry Run」按钮（不运行规则引擎）。Operator 只读。`AutoPreReviewItem.dryRun` 补全 `warehouseRenamePlan` 字段。21 项新测试。质量门：672/672 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
+- `P5-SY10D` — 预审页面 UI（2026-06-24 AWAITING_REVIEW，待 Codex 独立验收，已返工。Sync 页面新增「自动预审」入口（调用 `runAutoPreReview()`）。BatchReviewCard 扩展：RuleBadge（PASS 绿/WARN 黄/BLOCK 红）+ 可展开规则详情（evaluations[].message）+ WARN 可选带警告 / BLOCK 不可选含阻断原因。统计栏 PASS/WARN/BLOCK 三色计数。保留「批量 Dry Run」按钮（不运行规则引擎）。Operator 只读。`AutoPreReviewItem.dryRun` 补全 `warehouseRenamePlan` 字段。复选框返工：独立 `autoReviewSelectedItems` Set，PASS/WARN + status=ready 可选（checked 状态可变化），BLOCK/failed/blocked 不可选。清理 unused imports（BatchRealWriteItemResult 等）。29 项新测试（含 8 项复选框行为源码检查）。质量门：681/681 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
 
 ## Awaiting Review
 
@@ -732,4 +732,4 @@ BigSeller 实际 VXE 结构：
 
 ## Last Updated
 
-2026-06-24（P5-SY10C DONE，P5-SY10D AWAITING_REVIEW。自动预审编排 `runAutoPreReview()` + 预审页面 UI 已实现。Sync 页面新增「自动预审」入口 + RuleBadge（PASS/WARN/BLOCK）+ 可展开规则详情。21 项新测试。672/672 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。下一步 P5-SY10E。）
+2026-06-24（P5-SY10C DONE，P5-SY10D AWAITING_REVIEW（已返工）。自动预审编排 `runAutoPreReview()` + 预审页面 UI 已实现。Sync 页面新增「自动预审」入口 + RuleBadge（PASS/WARN/BLOCK）+ 可展开规则详情。复选框返工：独立 `autoReviewSelectedItems` Set + PASS/WARN 可选/BLOCK 不可选。29 项新测试。681/681 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。下一步 P5-SY10E。）
