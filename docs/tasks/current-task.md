@@ -6,7 +6,7 @@
 
 ## 状态
 
-`P5-SY11E DONE` — Variant 列表页面 + 归档/恢复 UI + 搜索 + loading/error + 页面测试返工完成（892/892 测试，lint 0 errors，build pass）。P5-SY11F PENDING，下一步 P5-SY11F。P5-SY11A~D DONE。P5-SY9 全部子任务（A~K）DONE。P5-SY10 全部子任务（A~F）DONE。
+`P5-SY11F DONE` — 同步非回归验证 + 质量门 + 文档收口完成。P5-SY11A~F 全部 DONE。下一步 P5-SY12（PENDING，待下一个 Phase）。P5-SY10 全部子任务（A~F）DONE。P5-SY9 全部子任务（A~K）DONE。
 
 ## 背景
 
@@ -96,7 +96,7 @@ Migration 00009 的 `sync_warehouse_inventory` 使用 `INSERT INTO product_varia
 | **P5-SY11C** | Server Actions：`archiveVariants` / `restoreVariants` | Admin 专用 Server Action，Zod 校验 + revalidatePath；Admin/Operator 权限测试 | P5-SY11B | **DONE**（2026-06-25。24/24 测试，lint 0 errors，build pass） |
 | **P5-SY11D** | Inventory 层过滤：默认视图隐藏已归档 Variant | `getOverseasList()`/`getLowStock()`/`getOverseasStats()` 过滤已归档 Variant；`getByProductId()` 不过滤；测试覆盖 | P5-SY11A | **DONE**（2026-06-25。19/19 测试，853/853 全量测试，lint 0 errors，build pass） |
 | **P5-SY11E** | Variant 列表页面 + 归档/恢复 UI | 实现 `variants/page.tsx`（Server + Client Component）：数据表格、归档筛选标签（活跃/已归档/全部）、Admin 批量归档/恢复按钮、SKU/名称搜索（URL searchParams）、loading/error 状态；`unmatched/page.tsx` 仅显示活跃未匹配，requireActiveAuth；Operator 只读 | P5-SY11C, P5-SY11D | **DONE**（2026-06-25。返工完成：搜索 + loading/error + 30 项页面测试 + unmatched requireActiveAuth + 文档同步。892/892 测试，lint 0 errors，build pass） |
-| **P5-SY11F** | 同步非回归验证 + 质量门 + 文档收口 | 验证同步 RPC 不受影响、恢复后库存正确出现；全量测试 + lint/build + Python；文档同步 | P5-SY11E | PENDING |
+| **P5-SY11F** | 同步非回归验证 + 质量门 + 文档收口 | 验证同步 RPC 不受影响、恢复后库存正确出现；全量测试 + lint/build + Python；文档同步 | P5-SY11E | **DONE**（2026-06-25。22 项非回归测试：验证 sync 不修改 is_archived、恢复后默认视图重显示、新 Variant 默认 is_archived=false、P5-SY11A~E 行为不退化。质量门：914/914 TS [29 文件]，lint 0 errors，build pass；Python 271 通过。文档：current-state.md / current-task.md / phase-5-sync.md 已同步） |
 
 ## 子任务详细规格
 
@@ -361,14 +361,12 @@ export async function restoreVariants(variantIds: string[]): Promise<ActionResul
 
 ## 停止条件
 
-- P5-SY11A~E 全部完成后停止，等待 Codex 独立验收（P5-SY11F）。
+- P5-SY11A~F 全部完成。不进入 P5-SY12，不启用 P5-SY10 Phase B 自动 Real Write。
 - 不删除 ProductVariant、不删除数据库行。
 - 不改变 Product → ProductVariant → Inventory 模型。
 - 不修改已执行 Migration 00001~00010。
 - 不新增数据库表。
-- 不启用 P5-SY10 Phase B 自动 Real Write。
 - `WEBSYNC_REAL_WRITE_ENABLED` 保持 false。
-- 不启动 P5-SY12 或其他后续任务。
 
 ## 依赖
 

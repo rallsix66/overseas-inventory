@@ -27,7 +27,7 @@
 | P5-SY8H | ID 真实写入与端到端验收 | P5-SY8G | DONE（Codex 独立验收通过。首次 RPC 写入 35 Variants (country=ID) + 35 Inventory + Warehouse 改名 "印尼仓"→"印尼-DEE仓库"；Phase G/I PASS，SyncLog success。幂等重跑：0 新增/35 unchanged，plan_drift_check=PASS。Codex 独立验收：代码、报告、真实 DB 只读核查、幂等重跑、质量门均通过。128/128 Python 测试，compileall/lint/build 通过。） |
 | P5-SY9 | 海外仓库存同步生产化（批量 Dry Run、审核、批量真实写入、生产 Web 入口） | P5-SY8H | DONE（P5-SY9A~K 全部 DONE。全部5海外仓批量真实写入完成（2026-06-24）：PH=104行/VN=64行/TH=73行/MY=48行/ID=36行，全部 sync_log success。PH/VN/TH 仓库名称在 BigSeller 已变更。返工 P5-SY9K 通过。WEBSYNC_REAL_WRITE_ENABLED=false。） |
 | P5-SY10 | 自动 Dry Run 预审与后续自动化分阶段框架 | P5-SY9 全部海外仓批量真实写入完成并验收 | DONE（P5-SY10A~F 全部 DONE。规则引擎设计：11 条规则优先级 R1~R11，冷启动/有基线双路径，session unhealthy / plan_drift / all_zero / consecutive_failures → BLOCK；warehouse_rename / high_new / high_invalid / row_anomaly → WARN；PASS 仍需人工确认 Real Write。首版仅 Phase A，Phase B 自动 Real Write 设计预留。质量门：744/744 TS，lint 0，build pass，253 Python。） |
-| P5-SY11 | ProductVariant 软归档与库存视图降噪 | P5-SY10 全部子任务（A~F）DONE | P5-SY11B DONE（类型同步 + Repository 软归档能力完成。31/31 测试，lint 0 errors，build pass）。P5-SY11C~F PENDING，下一步 P5-SY11C。 |
+| P5-SY11 | ProductVariant 软归档与库存视图降噪 | P5-SY10 全部子任务（A~F）DONE | P5-SY11F DONE（同步非回归验证 + 质量门 + 文档收口完成。P5-SY11A~F 全部 DONE。22 项非回归测试。914/914 TS + lint 0 + build pass + Python 271。） |
 
 P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许批量处理全部启用海外仓，但必须先批量 Dry Run、页面审核、二次确认后再逐仓真实写入；禁止普通按钮直接自动真实写入。
 
