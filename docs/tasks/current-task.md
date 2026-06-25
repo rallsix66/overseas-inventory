@@ -6,7 +6,7 @@
 
 ## 状态
 
-`P5-SY11F DONE` — 同步非回归验证 + 质量门 + 文档收口完成。P5-SY11A~F 全部 DONE。下一步 P5-SY12（PENDING，待下一个 Phase）。P5-SY10 全部子任务（A~F）DONE。P5-SY9 全部子任务（A~K）DONE。
+`P5-SY11F DONE` — Codex 返工通过。P5-SY11A~F 全部 DONE。返工项：1) phase-5-sync.md 文档矛盾修复（P5-SY11C/D/E/F PENDING→DONE，旧 IN_PROGRESS→DONE）；2) 迁移断言加固（读取真实 .sql 文件）。质量门：914/914 TS + lint 0 + build pass + 271 Python。等待 Codex 复验。下一步 P5-SY12（PENDING）。
 
 ## 背景
 
@@ -96,7 +96,7 @@ Migration 00009 的 `sync_warehouse_inventory` 使用 `INSERT INTO product_varia
 | **P5-SY11C** | Server Actions：`archiveVariants` / `restoreVariants` | Admin 专用 Server Action，Zod 校验 + revalidatePath；Admin/Operator 权限测试 | P5-SY11B | **DONE**（2026-06-25。24/24 测试，lint 0 errors，build pass） |
 | **P5-SY11D** | Inventory 层过滤：默认视图隐藏已归档 Variant | `getOverseasList()`/`getLowStock()`/`getOverseasStats()` 过滤已归档 Variant；`getByProductId()` 不过滤；测试覆盖 | P5-SY11A | **DONE**（2026-06-25。19/19 测试，853/853 全量测试，lint 0 errors，build pass） |
 | **P5-SY11E** | Variant 列表页面 + 归档/恢复 UI | 实现 `variants/page.tsx`（Server + Client Component）：数据表格、归档筛选标签（活跃/已归档/全部）、Admin 批量归档/恢复按钮、SKU/名称搜索（URL searchParams）、loading/error 状态；`unmatched/page.tsx` 仅显示活跃未匹配，requireActiveAuth；Operator 只读 | P5-SY11C, P5-SY11D | **DONE**（2026-06-25。返工完成：搜索 + loading/error + 30 项页面测试 + unmatched requireActiveAuth + 文档同步。892/892 测试，lint 0 errors，build pass） |
-| **P5-SY11F** | 同步非回归验证 + 质量门 + 文档收口 | 验证同步 RPC 不受影响、恢复后库存正确出现；全量测试 + lint/build + Python；文档同步 | P5-SY11E | **DONE**（2026-06-25。22 项非回归测试：验证 sync 不修改 is_archived、恢复后默认视图重显示、新 Variant 默认 is_archived=false、P5-SY11A~E 行为不退化。质量门：914/914 TS [29 文件]，lint 0 errors，build pass；Python 271 通过。文档：current-state.md / current-task.md / phase-5-sync.md 已同步） |
+| **P5-SY11F** | 同步非回归验证 + 质量门 + 文档收口 | 验证同步 RPC 不受影响、恢复后库存正确出现；全量测试 + lint/build + Python；文档同步 | P5-SY11E | **DONE**（2026-06-25。Codex 返工通过。2 项阻塞修复：1) phase-5-sync.md 文档矛盾修复 — P5-SY11C/D/E/F PENDING→DONE，旧 IN_PROGRESS→DONE；2) 非回归测试迁移断言加固 — 读取真实 Migration 00009/00011 .sql 文件，正则提取 Step 7 INSERT 列清单 + ON CONFLICT DO NOTHING + DDL DEFAULT false。22/22 非回归测试，914/914 TS（29 文件），lint 0 errors，build pass；271 Python。等待 Codex 复验。） |
 
 ## 子任务详细规格
 

@@ -16,6 +16,8 @@
 //    - inventory 过滤逻辑正确
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // ─── Thenable chain mock ───────────────────────────────────────────────
 
@@ -226,14 +228,36 @@ describe('P5-SY11F — sync_warehouse_inventory 对 is_archived 无影响', () =
     expect(selectArg).not.toContain('is_archived');
   });
 
-  it('sync_warehouse_inventory INSERT ON CONFLICT 不包含 is_archived 列', () => {
-    // 类型级验证：Migration 00009 Step 7 的 INSERT 列清单为
-    // (sku, country, name, product_id, match_status)
-    // 不含 is_archived → 新 Variant 使用 DEFAULT false
-    const insertColumns = ['sku', 'country', 'name', 'product_id', 'match_status'];
+  it('sync_warehouse_inventory Step 7 INSERT 列清单不含 is_archived / archived_at / archived_by，且 ON CONFLICT (sku, country) DO NOTHING 存在', () => {
+    // 读取 Migration 00009 源文件，验证 Step 7 INSERT 列清单与 ON CONFLICT 子句
+    const migrationsDir = path.resolve(process.cwd(), 'supabase/migrations');
+    const sql = fs.readFileSync(
+      path.join(migrationsDir, '00009_generalize_sync_warehouse_country.sql'),
+      'utf-8',
+    );
+
+    // 定位 Step 7 的 INSERT INTO public.product_variant 语句
+    // Step 7 是最后一个 INSERT INTO public.product_variant（位于 `7. Variant 创建或复用` 注释块内）
+    const step7BlockStart = sql.indexOf('-- 7. Variant');
+    expect(step7BlockStart).not.toBe(-1);
+    const step7Block = sql.slice(step7BlockStart);
+    const insertMatch = step7Block.match(/INSERT INTO public\.product_variant\s*\(([^)]+)\)/);
+    expect(insertMatch).not.toBeNull();
+
+    // 提取列清单
+    const colsRaw = insertMatch![1]!.replace(/\s+/g, ' ').trim();
+    const insertColumns = colsRaw.split(',').map(c => c.trim());
+
+    // 核心断言：INSERT 列清单不包含 is_archived 及审计字段
     expect(insertColumns).not.toContain('is_archived');
     expect(insertColumns).not.toContain('archived_at');
     expect(insertColumns).not.toContain('archived_by');
+
+    // 确认 INSERT 列清单包含预期的 5 列
+    expect(insertColumns).toEqual(['sku', 'country', 'name', 'product_id', 'match_status']);
+
+    // 确认 Step 7 INSERT 所在完整语句包含 ON CONFLICT (sku, country) DO NOTHING
+    expect(step7Block).toMatch(/ON CONFLICT\s*\(\s*sku\s*,\s*country\s*\)\s*DO NOTHING/);
   });
 });
 
@@ -341,13 +365,16 @@ describe('P5-SY11F — 恢复后 Variant 重新出现在默认视图', () => {
 // ─── 3. 新 Variant 默认 is_archived=false ────────────────────────────────
 
 describe('P5-SY11F — 新 Variant 默认 is_archived=false', () => {
-  it('Migration 00011 DEFAULT false — 新 Variant 不显式设 is_archived 时默认 false', () => {
-    // Migration 00011: ALTER TABLE ADD COLUMN is_archived boolean NOT NULL DEFAULT false
-    // Migration 00009: INSERT INTO product_variant (sku, country, name, product_id, match_status)
-    //                   VALUES (...) ON CONFLICT DO NOTHING
-    // → 新 Variant 的 is_archived = DEFAULT false
-    const defaultIsArchived = false;
-    expect(defaultIsArchived).toBe(false);
+  it('Migration 00011 — is_archived 列为 boolean NOT NULL DEFAULT false', () => {
+    // 读取 Migration 00011 源文件，验证 is_archived 列的 DDL 定义
+    const migrationsDir = path.resolve(process.cwd(), 'supabase/migrations');
+    const sql = fs.readFileSync(
+      path.join(migrationsDir, '00011_add_variant_soft_archive.sql'),
+      'utf-8',
+    );
+
+    // 断言：ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false
+    expect(sql).toMatch(/ADD COLUMN\s+IF NOT EXISTS\s+is_archived\s+boolean\s+NOT NULL\s+DEFAULT\s+false/);
   });
 
   it('新 Variant 创建后应立即在 list(active) 中可见', async () => {

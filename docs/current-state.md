@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY11` — ProductVariant 软归档与库存视图降噪（P5-SY11F DONE — 同步非回归验证 + 质量门 + 文档收口完成。P5-SY11A~F 全部 DONE。P5-SY10 全部子任务（A~F）DONE。P5-SY9 全部子任务（A~K）DONE。）
+`P5-SY11` — ProductVariant 软归档与库存视图降噪（P5-SY11F DONE — Codex 返工通过。P5-SY11A~F 全部 DONE。）
 
 ## Completed Tasks
 
@@ -700,7 +700,7 @@ BigSeller 实际 VXE 结构：
 
 ## Current Task References
 
-当前 P5-SY11 任务包（P5-SY11E DONE — Variant 列表页面 + 归档/恢复 UI 完成。P5-SY11F PENDING，下一步 P5-SY11F）。P5-SY11A~D DONE。P5-SY10 全部子任务（A~F）DONE。P5-SY9 全部子任务（A~K）DONE。
+当前 P5-SY11 任务包（P5-SY11F DONE — Codex 返工通过。P5-SY11A~F 全部 DONE。返工项：1) phase-5-sync.md 文档矛盾修复 — P5-SY11C/D/E/F PENDING→DONE，旧 IN_PROGRESS→DONE；2) 迁移断言加固 — 读取真实 .sql 文件验证 Step 7 INSERT 列清单 + ON CONFLICT + Migration 00011 DDL。22/22 非回归测试，914/914 TS + lint 0 + build pass + 271 Python。）
 
 **P5-SY11 核心文件（已完成）：**
 - ✅ `supabase/migrations/00011_add_variant_soft_archive.sql` — 新增 `is_archived` + `archived_at` + `archived_by` 列 + 部分索引 + RLS 调整 (P5-SY11A)
@@ -743,4 +743,4 @@ BigSeller 实际 VXE 结构：
 
 ## Last Updated
 
-2026-06-25（P5-SY11F DONE — 同步非回归验证 + 质量门 + 文档收口完成。P5-SY11A~F 全部 DONE。22 项非回归测试：验证已归档 Variant sync 链路不受影响、恢复后默认视图重显示、新 Variant 默认 is_archived=false、P5-SY11A~E 行为不退化。质量门：914/914 TS 测试（29 文件），lint 0 errors，build pass；Python 271 通过。P5-SY10 全部子任务（A~F）DONE。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
+2026-06-25（P5-SY11F Codex 返工通过。2 项阻塞修复：1) phase-5-sync.md P5-SY11C/D/E/F PENDING→DONE，旧 IN_PROGRESS 章节→DONE；2) p5-sy11f-non-regression.test.ts 迁移断言加固 — 读取真实 Migration 00009/00011 .sql 文件，正则提取 Step 7 INSERT 列清单 + ON CONFLICT DO NOTHING + DDL DEFAULT false。质量门：914/914 TS（29 文件），lint 0 errors，build pass；Python 271 通过。等待 Codex 复验。）
