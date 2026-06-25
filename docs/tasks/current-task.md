@@ -2,221 +2,249 @@
 
 ## Task ID
 
-`P5-SY11` — ProductVariant 软归档与库存视图降噪
+`P5-SY11-REWORK`（P5-SY11G）— 语义返工：用户级 Variant 归档偏好
 
 ## 状态
 
-`P5-SY11F DONE` — Codex 返工通过。P5-SY11A~F 全部 DONE。返工项：1) phase-5-sync.md 文档矛盾修复（P5-SY11C/D/E/F PENDING→DONE，旧 IN_PROGRESS→DONE）；2) 迁移断言加固（读取真实 .sql 文件）。质量门：914/914 TS + lint 0 + build pass + 271 Python。等待 Codex 复验。下一步 P5-SY12（PENDING）。
+`P5-SY11-REWORK PENDING` — 任务包已创建，等待 Codex 审查。P5-SY11A~F 技术实现已完成，但业务语义需从全局归档迁移为每人独立归档偏好。
 
 ## 背景
 
-P5-SY9 已完成全部 5 海外仓的生产化批量同步，数据库中已有数百个 ProductVariant 记录。随着同步持续运行，会出现以下运营噪音：
+P5-SY11A~F 按**全局 ProductVariant 状态**实现了软归档：在 `product_variant` 表新增 `is_archived` 列（Migration 00011），Operator RLS 全局过滤 `is_archived = false`，仅 Admin 可执行归档/恢复。
 
-- 停产物料、供应商切换等导致部分 SKU 不再活跃
-- 但这些 Variant **不能删除**：同步会通过 `ON CONFLICT DO NOTHING` 重新创建，且 `shipment_item` 等历史记录通过 FK 引用它们
-- 库存列表、低库存统计中仍会显示已废弃 SKU，干扰运营判断
+用户已确认以下业务语义，与当前实现**严重冲突**：
 
-P5-SY11 引入**软归档**机制：保留 Variant 数据和同步链路完整性，但从默认视图中隐藏已归档条目，降低运营噪音。
+| # | 用户确认语义 | 当前实现 | 冲突 |
+|---|------------|---------|------|
+| 1 | 归档是每个用户自己的个人偏好 | `product_variant.is_archived` 是全局列，A 归档后 B 也看不到 | **严重** |
+| 2 | 每个账号都需要归档权限，不限 Admin | `archiveVariants`/`restoreVariants` 仅限 Admin | **严重** |
+| 3 | A 归档的产品只影响 A；B 看不到 A 的归档状态 | Operator RLS `AND is_archived = false` 对所有用户统一隐藏 | **严重** |
+| 4 | A 下次登录仍保留自己的归档列表 | 全局列持久化可保留，但不区分用户 | 需迁移 |
+| 5 | 后续"特别关注"功能应共享偏好表设计 | 单列 `is_archived` 无法扩展到多种偏好类型 | 需重新设计 |
+
+**结论**：P5-SY11A~F 技术实现（Migration / 类型 / Repository / Server Action / UI / 测试）代码质量合格，但业务语义需从全局归档迁移为**用户级个人偏好**。
 
 ## 任务目标
 
-1. **新增 `product_variant.is_archived` 软归档字段**：通过 Migration 00011 增加列、可选审计字段、索引和 RLS 调整。
-2. **默认库存列表、低库存统计、常规 Variant 列表隐藏已归档 Variant**：Repository 层默认过滤 `is_archived = true`，数据库层 (RLS) Operator SELECT 策略增加 `AND is_archived = false`。
-3. **同步写入链路不受影响**：已归档 Variant 的 `inventory` 仍被同步更新，确保恢复后数据是最新值。
-4. **Admin 可手动归档/恢复**：新增 Server Actions，仅 Admin 可执行；归档时记录 `archived_at` 和 `archived_by`。
-5. **Operator 只读**：数据库 RLS 层面拒绝 Operator 查看已归档 Variant；页面不展示归档/恢复操作入口。
-6. **不删除 ProductVariant、不改变 Product → ProductVariant → Inventory 模型**。
+1. **新建 `user_variant_preference` 表**（Migration 00012）：`user_id` + `variant_id` + `preference_type`，支持 `'archived'` 类型，预留后续 `'favorited'` 等扩展。
+2. **废弃 `product_variant.is_archived` 全局列**：不删除已执行 Migration 00011（约束：不修改已执行 Migration），但所有业务代码停止读写 `is_archived`，改用 `user_variant_preference` 表。
+3. **每个登录用户均可归档/恢复自己的 Variant**：Admin 和 Operator 权限相同，`requireActiveAuth()` 替代 `requireActiveAdmin()`。
+4. **A 的归档不影响 B**：每个用户的归档偏好完全独立，通过 `WHERE user_id = auth.uid()` RLS 隔离。
+5. **Inventory 视图按当前用户归档偏好过滤**：海外库存列表、低库存统计、库存统计卡片排除当前用户已归档的 Variant。
+6. **产品详情页（`getByProductId`）不过滤归档**：与 P5-SY11D 设计一致。
+7. **预留"特别关注"扩展**：`preference_type` 使用 CHECK 约束枚举，当前仅 `'archived'`，后续可新增 `'favorited'` 等类型，表结构不变。本次不实现关注功能。
+8. **同步写入链路完全不受影响**：归档偏好是用户级元数据，不影响 `sync_warehouse_inventory` RPC 和 inventory 写入。
 
 ## 强制架构边界
 
-- 数据库结构变更必须通过**新 Migration 00011**，不修改已执行 Migration 00001~00010。
+- 数据库结构变更必须通过**新 Migration 00012**，不修改已执行 Migration 00001~00011。
+- `product_variant.is_archived` 列保留在 DB 中（Migration 00011 不修改），但所有业务代码不再读写该列。
 - 保持 Repository Pattern、Server Actions、Zod 校验、Supabase RLS 完整链路。
-- 所有视图过滤优先在 Repository/Supabase 查询层完成，避免仅依赖前端隐藏。
-- Operator 对已归档 Variant 的不可见性在 **RLS 层**强制执行，不依赖应用代码。
-- 同步 RPC（`sync_warehouse_inventory`）不修改，`INSERT ON CONFLICT DO NOTHING` 不涉及 `is_archived`。
-- 归档/恢复仅 Admin 可操作（Server Action + RLS 双重校验）。
+- 用户偏好隔离在 **RLS 层**强制执行：`user_variant_preference` 的 SELECT/INSERT/DELETE 策略限制 `user_id = auth.uid()`。
+- 所有 Inventory 视图过滤优先在 Repository/Supabase 查询层完成，避免仅依赖前端隐藏。
+- 归档/恢复对所有登录用户开放（`requireActiveAuth`），不限制角色。
 - 不删除 ProductVariant 双层模型。
 - 不启动 P5-SY10 Phase B 自动 Real Write。
 - `WEBSYNC_REAL_WRITE_ENABLED` 继续保持 disabled。
 - `service_role` 不得进入前端或 client bundle。
+- 不实现"特别关注"功能（仅预留表结构扩展空间）。
 
 ## 当前代码现状
 
-### product_variant 表（Migration 00001）
+### P5-SY11A~F 已完成设施（可复用）
 
-```sql
-CREATE TABLE product_variant (
-  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id   uuid        REFERENCES product(id) ON DELETE SET NULL,
-  sku          text        NOT NULL,
-  country      text        NOT NULL CHECK (country IN ('TH','ID','MY','PH','VN','CN')),
-  name         text        NOT NULL,
-  match_status text        NOT NULL DEFAULT 'unmatched' CHECK (match_status IN ('matched','unmatched','pending')),
-  last_sync_at timestamptz,
-  created_at   timestamptz NOT NULL DEFAULT now(),
-  updated_at   timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT variant_sku_country_unique UNIQUE (sku, country)
-);
-```
+- `src/features/variants/` 完整模块：types / repository / actions / schema / columns / components
+- `src/features/inventory/repository.ts`：`getOverseasList()` / `getLowStock()` / `getOverseasStats()` / `getByProductId()`
+- `src/app/dashboard/variants/` 完整页面：列表 / 未匹配 / loading / error
+- `src/features/variants/components/archive-controls.tsx`：归档/恢复操作组件
+- 914 项 TypeScript 测试 + 271 项 Python 测试
+- Migration 00011（`is_archived` 列 + RLS）已执行
 
-**`is_archived` 不存在**。Migration 00003~00010 均未修改 product_variant 列。
+### 需要替换的部分
 
-### 当前 RLS（Migration 00001 + 00003）
+| 现有设施 | 问题 | 替换方案 |
+|---------|------|---------|
+| `product_variant.is_archived` 列 | 全局状态，A 影响 B | 停止读写；改用 `user_variant_preference` |
+| `product_variant.archived_at` / `archived_by` | Admin 审计字段，语义错误 | 停止读写；`user_variant_preference.created_at` 替代时间追踪 |
+| Operator RLS `AND is_archived = false` | 对所有用户统一过滤 | 新 RLS 在 `user_variant_preference` 按 `auth.uid()` 隔离 |
+| `variantRepository.archive()` / `restore()` | 写全局 `is_archived`、接受 `archivedBy` | 重写为 INSERT/DELETE `user_variant_preference`、接受 `userId` |
+| `variantRepository.list()` 的 `archiveStatus` 过滤 | WHERE `is_archived = true/false` | LEFT JOIN `user_variant_preference` ON current user |
+| `variantRepository.match()` / `unmatch()` / `batchMatch()` 归档阻止 | 读取 `is_archived` 全局列 | 改为检查当前用户是否已归档（但匹配操作应独立于个人偏好，本次需重新评估是否保留阻止逻辑） |
+| `archiveVariants` / `restoreVariants` Server Actions | `requireActiveAdmin()` | 改为 `requireActiveAuth()` |
+| `archive-controls.tsx` | Admin 专属 | 所有已登录用户可见 |
+| Variant 页面权限 | Operator 只读、无操作按钮 | Admin 和 Operator 均可归档/恢复 |
 
-- `admin_all_variant`：Admin 全权限（ALL）
-- `operator_select_variant`：Operator 只读（SELECT），**无 `is_archived` 过滤**
+### 需要保留不变的部分
 
-### 当前 Variant 页面
-
-`src/app/dashboard/variants/page.tsx` 和 `unmatched/page.tsx` 为 Phase 1 占位符，仅返回静态占位文本，未连接数据。
-
-### 当前 Inventory 查询
-
-`src/features/inventory/repository.ts` 的 `getOverseasList()`、`getLowStock()`、`getOverseasStats()` 通过 `variant:variant_id (...)` 关联查询，**未过滤 `is_archived`**（该列不存在）。
-
-### 同步 RPC
-
-Migration 00009 的 `sync_warehouse_inventory` 使用 `INSERT INTO product_variant (...) VALUES (...) ON CONFLICT (sku, country) DO NOTHING`，仅创建新 Variant，不更新已有行。新增 `is_archived` 列后新 Variant 默认 `false`，已有归档 Variant 不受影响。
-
-### 现有 Variant Feature Module
-
-`src/features/variants/` 已有完整基础设施：
-- `types.ts`：`VariantRow`（继承 Database 类型）、`VariantItem`、`VariantFilters`（country/matchStatus/productId/search）
-- `repository.ts`：`list()`、`getUnmatched()`、`getById()`、`match()`、`unmatch()`、`batchMatch()`，均通过 `createClient()` 走 RLS
-- `actions.ts`：`matchVariant()`、`unmatchVariant()`、`batchMatchVariants()`，均 `requireAdmin()`
-- `schema.ts`：`variantMatchSchema`、`variantSearchSchema`
-- `columns.tsx`：6 列定义（sku/name/country/match_status/productName/last_sync_at）
+- `src/features/inventory/repository.ts` 的过滤策略（过滤已归档 Variant），但过滤条件从全局 `is_archived` 改为当前用户的 `user_variant_preference`
+- `getByProductId()` 不过滤归档
+- 同步 RPC `sync_warehouse_inventory` 完全不涉及归档
+- Variant 页面整体 UI 布局（筛选标签 / 表格 / 搜索 / 分页）
+- 非回归测试的核心断言逻辑（同步不受影响、恢复后可见）
 
 ## 子任务拆分
 
 | Sub-Task ID | 任务 | 目标 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **P5-SY11A** | Migration 00011：`is_archived` 列 + 审计字段 + 索引 + RLS | 新增 migration 文件，含 DDL（`is_archived` + `archived_at` + `archived_by`）、部分索引、RLS 调整（Operator SELECT 过滤 `is_archived=false`）、静态契约测试 | — | **DONE**（2026-06-24。18/18 静态契约测试，762/762 TS，lint 0 errors，build pass） |
-| **P5-SY11B** | 类型同步 + Repository：archive/restore/filter | 更新 `database.ts` 类型；`variantRepository` 新增 `archive()`/`restore()` 方法；`list()`/`getUnmatched()` 增加 `archiveStatus` 过滤；`match()`/`unmatch()`/`batchMatch()` 阻止已归档 Variant 操作；测试 | P5-SY11A | **DONE**（2026-06-24。31/31 测试，lint 0 errors，build pass） |
-| **P5-SY11C** | Server Actions：`archiveVariants` / `restoreVariants` | Admin 专用 Server Action，Zod 校验 + revalidatePath；Admin/Operator 权限测试 | P5-SY11B | **DONE**（2026-06-25。24/24 测试，lint 0 errors，build pass） |
-| **P5-SY11D** | Inventory 层过滤：默认视图隐藏已归档 Variant | `getOverseasList()`/`getLowStock()`/`getOverseasStats()` 过滤已归档 Variant；`getByProductId()` 不过滤；测试覆盖 | P5-SY11A | **DONE**（2026-06-25。19/19 测试，853/853 全量测试，lint 0 errors，build pass） |
-| **P5-SY11E** | Variant 列表页面 + 归档/恢复 UI | 实现 `variants/page.tsx`（Server + Client Component）：数据表格、归档筛选标签（活跃/已归档/全部）、Admin 批量归档/恢复按钮、SKU/名称搜索（URL searchParams）、loading/error 状态；`unmatched/page.tsx` 仅显示活跃未匹配，requireActiveAuth；Operator 只读 | P5-SY11C, P5-SY11D | **DONE**（2026-06-25。返工完成：搜索 + loading/error + 30 项页面测试 + unmatched requireActiveAuth + 文档同步。892/892 测试，lint 0 errors，build pass） |
-| **P5-SY11F** | 同步非回归验证 + 质量门 + 文档收口 | 验证同步 RPC 不受影响、恢复后库存正确出现；全量测试 + lint/build + Python；文档同步 | P5-SY11E | **DONE**（2026-06-25。Codex 返工通过。2 项阻塞修复：1) phase-5-sync.md 文档矛盾修复 — P5-SY11C/D/E/F PENDING→DONE，旧 IN_PROGRESS→DONE；2) 非回归测试迁移断言加固 — 读取真实 Migration 00009/00011 .sql 文件，正则提取 Step 7 INSERT 列清单 + ON CONFLICT DO NOTHING + DDL DEFAULT false。22/22 非回归测试，914/914 TS（29 文件），lint 0 errors，build pass；271 Python。等待 Codex 复验。） |
+| **P5-SY11G-A** | Migration 00012：`user_variant_preference` 表 + RLS | 新建 migration 文件，含 DDL（`user_variant_preference` 表含 `user_id`/`variant_id`/`preference_type`/`created_at`）+ UNIQUE 约束 + 索引 + RLS（用户仅能操作自己的偏好）+ 静态契约测试 | — | **PENDING** |
+| **P5-SY11G-B** | 类型同步 + Variant Repository 重写 | 更新 `database.ts` 类型；`variantRepository` 新增 `archive()`/`restore()`/`getUserArchivedVariantIds()` 方法（基于 `user_variant_preference`）；`list()`/`getUnmatched()` 改为 LEFT JOIN `user_variant_preference` 按当前用户过滤；评估并调整 `match()`/`unmatch()`/`batchMatch()` 归档阻止逻辑 | P5-SY11G-A | **PENDING** |
+| **P5-SY11G-C** | Server Actions：重写 `archiveVariants` / `restoreVariants` | `requireActiveAuth()` 替代 `requireActiveAdmin()`；从 session 获取 `userId`；调用重写后的 repository 方法；Zod 校验 + revalidatePath | P5-SY11G-B | **PENDING** |
+| **P5-SY11G-D** | Inventory 层过滤：按当前用户归档偏好过滤 | `getOverseasList()`/`getLowStock()`/`getOverseasStats()` 改为基于 `user_variant_preference` 过滤（排除当前用户已归档的 Variant）；`getByProductId()` 不过滤；实现策略优先 DB 层（LEFT JOIN + IS NULL 排除），JS 兜底 | P5-SY11G-A | **PENDING** |
+| **P5-SY11G-E** | Variant 页面 UI：所有用户均可归档/恢复 | `archive-controls.tsx` 对所有已登录用户可见；页面权限标签不再区分 Admin/Operator（均可归档/恢复）；搜索/筛选/分页复用现有实现 | P5-SY11G-C, P5-SY11G-D | **PENDING** |
+| **P5-SY11G-F** | 质量门 + 非回归验证 + 文档收口 | 全量测试 + lint + build + Python；验证全局 is_archived 代码路径已全部替换；验证 A 归档不影响 B；验证恢复后库存正确；文档同步 | P5-SY11G-E | **PENDING** |
 
 ## 子任务详细规格
 
-### P5-SY11A — Migration 00011
+### P5-SY11G-A — Migration 00012
 
 **新文件**：
-- `supabase/migrations/00011_add_variant_soft_archive.sql`
-- `supabase/migrations/00011_add_variant_soft_archive.test.ts`（静态契约测试）
+- `supabase/migrations/00012_user_variant_preference.sql`
+- `supabase/migrations/00012_user_variant_preference.test.ts`（静态契约测试）
 
 **DDL 内容**：
 
 ```sql
--- 1. 新增 is_archived 列
-ALTER TABLE product_variant
-  ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false;
+-- 1. 新建用户 Variant 偏好表
+CREATE TABLE IF NOT EXISTS user_variant_preference (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  variant_id      uuid        NOT NULL REFERENCES product_variant(id) ON DELETE CASCADE,
+  preference_type text        NOT NULL CHECK (preference_type IN ('archived')),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, variant_id, preference_type)
+);
 
--- 2. 新增审计列（可选）
-ALTER TABLE product_variant
-  ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+-- 2. 索引：按用户查询偏好
+CREATE INDEX IF NOT EXISTS idx_uvp_user_type
+  ON user_variant_preference (user_id, preference_type);
 
-ALTER TABLE product_variant
-  ADD COLUMN IF NOT EXISTS archived_by uuid REFERENCES profiles(id);
+-- 3. 索引：按 Variant 查询（用于检查特定 Variant 的被归档情况）
+CREATE INDEX IF NOT EXISTS idx_uvp_variant
+  ON user_variant_preference (variant_id, preference_type);
 
--- 3. 部分索引（仅已归档行，体积小）
-CREATE INDEX IF NOT EXISTS idx_variant_is_archived
-  ON product_variant (is_archived)
-  WHERE is_archived = true;
+-- 4. RLS：启用
+ALTER TABLE user_variant_preference ENABLE ROW LEVEL SECURITY;
 
--- 4. RLS：收紧 Operator SELECT
-DROP POLICY IF EXISTS "operator_select_variant" ON product_variant;
-
-CREATE POLICY "operator_select_variant" ON product_variant
+-- 5. RLS：用户可以查看自己的偏好
+CREATE POLICY "user_select_own_preferences" ON user_variant_preference
   FOR SELECT
-  USING (get_user_role() = 'operator' AND is_archived = false);
+  USING (auth.uid() = user_id);
 
--- admin_all_variant 保持不变（Admin 可查看全部）
+-- 6. RLS：用户可以插入自己的偏好
+CREATE POLICY "user_insert_own_preferences" ON user_variant_preference
+  FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- 7. RLS：用户可以删除自己的偏好
+CREATE POLICY "user_delete_own_preferences" ON user_variant_preference
+  FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- 8. Admin 全权限（可查看所有用户的偏好，用于支持和审计）
+CREATE POLICY "admin_all_preferences" ON user_variant_preference
+  FOR ALL
+  USING (get_user_role() = 'admin');
 ```
 
-**验收标准**：
-- DDL 语法正确，可重复执行（`IF NOT EXISTS` / `DROP IF EXISTS`）
-- `is_archived` 默认 `false`，新 Variant 不受影响
-- `archived_by` 有 FK 约束指向 `profiles(id)`
-- 部分索引仅覆盖 `is_archived = true` 行
-- Operator SELECT 策略包含 `AND is_archived = false`
-- Admin 策略不变（全权限）
-- 不修改已执行 Migration
-- 静态测试 ≥8 项（列存在、默认值、索引、FK、RLS 策略数量与内容）
+**设计说明**：
+- `preference_type` 使用 CHECK 约束枚举，当前仅 `'archived'`。后续"特别关注"功能只需 `ALTER TABLE ... DROP CONSTRAINT ... ADD CHECK (preference_type IN ('archived', 'favorited'))`，表结构不变。
+- `UNIQUE (user_id, variant_id, preference_type)` 防止同一用户对同一 Variant 重复归档。
+- `ON DELETE CASCADE`：用户或 Variant 被删除时自动清理偏好记录。
+- Admin 保留全权限策略，用于技术支持场景（不暴露在普通 UI）。
 
-### P5-SY11B — 类型同步 + Repository
+**验收标准**：
+- DDL 语法正确，可重复执行（`IF NOT EXISTS`）
+- `preference_type` CHECK 约束仅允许 `'archived'`
+- UNIQUE 约束防止重复归档
+- FK 约束指向 `profiles(id)` 和 `product_variant(id)`
+- RLS：用户仅能 SELECT/INSERT/DELETE 自己的行
+- Admin RLS 可查看全部
+- 不修改已执行 Migration 00001~00011
+- `product_variant.is_archived` 列保留不动（不 DROP）
+- 静态测试 ≥10 项（表存在、列存在/类型、UNIQUE、FK、索引、RLS 策略数量与内容、CHECK 约束）
+
+### P5-SY11G-B — 类型同步 + Variant Repository 重写
 
 **修改文件**：
-- `src/types/database.ts` — `product_variant` 的 Row/Insert/Update 增加 `is_archived`、`archived_at`、`archived_by`
-- `src/features/variants/types.ts` — `VariantFilters` 增加 `archiveStatus?: 'active' | 'archived' | 'all'`
-- `src/features/variants/schema.ts` — 新增 `archiveVariantsSchema` / `restoreVariantsSchema` / 更新 `variantSearchSchema` 增加 `archiveStatus`
-- `src/features/variants/repository.ts` — 新增方法 + 修改现有方法
+- `src/types/database.ts` — 新增 `user_variant_preference` 表的 Row/Insert/Update 类型
+- `src/features/variants/types.ts` — `VariantFilters` 的 `archiveStatus` 语义调整；新增 `UserVariantPreference` 类型
+- `src/features/variants/schema.ts` — 更新 `archiveVariantsSchema` / `restoreVariantsSchema`（移除 `archivedBy` 相关，改为从 session 获取 userId）
+- `src/features/variants/repository.ts` — 重写归档相关方法
 
-**Repository 新增方法**：
+**Repository 重写方法**：
 
 ```typescript
-// 批量归档
-archive(variantIds: string[], archivedBy: string): Promise<{ archived: number }>
+// 获取当前用户已归档的 Variant ID 集合（用于过滤）
+getUserArchivedVariantIds(userId: string): Promise<Set<string>>
 
-// 批量恢复
-restore(variantIds: string[]): Promise<{ restored: number }>
+// 批量归档（INSERT INTO user_variant_preference）
+archive(variantIds: string[], userId: string): Promise<{ archived: number }>
+
+// 批量恢复（DELETE FROM user_variant_preference）
+restore(variantIds: string[], userId: string): Promise<{ restored: number }>
 ```
 
 **Repository 修改**：
 
 | 方法 | 修改 |
 |---|---|
-| `list(filters)` | `filters.archiveStatus` 默认 `'active'` 时过滤 `is_archived = false`；`'archived'` 时过滤 `is_archived = true`；`'all'` 时不过滤（显式传入，仅 Admin 使用） |
-| `getUnmatched()` | 增加 `.eq('is_archived', false)` — 仅返回活跃的未匹配 Variant |
-| `match()` | 归档检查：如 Variant 已归档，抛出 `VariantError('ARCHIVED')` |
-| `unmatch()` | 同上 |
-| `batchMatch()` | 同上（在应用层逐 ID 检查或 RPC 层校验） |
+| `list(filters, userId)` | `filters.archiveStatus` 默认 `'active'` 时 LEFT JOIN `user_variant_preference` ON `variant.id = uvp.variant_id AND uvp.user_id = <userId> AND uvp.preference_type = 'archived'`，过滤 `WHERE uvp.id IS NULL`（未归档）；`'archived'` 时过滤 `WHERE uvp.id IS NOT NULL`；`'all'` 时不过滤 |
+| `getUnmatched(userId)` | LEFT JOIN + IS NULL 排除当前用户已归档 Variant |
+| `match()` / `unmatch()` / `batchMatch()` | **评估**：当前阻止已归档 Variant 的匹配操作是基于全局 `is_archived`。在用户级偏好模型下，归档是个人视图偏好，不应阻止其他用户的业务操作。建议：**移除归档阻止逻辑**，匹配/取消匹配操作独立于任何用户的归档偏好。若用户希望看到已归档 Variant，可通过 `archiveStatus='all'` 查看。 |
+| `getById()` | 新增可选参数 `userId`，返回 Variant 详情 + 当前用户是否已归档 |
+
+**移除/废弃**：
+- 不再读写 `product_variant.is_archived`、`archived_at`、`archived_by` 列
+- `database.ts` 中 `product_variant` Row 的 `is_archived`/`archived_at`/`archived_by` 字段保留类型定义但标注 `@deprecated`
 
 **验收标准**：
-- `database.ts` 类型与 Migration 00011 一致
-- `list()` / `list({})` 默认仅返回活跃 Variant（`archiveStatus` 默认 `'active'`）
-- `list({ archiveStatus: 'archived' })` 仅返回已归档 Variant
-- `list({ archiveStatus: 'all' })` 返回全部（仅 Admin 显式传入）
-- `archive()` 正确设置 `is_archived=true`、`archived_at=now()`、`archived_by`
-- `restore()` 正确设置 `is_archived=false`、清空审计字段
-- `match()`/`unmatch()`/`batchMatch()` 对已归档 Variant 抛出 `ARCHIVED` 错误
-- Repository 测试 ≥20 项
+- `database.ts` 新增 `user_variant_preference` 类型，与 Migration 00012 一致
+- `list()` / `list({})` 默认仅返回当前用户未归档的 Variant
+- `list({ archiveStatus: 'archived' })` 仅返回当前用户已归档 Variant
+- `list({ archiveStatus: 'all' })` 返回全部（含归档状态标记）
+- `archive()` 正确 INSERT INTO `user_variant_preference`（`user_id` + `variant_id` + `preference_type='archived'`）
+- `restore()` 正确 DELETE FROM `user_variant_preference` WHERE `user_id` + `variant_id`
+- 重复归档同一 Variant 返回明确中文错误
+- `getUnmatched()` 排除当前用户已归档 Variant
+- 匹配操作不再因归档状态阻止（或保留阻止但基于当前用户偏好）
+- Repository 测试 ≥25 项
 
-### P5-SY11C — Server Actions
+### P5-SY11G-C — Server Actions
 
 **修改文件**：
-- `src/features/variants/actions.ts` — 新增 `archiveVariants()` / `restoreVariants()`
+- `src/features/variants/actions.ts` — 重写 `archiveVariants()` / `restoreVariants()`
 
 **Server Action 签名**：
 
 ```typescript
-// Admin 批量归档
+// 任何已登录用户批量归档自己的 Variant
 export async function archiveVariants(variantIds: string[]): Promise<ActionResult<{ archived: number }>>
 
-// Admin 批量恢复
+// 任何已登录用户批量恢复自己的 Variant
 export async function restoreVariants(variantIds: string[]): Promise<ActionResult<{ restored: number }>>
 ```
 
 **实现要点**：
-- `requireActiveAdmin()` 校验（拒绝非活跃 Admin、Operator、未认证用户）
+- `requireActiveAuth()` 校验（Admin 和 Operator 均可，无需 `requireActiveAdmin`）
+- 从 `getCurrentActiveUser()` 获取 `userId`
 - Zod 校验：`variantIds` 为非空 UUID 数组，去重
-- 调用 `variantRepository.archive()` / `variantRepository.restore()`
+- 调用 `variantRepository.archive(userId, variantIds)` / `variantRepository.restore(userId, variantIds)`
 - `revalidatePath('/dashboard/variants')` 和 `/dashboard/variants/unmatched`
 - 错误处理：`VariantError` → 中文错误；未知错误 → 通用提示
 
 **验收标准**：
-- 活跃 Admin 可成功归档/恢复
-- 非活跃 Admin 调用返回权限错误（`requireActiveAdmin` 拒绝）
-- Operator 调用返回权限错误
+- 活跃 Admin 可成功归档/恢复（操作的是自己的偏好）
+- 活跃 Operator 可成功归档/恢复
+- 非活跃用户调用返回权限错误（`requireActiveAuth` 拒绝 `is_active = false`）
 - 未认证用户调用返回权限错误
 - 空数组返回参数校验错误
 - 非法 UUID 返回校验错误
 - 不存在的 Variant ID 返回明确中文错误
+- Admin A 归档 Variant X → Admin B 视图不受影响（B 仍可看到 Variant X）
 - 操作后页面路径已 revalidate
-- Server Action 测试 ≥15 项（活跃 Admin 成功/非活跃 Admin 拒绝/Operator 拒绝/未认证拒绝/空数组/非法 ID/不存在 ID/已归档重复归档等）
+- Server Action 测试 ≥18 项
 
-### P5-SY11D — Inventory 层过滤
+### P5-SY11G-D — Inventory 层过滤
 
 **修改文件**：
 - `src/features/inventory/repository.ts`
@@ -226,88 +254,60 @@ export async function restoreVariants(variantIds: string[]): Promise<ActionResul
 
 | 方法 | 修改 |
 |---|---|
-| `getOverseasList()` | 使用 inner join 或 DB/RPC 层可靠过滤已归档 Variant；JS 兜底必须排除 `variant == null` 和 `is_archived === true` |
-| `getLowStock()` | 同上 |
-| `getOverseasStats()` | 同上（统计前排除已归档 Variant 的 inventory 记录） |
-| `getByProductId()` | **不过滤** — 产品详情页应显示全部 Variant（含已归档） |
+| `getOverseasList(filters, userId)` | 新增 `userId` 参数；排除当前用户在 `user_variant_preference` 中 `preference_type='archived'` 的 Variant；优先 DB 层：NOT EXISTS (SELECT 1 FROM user_variant_preference WHERE variant_id = inventory.variant_id AND user_id = <userId> AND preference_type = 'archived')；JS 兜底排除 |
+| `getLowStock(filters, userId)` | 同上 |
+| `getOverseasStats(userId)` | 同上 |
+| `getByProductId(productId)` | **不过滤**，不传 userId |
 
 **实现策略**：
-- **第一优先级**：DB 层过滤。Supabase 查询使用 `variant:variant_id!inner (id, is_archived)` + `.eq('variant.is_archived', false)` 过滤已归档 Variant。若 Supabase 关联 `.eq()` 不能可靠过滤 inventory 主表，则改用 RPC 或 SQL `INNER JOIN product_variant ON inventory.variant_id = product_variant.id AND product_variant.is_archived = false`。
-- **JS 兜底**：查询选择 `variant:variant_id (id, is_archived)` 时解包，显式排除两条：`variant == null`（防止 null variant 泄漏）和 `variant.is_archived === true`。兜底层不得跳过 null 检查。
-- **Operator RLS 配合**：Operator 的 `operator_select_variant` 策略已包含 `AND is_archived = false`，Operator 无法看见已归档 Variant 数据。但当 `inventory.variant_id` 对应一个 Operator 不可见的 Variant 时，Supabase 关联展开的 `variant` 字段可能为 `null`——JS 兜底的 `variant == null` 排除必须覆盖此场景，确保 Operator 视角下不泄漏已归档库存。
+- **第一优先级**：DB 层过滤。使用 NOT EXISTS 子查询或 LEFT JOIN + IS NULL 排除当前用户已归档 Variant。
+- **JS 兜底**：查询时携带 `variant_id`，批量查询 `user_variant_preference` 获取当前用户已归档集合，在 JS 层排除。确保 `variant == null` 也被排除（防御性）。
+- **Admin 调用**：`userId` 从 session 获取，Admin 也只看自己的归档偏好。
 
 **验收标准**：
-- 海外库存列表不显示已归档 Variant 的库存
-- 低库存统计不包含已归档 Variant
-- 海外库存统计卡片不计数已归档 Variant
-- 产品详情页（`getByProductId`）仍显示已归档 Variant 的库存
-- 恢复后 Variant 重新出现在默认视图
-- **Operator RLS + null variant 不泄漏 inventory**：当 inventory 关联到一个 Operator 不可见（已归档）的 Variant 时，展开结果为 `null`，JS 兜底正确排除，不显示该行
-- 测试 ≥12 项（含 null variant 排除 / RLS 泄漏测试 / DB 层过滤验证）
+- 海外库存列表不显示当前用户已归档 Variant 的库存
+- 低库存统计不包含当前用户已归档 Variant
+- 海外库存统计卡片不计数当前用户已归档 Variant
+- 产品详情页（`getByProductId`）仍显示全部 Variant 库存
+- 用户 A 归档 Variant X → 用户 B 的库存视图不受影响
+- 恢复后 Variant 重新出现在当前用户的默认视图
+- 测试 ≥15 项
 
-### P5-SY11E — Variant 列表页面 + 归档/恢复 UI
-
-**新文件**：
-- `src/features/variants/components/variant-table.tsx` — 客户端数据表格组件
-- `src/features/variants/components/archive-controls.tsx` — 归档/恢复操作组件
+### P5-SY11G-E — Variant 页面 UI
 
 **修改文件**：
-- `src/app/dashboard/variants/page.tsx` — 替换占位符
-- `src/app/dashboard/variants/unmatched/page.tsx` — 替换占位符（仅活跃未匹配）
-- `src/features/variants/columns.tsx` — 增加 `is_archived` 状态列
+- `src/app/dashboard/variants/_components/variant-page-content.tsx` — 交互层
+- `src/app/dashboard/variants/page.tsx` — Server Component
+- `src/app/dashboard/variants/unmatched/page.tsx` — 未匹配页面
+- `src/features/variants/components/archive-controls.tsx` — 操作组件
 
-**页面设计**：
+**权限变更**：
 
-```
-┌─────────────────────────────────────────────────┐
-│  SKU 管理                                       │
-│                                                 │
-│  [活跃] [已归档] [全部]    🔍 搜索 SKU/名称     │
-│                                                 │
-│  ┌─ 批量操作 ─────────────────────────────────┐ │
-│  │ ☐ 全选  已选 3 项  [归档选中] [恢复选中]   │ │
-│  └────────────────────────────────────────────┘ │
-│                                                 │
-│  ┌─────────────────────────────────────────────┐│
-│  │ ☐│SKU        │名称    │国家│匹配│产品│归档 ││
-│  │──│───────────│────────│────│────│────│─────││
-│  │☐│SKU-001    │产品A   │PH  │已匹│产品A│     ││
-│  │☐│SKU-002    │旧产品  │PH  │未匹│—   │📦已归档││
-│  │  │...        │        │    │    │    │     ││
-│  └─────────────────────────────────────────────┘│
-│                        第 1 页，共 N 页          │
-└─────────────────────────────────────────────────┘
-```
+| 元素 | P5-SY11E（旧） | P5-SY11G（新） |
+|------|--------------|--------------|
+| 归档/恢复按钮 | 仅 Admin 可见 | 所有已登录用户可见 |
+| 复选框批量选择 | 仅 Admin 可见 | 所有已登录用户可见 |
+| 归档筛选标签（活跃/已归档/全部） | Admin 全部，Operator 仅活跃 | 所有用户全部标签可用 |
+| 页面访问 | `requireActiveAuth()` | `requireActiveAuth()`（不变） |
 
-**组件结构**：
-- Server Component（`page.tsx`）：`requireActiveAuth()` 获取当前用户角色，传递 `isAdmin` 和初始数据
-- Client Component（`variant-table.tsx`）：
-  - 归档筛选标签（活跃/已归档/全部）→ URL search params
-  - 数据表格（复用 `columns.tsx` + 新增 `is_archived` 列）
-  - 复选框批量选择（仅 Admin 可见）
-  - 归档/恢复按钮（仅 Admin 可见，仅选中行操作）
-  - 分页（客户端或服务端分页，数据量 <500 行时客户端分页即可）
-- `unmatched/page.tsx`：仅活跃未匹配 Variant 列表，无归档筛选，无归档按钮
-
-**权限**：
-- Admin：可查看全部标签页（活跃/已归档/全部），可归档/恢复
-- Operator：仅显示活跃标签页，无复选框和操作按钮，RLS 层已过滤已归档 Variant
+**实现要点**：
+- `page.tsx`：`requireActiveAuth()` 获取当前用户 `userId` 和角色，传递给 Client Component
+- `variant-page-content.tsx`：移除 `isAdmin` 条件判断归档操作（复选框和按钮对所有用户可见）；每个用户看到的归档状态是自己的
+- `archive-controls.tsx`：移除 Admin 角色校验文案；操作确认 Dialog 不提及"管理员"
+- `unmatched/page.tsx`：使用当前用户 `userId` 过滤归档
 
 **验收标准**：
-- Variant 列表正确加载，显示 SKU/名称/国家/匹配状态/产品/归档状态
-- 归档筛选标签切换正确（活跃/已归档/全部）
-- Admin 可见复选框和批量归档/恢复按钮
-- 选择已归档 Variant 时显示「恢复选中」按钮
-- 选择活跃 Variant 时显示「归档选中」按钮
-- 混合选择时两个按钮均显示（或禁用并提示）
-- Operator 仅见活跃标签，无操作按钮
+- Admin 可见归档/恢复按钮，操作的是自己的偏好
+- Operator 可见归档/恢复按钮，操作的是自己的偏好
+- 用户 A 归档 Variant X 后，用户 A 的列表中 X 显示为已归档
+- 用户 B 同时登录，列表中 X 仍显示为活跃（不受 A 影响）
+- 归档筛选标签切换正确（活跃/已归档/全部—基于当前用户）
 - 搜索功能正常
 - 空数据、加载、错误状态已处理
 - 页面不直接访问 Supabase（走 Repository → Server Action 链）
-- 未匹配页面仅显示活跃未匹配 Variant
-- 测试 ≥15 项（含组件渲染/权限/筛选/操作/边界）
+- 测试 ≥18 项
 
-### P5-SY11F — 同步非回归验证 + 质量门 + 文档收口
+### P5-SY11G-F — 质量门 + 非回归验证 + 文档收口
 
 **质量门**：
 - `npm run test` 全部通过（排除 `**/concurrency.test.ts`）
@@ -315,69 +315,100 @@ export async function restoreVariants(variantIds: string[]): Promise<ActionResul
 - `npm run build` 通过
 - Python 测试全部通过（compileall + 所有 test_*.py）
 
-**同步非回归验证**：
-- 同步 RPC `sync_warehouse_inventory` 对已归档 Variant 的 inventory 更新正常
-- 恢复已归档 Variant 后，其 inventory 数据为最新同步值
-- 新发现 SKU 创建的 Variant 默认 `is_archived = false`
+**非回归验证**：
+- 同步 RPC `sync_warehouse_inventory` 对任意用户归档的 Variant 的 inventory 更新正常（归档是纯 UI 层偏好）
+- 恢复后 Variant 重新出现在当前用户的默认视图，库存为最新同步值
+- 新发现 SKU 创建的 Variant 对所有用户默认可见（无归档偏好记录）
+- 全局 `is_archived` 代码路径已全部替换为 `user_variant_preference` 查询
+- 用户 A 归档/恢复不影响用户 B 的视图（多用户隔离验证）
+- P5-SY11A~E 的同功能测试不退化（调整断言后迁移到新语义）
 
 **文档同步**：
-- `docs/current-state.md`：P5-SY11 进度
+- `docs/current-state.md`：P5-SY11-REWORK 完成状态
 - `docs/tasks/current-task.md`：子任务状态
-- `docs/tasks/phase-5-sync.md`：P5-SY11 更新
-- 明确记录：不删除 ProductVariant，软归档不影响同步写入链路
+- `docs/tasks/phase-5-sync.md`：P5-SY11G 更新
+- 明确记录：`product_variant.is_archived` 列为遗留列、不再被业务代码读写
 
 ## 验收标准
 
-- `product_variant.is_archived` 列存在，默认 `false`。
-- `archived_at` / `archived_by` 审计字段存在，FK 约束有效。
-- Operator RLS SELECT 策略包含 `AND is_archived = false`。
-- 默认库存列表、低库存统计、海外库存统计不显示已归档 Variant。
-- 产品详情页 (`getByProductId`) 仍显示已归档 Variant 的库存。
+- `user_variant_preference` 表存在，含 `user_id`/`variant_id`/`preference_type`/`created_at` 列。
+- `preference_type` CHECK 约束仅允许 `'archived'`（预留扩展）。
+- UNIQUE (user_id, variant_id, preference_type) 约束有效。
+- RLS：用户仅能 SELECT/INSERT/DELETE 自己的偏好行。
+- 每个已登录用户（Admin + Operator）均可归档/恢复 Variant。
+- 用户 A 的归档完全不影响用户 B 的视图（每人独立偏好）。
+- 默认库存列表、低库存统计、海外库存统计不显示当前用户已归档 Variant。
+- 产品详情页 (`getByProductId`) 仍显示全部 Variant 库存（含其他用户归档的）。
 - `shipment_item` 等历史记录不受归档影响。
-- Admin 可批量归档/恢复 Variant。
-- Operator 只读，无法查看已归档 Variant，无操作按钮。
 - 已归档 Variant 的 inventory 仍可被同步链路更新。
-- 恢复后的 Variant 重新出现在默认视图中，且库存为最新值。
-- 新创建 Variant 默认 `is_archived = false`。
+- 恢复后的 Variant 重新出现在当前用户的默认视图中，库存为最新值。
+- 新创建 Variant 对所有用户默认可见。
+- `product_variant.is_archived` 列保留在 DB 中但业务代码不再读写。
 - 不删除 ProductVariant，不改变 Product → ProductVariant → Inventory 模型。
-- Admin / Operator 权限在 Server Action + RLS 双重保障。
+- 权限在 Server Action + RLS 双重保障（用户仅操作自己的偏好）。
 - `npm run test` 通过（排除 concurrency.test.ts）。
 - `npm run lint` 0 errors。
 - `npm run build` 通过。
 - Python tests 全部通过。
-- 不修改已执行 Migration 00001~00010。
-- 不新增数据库表。
+- 不修改已执行 Migration 00001~00011。
+- 不新增数据库表（仅新增 `user_variant_preference` 一张表）。
 - 不重新提交 `.env.local`、`runtime/profile`、cookie。
 
 ## 测试要求
 
-- Migration 静态契约测试：≥8 项（列存在、默认值、索引、FK、RLS 策略）
-- Repository 测试：≥20 项（archive/restore/list 过滤/getUnmatched 过滤/match 阻止/unmatch 阻止）
-- Server Action 测试：≥15 项（活跃 Admin 成功/非活跃 Admin 拒绝/Operator 拒绝/未认证拒绝/校验/边界）
-- Inventory 过滤测试：≥12 项（海外列表/低库存/统计/产品详情不过滤/恢复后出现/null variant 排除/RLS 泄漏验证）
-- UI 测试：≥15 项（组件渲染/权限/筛选标签/操作按钮/边界）
-- 同步非回归测试：≥5 项（RPC 不受影响/恢复后库存正确/新 Variant 默认 false）
-- 不退化现有 744 项 TS 测试 + 253 项 Python 测试
+- Migration 静态契约测试：≥10 项（表存在、列存在/类型、UNIQUE、FK、索引、RLS 策略、CHECK 约束）
+- Repository 测试：≥25 项（archive/restore/list 过滤/getUnmatched 过滤/getUserArchivedVariantIds/重复归档/多用户隔离）
+- Server Action 测试：≥18 项（活跃 Admin 成功/活跃 Operator 成功/非活跃拒绝/未认证拒绝/校验/边界/多用户隔离）
+- Inventory 过滤测试：≥15 项（海外列表/低库存/统计/产品详情不过滤/NOT EXISTS 过滤/多用户隔离）
+- UI 测试：≥18 项（组件渲染/权限均等/筛选标签/操作按钮/多用户隔离/边界）
+- 非回归测试：≥8 项（同步不受影响/恢复后可见/is_archived 代码路径已替换/多用户隔离/新 Variant 默认可见）
+- 不退化现有 914 项 TS 测试 + 271 项 Python 测试（调整断言后的子集）
 
 ## 停止条件
 
-- P5-SY11A~F 全部完成。不进入 P5-SY12，不启用 P5-SY10 Phase B 自动 Real Write。
-- 不删除 ProductVariant、不删除数据库行。
+- P5-SY11G-A~F 全部完成。不进入 P5-SY12，不启用 P5-SY10 Phase B 自动 Real Write。
+- 不删除 ProductVariant、不删除数据库行（除 `user_variant_preference` 的 DELETE 操作外）。
 - 不改变 Product → ProductVariant → Inventory 模型。
-- 不修改已执行 Migration 00001~00010。
-- 不新增数据库表。
+- 不修改已执行 Migration 00001~00011。
+- 不删除 `product_variant.is_archived` 列（仅停止使用）。
 - `WEBSYNC_REAL_WRITE_ENABLED` 保持 false。
+- 不实现"特别关注"功能（仅预留 `preference_type` 扩展空间）。
 
 ## 依赖
 
 - P5-SY9 全部子任务（A~K）DONE — 全部 5 海外仓批量真实写入完成。
 - P5-SY10 全部子任务（A~F）DONE — 自动 Dry Run 预审与 Cron 调度完成。
-- Migration 00001~00010（全部已执行）。
-- Variant Feature Module（`src/features/variants/`）— 现有 types/repository/actions/schema/columns。
-- Inventory Feature Module（`src/features/inventory/`）— 现有 repository。
+- P5-SY11A~F 全部 DONE — 全球归档技术实现完成（代码可复用，语义需迁移）。
+- Migration 00001~00011（全部已执行）。
+- Variant Feature Module（`src/features/variants/`）— 现有 types/repository/actions/schema/columns/components 可复用。
+- Inventory Feature Module（`src/features/inventory/`）— 现有 repository 可复用。
 - Supabase 当前生产数据库配置。
+
+## 设计决策记录
+
+### D1：为什么不直接 DROP `is_archived` 列？
+
+约束"不修改已执行 Migration"禁止 ALTER TABLE DROP COLUMN 通过新 Migration。`is_archived` 列保留在 DB 中作为遗留列，业务代码全部停止读写。若将来确认无影响，可通过独立 Migration 清理（需用户明确确认）。
+
+### D2：为什么匹配操作不再因归档阻止？
+
+在全局归档模型下，归档是 Variant 级别的"冻结"状态，阻止匹配有业务意义。在用户偏好模型下，归档仅是 A 个人的视图偏好——A 不想看某个 Variant，不代表这个 Variant 不应该被 B 匹配。匹配/取消匹配是业务操作，独立于个人视图偏好。
+
+### D3：为什么 Admin 保留 `user_variant_preference` 全权限 RLS？
+
+Admin 可能需要在技术支持的场景下查看和清理用户的偏好记录。但日常 UI 操作（归档/恢复按钮）始终操作当前登录用户自己的偏好，不暴露"以其他用户身份操作"的 UI 入口。
+
+### D4：预留"特别关注"扩展
+
+`preference_type` CHECK 约束当前仅允许 `'archived'`。后续实现"特别关注"时：
+1. 新 Migration `ALTER TABLE user_variant_preference DROP CONSTRAINT ... ADD CHECK (preference_type IN ('archived', 'favorited'))`
+2. 新增 `favoriteVariants` / `unfavoriteVariants` Server Actions
+3. Variant 列表新增 `preference_type='favorited'` 筛选标签
+4. Inventory 视图可选择性按关注过滤（不同于归档的默认排除语义：归档=排除，关注=高亮/置顶）
 
 ## 后置计划
 
+- **P5-SY12** — 下一任务（Pending，待本次返工完成后根据真实业务需求确定）。
+- **"特别关注"功能** — 复用 `user_variant_preference` 表，新增 `preference_type='favorited'`。本次不实现。
 - **P5-SY10 Phase B** — PASS 仓库自动 Real Write（设计预留，需运行稳定并建立每仓基线后评估）。
-- 后续可考虑归档自动过期策略（如超过 N 天未同步的 Variant 自动建议归档），但不在本任务范围。
+- **`product_variant.is_archived` 列清理** — 确认无影响后可通过独立 Migration 移除遗留列。
