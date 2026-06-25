@@ -166,20 +166,22 @@ export const variantRepository = {
       return { archived: 0 };
     }
 
-    const { error: uError } = await supabase
+    const { data: updated, error: uError } = await supabase
       .from('product_variant')
       .update({
         is_archived: true,
         archived_at: new Date().toISOString(),
         archived_by: archivedBy,
       })
-      .in('id', toArchive);
+      .in('id', toArchive)
+      .eq('is_archived', false)
+      .select('id');
 
     if (uError) {
       throw new VariantError('归档 SKU 失败', 'DB_ERROR');
     }
 
-    return { archived: toArchive.length };
+    return { archived: updated?.length ?? 0 };
   },
 
   /** 批量恢复 Variant（仅恢复已归档项，清空审计字段）
@@ -219,20 +221,22 @@ export const variantRepository = {
       return { restored: 0 };
     }
 
-    const { error: uError } = await supabase
+    const { data: updated, error: uError } = await supabase
       .from('product_variant')
       .update({
         is_archived: false,
         archived_at: null,
         archived_by: null,
       })
-      .in('id', toRestore);
+      .in('id', toRestore)
+      .eq('is_archived', true)
+      .select('id');
 
     if (uError) {
       throw new VariantError('恢复 SKU 失败', 'DB_ERROR');
     }
 
-    return { restored: toRestore.length };
+    return { restored: updated?.length ?? 0 };
   },
 
   /** 匹配 SKU 到标准产品（已归档 Variant 拒绝匹配） */

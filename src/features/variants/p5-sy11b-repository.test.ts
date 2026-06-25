@@ -97,6 +97,7 @@ vi.mock('@/lib/supabase/helpers', () => ({
 }));
 
 import { variantRepository, VariantError } from './repository';
+import { archiveVariantsSchema, restoreVariantsSchema } from './schema';
 import type { VariantFilters } from './types';
 import type { Database } from '@/types/database';
 
@@ -260,7 +261,7 @@ describe('P5-SY11B — archive() 校验与行为', () => {
       ],
     });
 
-    const updateChain = createChainResult({ data: { id: VALID_UUID }, error: null });
+    const updateChain = createChainResult({ data: [{ id: VALID_UUID }], error: null });
 
     mockFrom
       .mockReturnValueOnce(selectChain)
@@ -285,9 +286,70 @@ describe('P5-SY11B — archive() 校验与行为', () => {
     const result = await variantRepository.archive([VALID_UUID], ADMIN_UUID);
     expect(result.archived).toBe(0);
   });
-});
 
-// ─── 5. restore() 校验与行为 ───────────────────────────────────────────
+  it('update payload 包含 is_archived=true, archived_at, archived_by', async () => {
+    const selectChain = createChainResult({
+      data: [{ id: VALID_UUID, is_archived: false }],
+    });
+    const updateChain = createChainResult({ data: [{ id: VALID_UUID }], error: null });
+
+    mockFrom
+      .mockReturnValueOnce(selectChain)
+      .mockReturnValueOnce({ update: mockUpdate });
+    mockUpdate.mockReturnValue(updateChain);
+
+    await variantRepository.archive([VALID_UUID], ADMIN_UUID);
+
+    expect(mockUpdate).toHaveBeenCalled();
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.is_archived).toBe(true);
+    expect(payload.archived_at).toBeTypeOf('string');
+    expect(payload.archived_by).toBe(ADMIN_UUID);
+  });
+
+  it('update 链包含 .eq("is_archived", false) 防止并发覆盖', async () => {
+    const selectChain = createChainResult({
+      data: [{ id: VALID_UUID, is_archived: false }],
+    });
+    const updateChain = createChainResult({ data: [{ id: VALID_UUID }], error: null });
+
+    mockFrom
+      .mockReturnValueOnce(selectChain)
+      .mockReturnValueOnce({ update: mockUpdate });
+    mockUpdate.mockReturnValue(updateChain);
+
+    await variantRepository.archive([VALID_UUID], ADMIN_UUID);
+
+    expect(updateChain._eqCalls).toContainEqual({ col: 'is_archived', val: false });
+  });
+
+  it('返回实际 update 行数，而不是 toArchive.length', async () => {
+    // 3 个未归档，但并发下只有 2 个实际被 update（模拟另一个请求先归档了第 3 个）
+    const selectChain = createChainResult({
+      data: [
+        { id: VALID_UUID, is_archived: false },
+        { id: VALID_UUID2, is_archived: false },
+        { id: '00000000-0000-4000-a000-000000000003', is_archived: false },
+      ],
+    });
+    const updateChain = createChainResult({
+      data: [{ id: VALID_UUID }, { id: VALID_UUID2 }],
+      error: null,
+    });
+
+    mockFrom
+      .mockReturnValueOnce(selectChain)
+      .mockReturnValueOnce({ update: mockUpdate });
+    mockUpdate.mockReturnValue(updateChain);
+
+    const result = await variantRepository.archive(
+      [VALID_UUID, VALID_UUID2, '00000000-0000-4000-a000-000000000003'],
+      ADMIN_UUID
+    );
+
+    expect(result.archived).toBe(2); // 不是 3
+  });
+});
 
 describe('P5-SY11B — restore() 校验与行为', () => {
   beforeEach(resetMocks);
@@ -318,7 +380,7 @@ describe('P5-SY11B — restore() 校验与行为', () => {
       data: [{ id: VALID_UUID, is_archived: true }],
     });
 
-    const updateChain = createChainResult({ data: { id: VALID_UUID }, error: null });
+    const updateChain = createChainResult({ data: [{ id: VALID_UUID }], error: null });
 
     mockFrom
       .mockReturnValueOnce(selectChain)
@@ -337,6 +399,65 @@ describe('P5-SY11B — restore() 校验与行为', () => {
 
     const result = await variantRepository.restore([VALID_UUID]);
     expect(result.restored).toBe(0);
+  });
+
+  it('update payload 包含 is_archived=false, archived_at=null, archived_by=null', async () => {
+    const selectChain = createChainResult({
+      data: [{ id: VALID_UUID, is_archived: true }],
+    });
+    const updateChain = createChainResult({ data: [{ id: VALID_UUID }], error: null });
+
+    mockFrom
+      .mockReturnValueOnce(selectChain)
+      .mockReturnValueOnce({ update: mockUpdate });
+    mockUpdate.mockReturnValue(updateChain);
+
+    await variantRepository.restore([VALID_UUID]);
+
+    expect(mockUpdate).toHaveBeenCalled();
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.is_archived).toBe(false);
+    expect(payload.archived_at).toBeNull();
+    expect(payload.archived_by).toBeNull();
+  });
+
+  it('update 链包含 .eq("is_archived", true) 防止并发覆盖', async () => {
+    const selectChain = createChainResult({
+      data: [{ id: VALID_UUID, is_archived: true }],
+    });
+    const updateChain = createChainResult({ data: [{ id: VALID_UUID }], error: null });
+
+    mockFrom
+      .mockReturnValueOnce(selectChain)
+      .mockReturnValueOnce({ update: mockUpdate });
+    mockUpdate.mockReturnValue(updateChain);
+
+    await variantRepository.restore([VALID_UUID]);
+
+    expect(updateChain._eqCalls).toContainEqual({ col: 'is_archived', val: true });
+  });
+
+  it('返回实际 update 行数，而不是 toRestore.length', async () => {
+    // 2 个已归档，但并发下只有 1 个实际被 update（模拟另一个请求先恢复了第 2 个）
+    const selectChain = createChainResult({
+      data: [
+        { id: VALID_UUID, is_archived: true },
+        { id: VALID_UUID2, is_archived: true },
+      ],
+    });
+    const updateChain = createChainResult({
+      data: [{ id: VALID_UUID }],
+      error: null,
+    });
+
+    mockFrom
+      .mockReturnValueOnce(selectChain)
+      .mockReturnValueOnce({ update: mockUpdate });
+    mockUpdate.mockReturnValue(updateChain);
+
+    const result = await variantRepository.restore([VALID_UUID, VALID_UUID2]);
+
+    expect(result.restored).toBe(1); // 不是 2
   });
 });
 
@@ -451,7 +572,82 @@ describe('P5-SY11B — batchMatch() 阻止已归档', () => {
   });
 });
 
-// ─── 9. VariantError 支持新 code ───────────────────────────────────────
+// ─── 9. Schema 测试 ──────────────────────────────────────────────────────
+
+describe('P5-SY11B — archiveVariantsSchema / restoreVariantsSchema', () => {
+  describe('archiveVariantsSchema', () => {
+    it('合法 UUID 数组通过校验', () => {
+      const result = archiveVariantsSchema.safeParse({ variantIds: [VALID_UUID, VALID_UUID2] });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.variantIds).toEqual([VALID_UUID, VALID_UUID2]);
+      }
+    });
+
+    it('空数组拒绝', () => {
+      const result = archiveVariantsSchema.safeParse({ variantIds: [] });
+      expect(result.success).toBe(false);
+    });
+
+    it('非法 UUID 拒绝', () => {
+      const result = archiveVariantsSchema.safeParse({ variantIds: ['not-a-uuid'] });
+      expect(result.success).toBe(false);
+    });
+
+    it('混合合法与非法 UUID 拒绝', () => {
+      const result = archiveVariantsSchema.safeParse({ variantIds: [VALID_UUID, 'not-a-uuid'] });
+      expect(result.success).toBe(false);
+    });
+
+    it('transform 去重：重复 ID 只保留一个', () => {
+      const result = archiveVariantsSchema.safeParse({ variantIds: [VALID_UUID, VALID_UUID, VALID_UUID2] });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.variantIds).toEqual([VALID_UUID, VALID_UUID2]);
+      }
+    });
+
+    it('缺少 variantIds 字段拒绝', () => {
+      const result = archiveVariantsSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('restoreVariantsSchema', () => {
+    it('合法 UUID 数组通过校验', () => {
+      const result = restoreVariantsSchema.safeParse({ variantIds: [VALID_UUID, VALID_UUID2] });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.variantIds).toEqual([VALID_UUID, VALID_UUID2]);
+      }
+    });
+
+    it('空数组拒绝', () => {
+      const result = restoreVariantsSchema.safeParse({ variantIds: [] });
+      expect(result.success).toBe(false);
+    });
+
+    it('非法 UUID 拒绝', () => {
+      const result = restoreVariantsSchema.safeParse({ variantIds: ['not-a-uuid'] });
+      expect(result.success).toBe(false);
+    });
+
+    it('transform 去重：重复 ID 只保留一个', () => {
+      const result = restoreVariantsSchema.safeParse({ variantIds: [VALID_UUID2, VALID_UUID2, VALID_UUID] });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.variantIds).toEqual([VALID_UUID2, VALID_UUID]);
+      }
+    });
+
+    it('缺少 variantIds 字段拒绝', () => {
+      const result = restoreVariantsSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+  });
+});
+
+// ─── 10. VariantError 支持新 code ──────────────────────────────────────
 
 describe('P5-SY11B — VariantError 错误码', () => {
   it('ARCHIVED code 存在', () => {

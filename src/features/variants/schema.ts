@@ -9,6 +9,22 @@ export const variantMatchSchema = z.object({
 
 export type VariantMatchValues = z.infer<typeof variantMatchSchema>;
 
+/** 批量归档 SKU — variantIds 非空 UUID 数组，transform 去重；archivedBy 从服务端当前用户获取，外部不传 */
+export const archiveVariantsSchema = z.object({
+  variantIds: z
+    .array(z.string().uuid('无效的 SKU ID'))
+    .min(1, '请选择至少一个 SKU')
+    .transform((ids) => [...new Set(ids)]),
+});
+
+/** 批量恢复 SKU — variantIds 非空 UUID 数组，transform 去重 */
+export const restoreVariantsSchema = z.object({
+  variantIds: z
+    .array(z.string().uuid('无效的 SKU ID'))
+    .min(1, '请选择至少一个 SKU')
+    .transform((ids) => [...new Set(ids)]),
+});
+
 /** SKU 筛选参数校验 */
 export const variantSearchSchema = z.object({
   country: z.enum(['TH', 'ID', 'MY', 'PH', 'VN', 'CN']).optional(),
