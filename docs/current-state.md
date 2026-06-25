@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY12` — 下一任务待定（P5-SY11-REWORK 已完成，等待 Codex 审查。下一任务根据真实业务需求确定。）
+`P5-SY11G-RUNTIME` — 运行时修复与生产验证已完成。等待用户确认下一任务（不自动进入 P5-SY12）。
 
 ## Completed Tasks
 
@@ -65,16 +65,25 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY10C` — 自动预审编排 Server Action（2026-06-24 DONE，Codex 独立复验通过。返工完成：① 在 triggerBatchDryRun 之前逐仓预取 getWarehouseHistory 并缓存，确保 cold start 仓库 hasBaseline=false，已有历史仓库 stats 不含当前 run；② history 获取失败 → BLOCK（history_unavailable 规则），含中文原因，不 fallback 冷启动；③ 新增冷启动 R7/R11 路径测试 + 预取历史排他性测试。`runAutoPreReview` Server Action：requireActiveAdmin + session health guard + wireRealActions。30 项测试。质量门：651/651 TS 测试，lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
 - `P5-SY10D` — 预审页面 UI（2026-06-24 DONE，Codex 独立验收通过。Sync 页面新增「自动预审」入口（调用 `runAutoPreReview()`）。BatchReviewCard 扩展：RuleBadge（PASS 绿/WARN 黄/BLOCK 红）+ 可展开规则详情（evaluations[].message）+ WARN 可选带警告 / BLOCK 不可选含阻断原因。统计栏 PASS/WARN/BLOCK 三色计数。保留「批量 Dry Run」按钮（不运行规则引擎）。Operator 只读。`AutoPreReviewItem.dryRun` 补全 `warehouseRenamePlan` 字段。复选框：独立 `autoReviewSelectedItems` Set，PASS/WARN + status=ready 可选（checked 状态可变化），BLOCK/failed/blocked 不可选。清理 unused imports（BatchRealWriteItemResult 等）。30 项新测试（含 8 项复选框行为源码检查 + 1 项 Codex 验收追加）。质量门：681/681 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
 - `P5-SY10E` — 调度机制：Vercel Cron Route Handler + 手动触发入口（2026-06-24 DONE，2026-06-24 返工完成。返工原因：Cron Route 通过 API key 后无 Supabase 用户 session，`claim_sync_run` 要求 `auth.uid()`，Cron 生产路径会失败。返工方案：① Migration 00010 新增 `claim_sync_run_system` RPC（SECURITY DEFINER，service_role only，校验 p_triggered_by 是激活 admin，仅允许 dry_run，复用并发锁/warehouse 校验/lease/僵尸回收逻辑）；② Repository 新增 `claimSyncRunSystem` 方法；③ SyncService 新增 `_systemClaimConfig` 配置项；④ 移除 `actions.ts` 中 `systemTriggeredBy` 绕权参数（`triggerBatchDryRun`/`runAutoPreReview` 始终调用 `requireActiveAdmin`）；⑤ `server-actions.ts` `runScheduledAutoPreReview` 直接构造带 `_systemClaimConfig` 的 SyncService，不经过 `createSyncActions`。新增 Migration 00010 静态测试 + claim_sync_run 未修改验证 + 系统 claim 路径 Mock 测试 + real_write 拒绝测试。744/744 TS 测试（23 文件），lint 0 errors，build pass，253 Python 通过。）
-- `P5-SY11-REWORK` (P5-SY11G A~F) — 语义返工：用户级 Variant 归档偏好（2026-06-25 DONE。全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建 user_variant_preference 表 + RLS + 移除 operator_select_variant 的 is_archived 全局过滤。variantRepository archive/restore/list/getUnmatched 全部改用 user_variant_preference，每人独立归档。Server Actions 改为 requireActiveAuth，Admin/Operator 均可操作。Inventory 层按当前用户归档偏好过滤。UI 所有登录用户可归档/恢复。P5-SY11G 返工（2026-06-25）：修复 3 项阻塞问题 — 1) inventory repository getOverseasList/getLowStock 从 v.id 改为 row.variant_id 判断归档（variant join select 不含 id 导致全部行被过滤）；2) variants repository list() 归档过滤从 JS 后置改为 DB 层 .not/.in 在分页前完成，total 准确；3) archive/restore 返回实际变更数而非总数/请求数。质量门：891/891 TS 测试，30 文件，lint 0 errors，build pass。Python：315 passed + 5 collection errors。）
+- `P5-SY11-REWORK` (P5-SY11G A~F) — 语义返工：用户级 Variant 归档偏好（2026-06-25 DONE。全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建 user_variant_preference 表 + RLS + 移除 operator_select_variant 的 is_archived 全局过滤。variantRepository archive/restore/list/getUnmatched 全部改用 user_variant_preference，每人独立归档。Server Actions 改为 requireActiveAuth，Admin/Operator 均可操作。Inventory 层按当前用户归档偏好过滤。UI 所有登录用户可归档/恢复。P5-SY11G 返工（2026-06-25）：修复 4 项阻塞问题 — 1) inventory repository getOverseasList/getLowStock 从 v.id 改为 row.variant_id 判断归档；2) list() 归档过滤从 JS 后置改为 DB 层 notIn/in 在分页前完成；3) archive/restore 返回实际变更数；4) list() active tab 改用 query.notIn() 替代 query.not('id','in',...)，.not() 期望 PostgREST 原始括号语法而 JS 数组无括号导致过滤失效。质量门：896/896 TS 测试，30 文件，lint 0 errors，build pass。Python：315 passed + 5 collection errors。）
+- `P5-SY11G-RUNTIME` — 运行时修复与生产验证（2026-06-25 DONE。两项修复：1) Migration 00012 由用户在 Supabase Dashboard 手动执行（Pooler 不识别 tenant，自动连接不可用），验证 user_variant_preference 表 + 4 条 RLS 策略存在，PostgREST schema cache 已刷新；2) getSyncRuns limit 契约修正：Zod schema max(500).default(200) → max(100).default(100)，server-actions.ts limit:500→100，与 DB RPC get_sync_runs p_limit > 100 强制拒绝一致。人工验收通过：/dashboard/inventory/overseas 正常加载（不再报 schema cache 错误），/dashboard/sync 正常加载，/dashboard/variants 归档/恢复正常，A 归档后 B 视图不受影响，归档是个人偏好非全局。质量门：896/896 TS 测试，lint 0 errors，build pass。）
 
 ## Awaiting Review — 无
 
-P5-SY11-REWORK 已完成并返工修复（P5-SY11G A~F）。所有子任务通过验收。`product_variant.is_archived` 保留为遗留列，不再被业务代码读写。归档已迁移为用户级 `user_variant_preference` 表。
+P5-SY11-REWORK 已完成并返工修复（P5-SY11G A~F）。P5-SY11G-RUNTIME 两项运行时修复已完成并通过人工验收。所有子任务通过验收。`product_variant.is_archived` 保留为遗留列，不再被业务代码读写。归档已迁移为用户级 `user_variant_preference` 表（个人偏好，A 归档不影响 B）。Migration 00012 由用户在 Supabase Dashboard 手动执行。
 
 P5-SY11G 返工修复内容（2026-06-25）：
 1. `inventory/repository.ts`：`getOverseasList`/`getLowStock` 使用 `row.variant_id` 判断归档（不再依赖 variant join 的 `v.id`，join select 不含 id）
-2. `variants/repository.ts` `list()`：归档过滤在 DB 层完成（`.not('id','in',...)` / `.in('id',...)`），分页前过滤，total 准确
+2. `variants/repository.ts` `list()`：归档过滤在 DB 层完成（`.notIn('id',archivedArray)` / `.in('id',archivedArray)`），分页前过滤，total 准确
 3. `variants/repository.ts` `archive()`/`restore()`：先查询已有偏好，仅插入/删除实际需要变更的记录，返回真实变更数
+4. `variants/repository.ts` `list()`：`.not('id','in',archivedArray)` → `.notIn('id',archivedArray)`，前者期望 PostgREST `(id1,id2)` 括号格式但 JS 数组无括号 → PostgREST 拒绝
+
+P5-SY11G-RUNTIME 修复内容（2026-06-25）：
+1. Migration 00012 手动执行至生产数据库：`user_variant_preference` 表 + RLS + PostgREST schema cache 刷新
+2. `getSyncRuns` limit 契约修正：Zod `max(500).default(200)` → `max(100).default(100)`，与 DB RPC `p_limit > 100` 拒绝一致
+3. 验证：海外库存页不再报 schema cache 错误；归档/恢复个人偏好隔离正确
+
+**Current Task**: 等待用户确认下一任务。**Next Step**: 根据真实业务需求确定（不自动进入 P5-SY12）。
 
 ## Authentication Status
 
@@ -180,11 +189,8 @@ P5-SY11G 返工修复内容（2026-06-25）：
 
 | 日期 | 变更 |
 |---|---|
-| 2026-06-25 | **P5-SY11G 返工 DONE。3 项阻塞修复：(1) inventory repo getOverseasList/getLowStock 过滤改用 row.variant_id（variant join select 不含 id，v.id 始终 undefined 导致所有行被过滤）；(2) variants repo list() 归档过滤从 JS 后置改为 DB 层 .not/.in 在分页前完成，total 准确；(3) archive/restore 先查询已有偏好再操作，返回实际新增/恢复数。补 22 项行为测试。质量门：891/891 TS（30 文件），lint 0 errors/24 warnings（pre-existing），build pass。Python：315 passed + 5 collection errors（pre-existing）。WEBSYNC_REAL_WRITE_ENABLED=false。** |
+| 2026-06-25 | **P5-SY11G 返工 DONE。4 项阻塞修复：(1) inventory repo getOverseasList/getLowStock 过滤改用 row.variant_id（variant join select 不含 id，v.id 始终 undefined 导致所有行被过滤）；(2) variants repo list() 归档过滤从 JS 后置改为 DB 层 notIn/in 在分页前完成，total 准确；(3) archive/restore 先查询已有偏好再操作，返回实际新增/恢复数；(4) list() active tab 改用 query.notIn() 替代 query.not('id','in',...)，not() 期望 PostgREST 原始语法 `(id1,id2)` 而 JS 数组直接字符串化无括号导致过滤失效。补 5 项行为测试（含 notIn URL 生成 not.in.(...) 括号语法 vs .not() 无括号对比）。质量门：896/896 TS（30 文件），lint 0 errors/24 warnings（pre-existing），build pass。Python：315 passed + 5 collection errors（pre-existing）。WEBSYNC_REAL_WRITE_ENABLED=false。** |
 | 2026-06-25 | **P5-SY11-REWORK DONE。语义返工完成：归档从全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建表 + RLS；operator_select_variant 移除 is_archived 全局过滤。variantRepository 全部改用 user_variant_preference；archiveVariants/restoreVariants 改为 requireActiveAuth；Inventory 层按当前用户偏好过滤；UI 所有用户可归档/恢复。869/869 TS 测试 pass，lint 0 errors，build pass。is_archived 列保留为遗留列。** |
-| 2026-06-25 | **P5-SY11F DONE。同步非回归验证 + 质量门 + 文档收口完成。** 新增 p5-sy11f-non-regression.test.ts（22 项非回归测试）：验证已归档 Variant sync 链路不受影响（sync_warehouse_inventory INSERT ON CONFLICT DO NOTHING 不涉及 is_archived、Inventory 步骤按 sku+country 解析 variant_id 不过滤归档）；验证恢复后 Variant 重新出现在默认视图（restore 清空 is_archived+审计字段 → inventory 过滤通过 → 库存为最新同步值）；验证新 Variant 默认 is_archived=false（Migration 00011 DEFAULT false + Migration 00009 INSERT 列不含 is_archived）；归档不删除 inventory（仅修改 product_variant 表）；P5-SY11A~E 行为不退化（archive/restore 校验、list/getUnmatched 过滤、getOverseasStats JS 兜底 null/is_archived 排除）。最终质量门：914/914 TS 测试（29 文件），lint 0 errors（17 pre-existing warnings），build pass；Python 243 sync + 13 migration 00009 + 15 health_check = 271 通过（5 pre-existing collection errors）。文档：current-state.md / current-task.md / phase-5-sync.md 已同步。 |
-| 2026-06-25 | **P5-SY11D DONE。Inventory 层归档过滤完成。** getOverseasList/getLowStock/getOverseasStats 使用 variant:variant_id!inner + .eq('variant.is_archived', false) DB 层过滤 + JS 兜底排除 variant=null/is_archived=true。getByProductId 不过滤（产品详情保留已归档 Variant 库存）。19/19 测试，853/853 全量测试，lint 0 errors，build pass。P5-SY11E~F PENDING。 |
-| 2026-06-25 | **P5-SY11C DONE。Server Actions archiveVariants/restoreVariants 完成。** actions.ts 新增两个 Server Action：requireActiveAdmin + Zod schema 去重 + variantRepository + revalidatePath + 中文错误处理（VariantError/权限/停用/未知）。24/24 测试，834/834 全量测试，lint 0 errors，build pass。P5-SY11D~F PENDING。 |
 | 2026-06-24 | **P5-SY9J 生产启用受控验证通过。P5-SY9 全子任务（A~J）DONE。** WEBSYNC_REAL_WRITE_ENABLED=true 已在 .env.local 启用。受控验证：PH 仓 Web Dry Run（104 行 → 6 新 + 80 更新 + 18 未变）→ 审核通过 → Real Write 成功（sync_log status=success，new_variants_count=6，库存验证通过）。修复 web_bridge.py execute_plan_v2 签名不匹配。已知小问题：RPC summary 返回全零（仅显示，sync_log 正确）。 |
 | 2026-06-24 | **P5-SY9I Codex 独立验收通过，标记 DONE。P5-SY9 全子任务（A~I）完成。** 质量门确认：523/523 TS + 242/242 Python，lint 0 errors，build 通过，架构合规。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。下一步：用户授权后生产启用。 |
 | 2026-06-24 | P5-SY9H Codex 独立验收通过，标记 DONE。P5-SY9I IN_PROGRESS。 |

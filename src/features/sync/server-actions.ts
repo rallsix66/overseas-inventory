@@ -773,7 +773,7 @@ export async function getOverseasWarehouseSyncStatus(): Promise<
 > {
   await requireActiveAuth();
   const repository = await createSupabaseRepo();
-  const runs = await repository.getSyncRuns({ limit: 500 });
+  const runs = await repository.getSyncRuns({ limit: 100 });
 
   const statusMap: Record<string, WarehouseSyncStatus> = {};
 

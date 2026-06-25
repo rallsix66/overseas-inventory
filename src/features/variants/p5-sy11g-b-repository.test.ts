@@ -188,25 +188,26 @@ describe('P5-SY11G-B 返工 — list() 归档过滤在分页前完成', () => {
   });
 
   it('list() 始终加载 archivedVariantIds（含 all，用于 isArchivedByUser 标记）', () => {
-    // 原代码: if (userId && archiveStatus !== 'all') 才加载
-    // 修复后: if (userId) 就加载（all 也需要）
     const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBody).not.toBeNull();
     if (fnBody) {
-      // 不再有 archiveStatus !== 'all' 的条件限制加载
       expect(fnBody[0]).toContain('始终加载');
-      // archivedIds.empty → archived tab 直接返回空
       expect(fnBody[0]).toMatch(/archivedVariantIds\.size\s*===\s*0/);
     }
   });
 
-  it('active tab 使用 .not(id, in, archivedArray) 过滤（DB 层，分页前）', () => {
-    // 验证 .not('id', 'in', 的调用存在（DB 层排除已归档）
-    expect(repoSrc).toMatch(/\.not\s*\(\s*['"]id['"]\s*,\s*['"]in['"]/);
+  it('active tab 使用 notIn(id, archivedArray) 过滤（DB 层，分页前）', () => {
+    // notIn 是 postgrest-js 内置方法，生成 not.in.(...) URL 语法
+    // 旧的 .not('id','in',[...]) 生成 not.in.xxx,yyy 缺少括号，PostgREST 解析错误
+    expect(repoSrc).toMatch(/\.notIn\s*\(\s*['"]id['"]\s*,\s*archivedArray/);
+  });
+
+  it('active tab 不再使用 .not(id, in, ...)（旧语法缺少括号，PostgREST 不识别）', () => {
+    // 确保已迁移到 notIn，不再残留旧语法
+    expect(repoSrc).not.toMatch(/\.not\s*\(\s*['"]id['"]\s*,\s*['"]in['"]/);
   });
 
   it('archived tab 使用 .in(id, archivedArray) 过滤（DB 层，分页前）', () => {
-    // 验证 .in('id', archivedArray) 的调用存在
     expect(repoSrc).toMatch(/\.in\s*\(\s*['"]id['"]\s*,\s*archivedArray/);
   });
 
@@ -214,12 +215,10 @@ describe('P5-SY11G-B 返工 — list() 归档过滤在分页前完成', () => {
     const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBody).not.toBeNull();
     if (fnBody) {
-      // .not/.in 过滤在 .order/.range 之前
-      const notIdx = fnBody[0].indexOf(".not('id', 'in'");
+      const notInIdx = fnBody[0].indexOf(".notIn('id'");
       const inIdx = fnBody[0].indexOf(".in('id', archivedArray");
       const rangeIdx = fnBody[0].indexOf(".range(from");
-      // 至少一个过滤在 range 之前
-      const filterIdx = Math.max(notIdx, inIdx);
+      const filterIdx = Math.max(notInIdx, inIdx);
       if (filterIdx > 0 && rangeIdx > 0) {
         expect(filterIdx).toBeLessThan(rangeIdx);
       }
@@ -230,7 +229,6 @@ describe('P5-SY11G-B 返工 — list() 归档过滤在分页前完成', () => {
     const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBody).not.toBeNull();
     if (fnBody) {
-      // 空 ID 时直接 return { data: [], total: 0, page, pageSize }
       expect(fnBody[0]).toMatch(/total:\s*0/);
     }
   });
@@ -239,9 +237,77 @@ describe('P5-SY11G-B 返工 — list() 归档过滤在分页前完成', () => {
     const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBody).not.toBeNull();
     if (fnBody) {
-      // 不应再有 .filter(row => !archivedVariantIds.has(...)) 的 JS 层分页后过滤
       expect(fnBody[0]).not.toMatch(/data\.filter\s*\(.*archivedVariantIds/);
     }
+  });
+});
+
+// ─── P5-SY11G 返工：notIn URL 生成行为验证 ─────────────────────────
+
+describe('P5-SY11G-B 返工 — notIn vs .not() URL 语法行为对比', () => {
+  // 行为验证：notIn() 生成 PostgREST 要求的 not.in.(val1,val2) 带括号语法
+  // .not('id','in',[...]) 生成 not.in.val1,val2 缺少括号，PostgREST 拒绝
+
+  async function buildQueryUrl(useNotIn: boolean): Promise<string[]> {
+    const { PostgrestClient } = await import('@supabase/postgrest-js');
+    const client = new PostgrestClient<Record<string, unknown>>('http://localhost:54321');
+    const uuid1 = '11111111-1111-4111-1111-111111111111';
+    const uuid2 = '22222222-2222-4222-2222-222222222222';
+
+    let builder: Record<string, unknown>;
+    if (useNotIn) {
+      builder = client.from('product_variant').select('*').notIn('id', [uuid1, uuid2]) as unknown as Record<string, unknown>;
+    } else {
+      builder = client.from('product_variant').select('*').not('id', 'in', [uuid1, uuid2]) as unknown as Record<string, unknown>;
+    }
+
+    // PostgrestFilterBuilder 内部有 url 属性（URL 类型），存储查询参数
+    const url = (builder as { url: URL }).url;
+    return url.searchParams.getAll('id');
+  }
+
+  it('notIn(id, [...]) 生成 not.in.(...) 带括号语法（PostgREST 正确格式）', async () => {
+    const params = await buildQueryUrl(true);
+    expect(params.length).toBeGreaterThan(0);
+    const notInParam = params.find((p) => p.startsWith('not.in.'));
+    expect(notInParam).toBeDefined();
+    // 必须包含括号：not.in.(uuid1,uuid2)
+    expect(notInParam).toMatch(/^not\.in\.\(.+\)$/);
+  });
+
+  it('.not(id, in, [...]) 生成 not.in.xxx,yyy 无括号（PostgREST 拒绝此格式）', async () => {
+    const params = await buildQueryUrl(false);
+    expect(params.length).toBeGreaterThan(0);
+    const notParam = params.find((p) => p.startsWith('not.in.'));
+    expect(notParam).toBeDefined();
+    // 旧语法无括号，PostgREST 不识别
+    expect(notParam).not.toMatch(/^not\.in\.\(.+\)$/);
+  });
+});
+
+// ─── P5-SY11G 返工：all tab 行为验证 ──────────────────────────────
+
+describe('P5-SY11G-B 返工 — all tab 不过滤但正确标记 isArchivedByUser', () => {
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
+  });
+
+  it('all tab 不调用 notIn 或 .not 过滤', () => {
+    const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // all tab（archiveStatus === 'all'）时只走「不过滤」分支
+      expect(fnBody[0]).toContain("archiveStatus === 'all': 不过滤");
+    }
+  });
+
+  it('all tab 仍加载 archivedVariantIds 用于 isArchivedByUser 标记', () => {
+    // mapVariantItem 始终接收 archivedVariantIds Set
+    expect(repoSrc).toMatch(/archivedVariantIds\.has\(row\.id/);
+    // list() 中 mapVariantItem 调用传递 archivedVariantIds
+    expect(repoSrc).toContain('mapVariantItem(');
   });
 });
 

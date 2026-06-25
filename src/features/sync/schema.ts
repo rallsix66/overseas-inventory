@@ -46,7 +46,7 @@ export type SyncWarehouseInput = z.infer<typeof syncWarehouseSchema>;
 
 export const getSyncRunsSchema = z.object({
   warehouseId: z.string().uuid().optional(),
-  limit: z.number().int().min(1).max(500).default(200),
+  limit: z.number().int().min(1).max(100).default(100),
 }).strict();
 
 export type GetSyncRunsInput = z.infer<typeof getSyncRunsSchema>;

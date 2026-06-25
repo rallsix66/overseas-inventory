@@ -106,7 +106,7 @@ export const variantRepository = {
     if (userId) {
       const archivedArray = [...archivedVariantIds];
       if (archiveStatus === 'active' && archivedArray.length > 0) {
-        query = query.not('id', 'in', archivedArray);
+        query = query.notIn('id', archivedArray);
       } else if (archiveStatus === 'archived') {
         query = query.in('id', archivedArray);
       }

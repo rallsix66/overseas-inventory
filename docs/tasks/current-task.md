@@ -6,11 +6,35 @@
 
 ## 状态
 
-`P5-SY11-REWORK DONE` — P5-SY11G A~F 全部完成。P5-SY11G 返工（2026-06-25）修复 3 项阻塞问题：
+`P5-SY11-REWORK DONE` — P5-SY11G A~F 全部完成。P5-SY11G 返工（2026-06-25）修复 4 项阻塞问题。P5-SY11G-RUNTIME（2026-06-25）修复 2 项运行时问题 + 人工验收通过。
+
+### P5-SY11G 返工修复（4 项）
 
 1. **inventory repo 归档过滤 Bug**：`getOverseasList`/`getLowStock` 的 variant join select 不含 `id`，但过滤逻辑使用 `v.id` → 所有海外库存行被过滤为空。修复：改用 `row.variant_id` 判断 `archivedVariantIds.has(row.variant_id)`。
-2. **variants list() 分页后过滤**：DB range 分页 → JS filter 归档 → total 错误、archived tab 空页。修复：`.not('id','in',archivedArray)`/`.in('id',archivedArray)` 下推到 DB，分页前过滤。
+2. **variants list() 分页后过滤**：DB range 分页 → JS filter 归档 → total 错误、archived tab 空页。修复：`notIn('id',archivedArray)`/`.in('id',archivedArray)` 下推到 DB，分页前过滤。
 3. **archive/restore 返回假数量**：archive 返回总数非新增、restore 返回请求数。修复：先查询已有偏好，仅操作实际需要变更的记录，返回真实数量。
+4. **list() active tab 使用 .not('id','in',[...]) 生成错误 PostgREST 语法**：`.not()` 期望 `'(id1,id2)'` 括号格式，JS 数组直接字符串化为 `uuid1,uuid2` 无括号 → PostgREST 拒绝。修复：改用 postgrest-js 内置 `.notIn('id',archivedArray)`，生成正确的 `not.in.(uuid1,uuid2)` 语法。
+
+### P5-SY11G-RUNTIME 运行时修复（2 项 + 人工验收）
+
+1. **Migration 00012 手动执行**：`public.user_variant_preference` 表在 Supabase 生产数据库中不存在（Migration 00012 从未被执行）。自动连接不可用（Pooler 不识别 tenant `hzlhqyditalumhnxbaim`，DNS 不解析 `db.*.supabase.co`）。由用户在 Supabase Dashboard SQL Editor 手动执行 `supabase/migrations/00012_user_variant_preference.sql`。执行后通过 `NOTIFY pgrst, 'reload schema'` 刷新 PostgREST schema cache。验证：`to_regclass('public.user_variant_preference')` 返回表名，4 条 RLS 策略存在。
+
+2. **getSyncRuns limit 契约修正**：Zod `getSyncRunsSchema.limit` 从 `max(500).default(200)` 改为 `max(100).default(100)`，`server-actions.ts` `getOverseasWarehouseSyncStatus()` 中 `repository.getSyncRuns({ limit: 500 })` 改为 `limit: 100`。DB RPC `get_sync_runs` 本身强制 `p_limit > 100` 抛异常，之前 Zod max(500) 与 DB 不一致（传 200 会被 DB 拒绝）。全局搜索 sync 模块无残余 `limit: 200` / `limit: 500` 引用。
+
+### 人工验收结果（2026-06-25）
+
+- `/dashboard/inventory/overseas` 正常加载（不再报 `Could not find the table 'public.user_variant_preference' in the schema cache`）
+- `/dashboard/sync` 正常加载
+- `/dashboard/variants` 归档/恢复正常
+- 在 /dashboard/variants 归档 SKU 后，/dashboard/inventory/overseas 不再显示该 SKU
+- 在已归档中恢复后，/dashboard/inventory/overseas 重新显示该 SKU
+- 归档是当前账号个人偏好（A 归档不影响 B 的视图），非全局归档
+
+### 关键设计确认
+
+- `product_variant.is_archived` 是**遗留列**，所有业务代码已停止读写。归档通过 `user_variant_preference` 表（`user_id + variant_id + preference_type='archived'`）完成。
+- `user_variant_preference` 是**个人偏好表**，通过 RLS `auth.uid() = user_id` 强制隔离。后续"特别关注"功能可新增 `preference_type='favorited'` 复用本表，但本次不实现。
+- 不删除 ProductVariant，不改变 Product → ProductVariant → Inventory 模型。
 
 ## 背景
 

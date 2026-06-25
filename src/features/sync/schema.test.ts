@@ -140,11 +140,11 @@ describe('getSyncRunsSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('limit 默认值 200', () => {
+  it('limit 默认值 100', () => {
     const result = getSyncRunsSchema.safeParse({});
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.limit).toBe(200);
+      expect(result.data.limit).toBe(100);
     }
   });
 
@@ -153,8 +153,8 @@ describe('getSyncRunsSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('拒绝 limit > 500', () => {
-    const result = getSyncRunsSchema.safeParse({ limit: 501 });
+  it('拒绝 limit > 100', () => {
+    const result = getSyncRunsSchema.safeParse({ limit: 101 });
     expect(result.success).toBe(false);
   });
 
