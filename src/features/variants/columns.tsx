@@ -51,4 +51,18 @@ export const variantColumns: ColumnDef<VariantItem>[] = [
         ? new Date(item.last_sync_at).toLocaleString('zh-CN')
         : '—',
   },
+  {
+    key: 'is_archived',
+    header: '归档状态',
+    render: (item) =>
+      item.is_archived ? (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
+          📦 已归档
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+          活跃
+        </span>
+      ),
+  },
 ];
