@@ -6,7 +6,7 @@
 
 ## 状态
 
-`P5-SY11-REWORK PENDING` — 任务包已创建，等待 Codex 审查。P5-SY11A~F 技术实现已完成，但业务语义需从全局归档迁移为每人独立归档偏好。
+`P5-SY11-REWORK DONE` — P5-SY11G A~F 全部完成。归档已从全局 product_variant.is_archived 迁移为用户级 user_variant_preference。
 
 ## 背景
 
@@ -86,12 +86,12 @@ P5-SY11A~F 按**全局 ProductVariant 状态**实现了软归档：在 `product_
 
 | Sub-Task ID | 任务 | 目标 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **P5-SY11G-A** | Migration 00012：`user_variant_preference` 表 + RLS | 新建 migration 文件，含 DDL（`user_variant_preference` 表含 `user_id`/`variant_id`/`preference_type`/`created_at`）+ UNIQUE 约束 + 索引 + RLS（用户仅能操作自己的偏好）+ 静态契约测试 | — | **PENDING** |
-| **P5-SY11G-B** | 类型同步 + Variant Repository 重写 | 更新 `database.ts` 类型；`variantRepository` 新增 `archive()`/`restore()`/`getUserArchivedVariantIds()` 方法（基于 `user_variant_preference`）；`list()`/`getUnmatched()` 改为 LEFT JOIN `user_variant_preference` 按当前用户过滤；评估并调整 `match()`/`unmatch()`/`batchMatch()` 归档阻止逻辑 | P5-SY11G-A | **PENDING** |
-| **P5-SY11G-C** | Server Actions：重写 `archiveVariants` / `restoreVariants` | `requireActiveAuth()` 替代 `requireActiveAdmin()`；从 session 获取 `userId`；调用重写后的 repository 方法；Zod 校验 + revalidatePath | P5-SY11G-B | **PENDING** |
-| **P5-SY11G-D** | Inventory 层过滤：按当前用户归档偏好过滤 | `getOverseasList()`/`getLowStock()`/`getOverseasStats()` 改为基于 `user_variant_preference` 过滤（排除当前用户已归档的 Variant）；`getByProductId()` 不过滤；实现策略优先 DB 层（LEFT JOIN + IS NULL 排除），JS 兜底 | P5-SY11G-A | **PENDING** |
-| **P5-SY11G-E** | Variant 页面 UI：所有用户均可归档/恢复 | `archive-controls.tsx` 对所有已登录用户可见；页面权限标签不再区分 Admin/Operator（均可归档/恢复）；搜索/筛选/分页复用现有实现 | P5-SY11G-C, P5-SY11G-D | **PENDING** |
-| **P5-SY11G-F** | 质量门 + 非回归验证 + 文档收口 | 全量测试 + lint + build + Python；验证全局 is_archived 代码路径已全部替换；验证 A 归档不影响 B；验证恢复后库存正确；文档同步 | P5-SY11G-E | **PENDING** |
+| **P5-SY11G-A** | Migration 00012：`user_variant_preference` 表 + RLS | 新建 migration 文件，含 DDL（`user_variant_preference` 表含 `user_id`/`variant_id`/`preference_type`/`created_at`）+ UNIQUE 约束 + 索引 + RLS（用户仅能操作自己的偏好）+ 静态契约测试 | — | **DONE** |
+| **P5-SY11G-B** | 类型同步 + Variant Repository 重写 | 更新 `database.ts` 类型；`variantRepository` 新增 `archive()`/`restore()`/`getUserArchivedVariantIds()` 方法（基于 `user_variant_preference`）；`list()`/`getUnmatched()` 改为 LEFT JOIN `user_variant_preference` 按当前用户过滤；评估并调整 `match()`/`unmatch()`/`batchMatch()` 归档阻止逻辑 | P5-SY11G-A | **DONE** |
+| **P5-SY11G-C** | Server Actions：重写 `archiveVariants` / `restoreVariants` | `requireActiveAuth()` 替代 `requireActiveAdmin()`；从 session 获取 `userId`；调用重写后的 repository 方法；Zod 校验 + revalidatePath | P5-SY11G-B | **DONE** |
+| **P5-SY11G-D** | Inventory 层过滤：按当前用户归档偏好过滤 | `getOverseasList()`/`getLowStock()`/`getOverseasStats()` 改为基于 `user_variant_preference` 过滤（排除当前用户已归档的 Variant）；`getByProductId()` 不过滤；实现策略优先 DB 层（LEFT JOIN + IS NULL 排除），JS 兜底 | P5-SY11G-A | **DONE** |
+| **P5-SY11G-E** | Variant 页面 UI：所有用户均可归档/恢复 | `archive-controls.tsx` 对所有已登录用户可见；页面权限标签不再区分 Admin/Operator（均可归档/恢复）；搜索/筛选/分页复用现有实现 | P5-SY11G-C, P5-SY11G-D | **DONE** |
+| **P5-SY11G-F** | 质量门 + 非回归验证 + 文档收口 | 全量测试 + lint + build + Python；验证全局 is_archived 代码路径已全部替换；验证 A 归档不影响 B；验证恢复后库存正确；文档同步 | P5-SY11G-E | **DONE** |
 
 ## 子任务详细规格
 

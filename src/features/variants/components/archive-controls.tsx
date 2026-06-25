@@ -1,7 +1,8 @@
 'use client';
 
-// 归档/恢复批量操作组件 — Admin 专用
-// 根据选中项状态显示对应操作按钮，含确认 Dialog
+// 归档/恢复批量操作组件 — 所有登录用户可用
+// 根据选中项在当前用户视角下的状态显示对应操作按钮，含确认 Dialog
+// P5-SY11G: 归档是用户个人偏好，A 的归档不影响 B
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -35,8 +36,9 @@ export function ArchiveControls({
   const [dialogOpen, setDialogOpen] = useState<'archive' | 'restore' | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const activeSelected = selectedItems.filter((item) => !item.is_archived);
-  const archivedSelected = selectedItems.filter((item) => item.is_archived);
+  // P5-SY11G: 基于当前用户的 isArchivedByUser 判断，而非全局 is_archived
+  const activeSelected = selectedItems.filter((item) => !item.isArchivedByUser);
+  const archivedSelected = selectedItems.filter((item) => item.isArchivedByUser);
 
   // 可归档：有选中活跃项
   const canArchive = activeSelected.length > 0;

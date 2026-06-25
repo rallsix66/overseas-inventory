@@ -31,6 +31,8 @@ export interface InventoryFilters extends PaginationParams {
   warehouseId?: string;
   stockStatus?: 'normal' | 'low' | 'out_of_stock';
   search?: string;
+  /** 当前登录用户 ID（用于按用户归档偏好过滤） */
+  userId?: string;
 }
 
 /** 库存状态 */

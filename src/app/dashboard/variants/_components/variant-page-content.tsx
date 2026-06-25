@@ -2,6 +2,9 @@
 
 // SKU 管理页 — 客户端交互层
 // 处理归档筛选标签、搜索、复选框批量选择、归档/恢复操作
+//
+// P5-SY11G: 所有登录用户均可使用归档筛选标签、复选框批量选择和归档/恢复操作。
+// 每个用户操作的是自己的偏好，A 的归档不影响 B。
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -23,7 +26,6 @@ import type { PaginatedResult } from '@/types/common';
 
 interface VariantPageContentProps {
   result: PaginatedResult<VariantItem>;
-  isAdmin: boolean;
   archiveStatus: VariantArchiveStatus;
   search: string;
 }
@@ -50,7 +52,6 @@ function buildQuery(params: {
 
 export function VariantPageContent({
   result,
-  isAdmin,
   archiveStatus,
   search,
 }: VariantPageContentProps) {
@@ -114,9 +115,7 @@ export function VariantPageContent({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-1 border-b">
           {ARCHIVE_TABS.map((tab) => {
-            // Operator 只能看活跃标签
-            if (!isAdmin && tab.value !== 'active') return null;
-
+            // P5-SY11G: 所有登录用户均可切换全部归档筛选标签
             const isActive = archiveStatus === tab.value;
             return (
               <Link
@@ -171,7 +170,7 @@ export function VariantPageContent({
             {search
               ? `没有 SKU 或名称包含 "${search}" 的记录`
               : archiveStatus === 'archived'
-                ? '没有已归档的 SKU'
+                ? '您还没有归档任何 SKU'
                 : archiveStatus === 'all'
                   ? '系统中尚无任何 SKU 记录'
                   : '所有 SKU 均处于活跃状态，等待海外仓同步创建'}
@@ -179,33 +178,29 @@ export function VariantPageContent({
         </div>
       ) : (
         <>
-          {/* 批量操作栏 — 仅 Admin */}
-          {isAdmin && (
-            <ArchiveControls
-              selectedItems={selectedItems}
-              archiveStatus={archiveStatus}
-              onClearSelection={() => setSelectedIds(new Set())}
-            />
-          )}
+          {/* 批量操作栏 — 所有登录用户可见 */}
+          <ArchiveControls
+            selectedItems={selectedItems}
+            archiveStatus={archiveStatus}
+            onClearSelection={() => setSelectedIds(new Set())}
+          />
 
           {/* 数据表格 */}
           <div className="border rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
-                  {/* 复选框列 — 仅 Admin */}
-                  {isAdmin && (
-                    <TableHead className="w-10">
-                      <input
-                        type="checkbox"
-                        ref={selectAllRef}
-                        checked={allSelected}
-                        onChange={toggleAll}
-                        aria-label="全选"
-                        className="w-4 h-4 rounded border-gray-300 cursor-pointer"
-                      />
-                    </TableHead>
-                  )}
+                  {/* 复选框列 — 所有登录用户可见 */}
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      ref={selectAllRef}
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      aria-label="全选"
+                      className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                    />
+                  </TableHead>
                   {variantColumns.map((col) => (
                     <TableHead key={col.key}>{col.header}</TableHead>
                   ))}
@@ -214,17 +209,15 @@ export function VariantPageContent({
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.id} className="hover:bg-gray-50">
-                    {isAdmin && (
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(item.id)}
-                          onChange={() => toggleOne(item.id)}
-                          aria-label={`选择 ${item.sku}`}
-                          className="w-4 h-4 rounded border-gray-300 cursor-pointer"
-                        />
-                      </TableCell>
-                    )}
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(item.id)}
+                        onChange={() => toggleOne(item.id)}
+                        aria-label={`选择 ${item.sku}`}
+                        className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                      />
+                    </TableCell>
                     {variantColumns.map((col) => (
                       <TableCell key={col.key}>
                         {col.render

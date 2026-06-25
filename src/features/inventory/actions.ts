@@ -20,7 +20,7 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
   warehouses: WarehouseOption[];
   result: { data: InventoryItem[]; total: number; page: number; pageSize: number };
 }> {
-  await requireAuth();
+  const user = await requireAuth();
 
   const parsed = inventorySearchSchema.safeParse({
     ...filters,
@@ -30,10 +30,12 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
     throw new Error('筛选参数校验失败');
   }
 
+  const userId = user.id;
+
   const [stats, warehouses, result] = await Promise.all([
-    inventoryRepository.getOverseasStats(),
+    inventoryRepository.getOverseasStats(userId),
     inventoryRepository.getOverseasWarehouses(),
-    inventoryRepository.getOverseasList(parsed.data),
+    inventoryRepository.getOverseasList({ ...parsed.data, userId }),
   ]);
 
   return { stats, warehouses, result };

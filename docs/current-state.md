@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY11-REWORK` — 语义返工：将归档从全局 ProductVariant 状态改为用户级个人偏好（用户已确认新业务语义。P5-SY11A~F 技术实现已完成但业务语义需从全局归档迁移为每人独立归档偏好，不应视为最终完成。）
+`P5-SY12` — 下一任务待定（P5-SY11-REWORK 已完成，等待 Codex 审查。下一任务根据真实业务需求确定。）
 
 ## Completed Tasks
 
@@ -65,38 +65,11 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY10C` — 自动预审编排 Server Action（2026-06-24 DONE，Codex 独立复验通过。返工完成：① 在 triggerBatchDryRun 之前逐仓预取 getWarehouseHistory 并缓存，确保 cold start 仓库 hasBaseline=false，已有历史仓库 stats 不含当前 run；② history 获取失败 → BLOCK（history_unavailable 规则），含中文原因，不 fallback 冷启动；③ 新增冷启动 R7/R11 路径测试 + 预取历史排他性测试。`runAutoPreReview` Server Action：requireActiveAdmin + session health guard + wireRealActions。30 项测试。质量门：651/651 TS 测试，lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
 - `P5-SY10D` — 预审页面 UI（2026-06-24 DONE，Codex 独立验收通过。Sync 页面新增「自动预审」入口（调用 `runAutoPreReview()`）。BatchReviewCard 扩展：RuleBadge（PASS 绿/WARN 黄/BLOCK 红）+ 可展开规则详情（evaluations[].message）+ WARN 可选带警告 / BLOCK 不可选含阻断原因。统计栏 PASS/WARN/BLOCK 三色计数。保留「批量 Dry Run」按钮（不运行规则引擎）。Operator 只读。`AutoPreReviewItem.dryRun` 补全 `warehouseRenamePlan` 字段。复选框：独立 `autoReviewSelectedItems` Set，PASS/WARN + status=ready 可选（checked 状态可变化），BLOCK/failed/blocked 不可选。清理 unused imports（BatchRealWriteItemResult 等）。30 项新测试（含 8 项复选框行为源码检查 + 1 项 Codex 验收追加）。质量门：681/681 TS 测试（22 文件），lint 0 errors，build pass。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。）
 - `P5-SY10E` — 调度机制：Vercel Cron Route Handler + 手动触发入口（2026-06-24 DONE，2026-06-24 返工完成。返工原因：Cron Route 通过 API key 后无 Supabase 用户 session，`claim_sync_run` 要求 `auth.uid()`，Cron 生产路径会失败。返工方案：① Migration 00010 新增 `claim_sync_run_system` RPC（SECURITY DEFINER，service_role only，校验 p_triggered_by 是激活 admin，仅允许 dry_run，复用并发锁/warehouse 校验/lease/僵尸回收逻辑）；② Repository 新增 `claimSyncRunSystem` 方法；③ SyncService 新增 `_systemClaimConfig` 配置项；④ 移除 `actions.ts` 中 `systemTriggeredBy` 绕权参数（`triggerBatchDryRun`/`runAutoPreReview` 始终调用 `requireActiveAdmin`）；⑤ `server-actions.ts` `runScheduledAutoPreReview` 直接构造带 `_systemClaimConfig` 的 SyncService，不经过 `createSyncActions`。新增 Migration 00010 静态测试 + claim_sync_run 未修改验证 + 系统 claim 路径 Mock 测试 + real_write 拒绝测试。744/744 TS 测试（23 文件），lint 0 errors，build pass，253 Python 通过。）
+- `P5-SY11-REWORK` (P5-SY11G A~F) — 语义返工：用户级 Variant 归档偏好（2026-06-25 DONE。全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建 user_variant_preference 表 + RLS + 移除 operator_select_variant 的 is_archived 全局过滤。variantRepository archive/restore/list/getUnmatched 全部改用 user_variant_preference，每人独立归档。Server Actions 改为 requireActiveAuth，Admin/Operator 均可操作。Inventory 层按当前用户归档偏好过滤。UI 所有登录用户可归档/恢复。质量门：869/869 TS 测试，30 文件，lint 0 errors，build pass。）
 
-## Awaiting Review — 语义返工（P5-SY11-REWORK）
+## Awaiting Review — 无
 
-### 语义冲突说明
-
-P5-SY11A~F 按**全局 ProductVariant 状态**实现归档（`product_variant.is_archived` 列 + Operator RLS 全局过滤 + Admin 专用操作），但用户已确认以下业务语义与当前实现不一致：
-
-| # | 用户确认语义 | 当前实现 | 冲突 |
-|---|------------|---------|------|
-| 1 | 归档是每个用户自己的个人偏好 | `product_variant.is_archived` 是全局列，A 归档后 B 也看不到 | **严重冲突** |
-| 2 | 每个账号都需要归档权限，不限 Admin | `archiveVariants`/`restoreVariants` 仅限 Admin（`requireActiveAdmin`） | **严重冲突** |
-| 3 | A 归档的产品只影响 A；B 看不到 A 的归档状态 | Operator RLS `AND is_archived = false` 对所有用户统一隐藏 | **严重冲突** |
-| 4 | A 下次登录仍保留自己的归档列表 | 当前实现保留（全局列持久化），但不区分用户 | 需迁移 |
-| 5 | 后续"特别关注"功能应共享偏好表设计 | 当前 `is_archived` 是单列，无法扩展到多种偏好类型 | 需重新设计 |
-
-**结论**：P5-SY11A~F 技术实现正确（Migration/类型/测试/build 均通过），但业务语义需从全局归档迁移为**每人独立归档偏好**。在语义返工完成前 P5-SY11 不应视为最终完成。
-
-### 返工目标（P5-SY11G / P5-SY11-REWORK）
-
-- 废弃 `product_variant.is_archived` 全局列（不删除已执行 Migration 00011）
-- 新建 `user_variant_preference` 表：`user_id` + `variant_id` + `preference_type`（`'archived'`，未来可扩展 `'favorited'`）
-- 每个登录用户（Admin + Operator）均可归档/恢复自己的 Variant
-- A 的归档完全不影响 B 的视图
-- Inventory 视图按当前用户归档偏好过滤
-- 后续"特别关注"功能复用同一偏好表，但本次不实现关注功能
-- 详见 `docs/tasks/current-task.md`
-
-### P5-SY11A~F 技术实现（已完成，待语义迁移）
-
-- P5-SY11A~F 全部 DONE。P5-SY11F（同步非回归验证 + 质量门 + 文档收口）完成：22 项非回归测试验证已归档 Variant 的 sync 链路不受影响、恢复后默认视图重新显示、新 Variant 默认 is_archived=false、P5-SY11A~E 行为不退化。最终质量门：914/914 TS 测试（29 文件，concurrency 需 PG 单独跑），lint 0 errors，build pass；Python 243 sync + 13 migration 00009 + 15 health_check = 271 通过。
-- 这些技术成果在语义返工中大部分可复用（Repository 结构、Server Action 模式、UI 组件框架、测试基础），但 `is_archived` 全局列、RLS 策略和 Admin 限制需要替换。
-- P5-SY10 Phase B（PASS 仓库自动 Real Write）设计预留，当前不启用。
+P5-SY11-REWORK 已完成。所有子任务（P5-SY11G A~F）通过验收。`product_variant.is_archived` 保留为遗留列，不再被业务代码读写。归档已迁移为用户级 `user_variant_preference` 表。
 
 ## Authentication Status
 
@@ -117,8 +90,8 @@ P5-SY11A~F 按**全局 ProductVariant 状态**实现归档（`product_variant.is
 | 项目 | 状态 |
 |---|---|
 | Supabase 项目 | `hzlhqyditalumhnxbaim.supabase.co`（Singapore） |
-| 数据表 | 12 张（role, profiles, warehouse, product, product_variant, inventory, shipment, shipment_item, tracking_event, sync_log, sync_run, sync_warehouse_lock） |
-| RLS | 42 条策略，全部启用 |
+| 数据表 | 13 张（role, profiles, warehouse, product, product_variant, inventory, shipment, shipment_item, tracking_event, sync_log, sync_run, sync_warehouse_lock, user_variant_preference） |
+| RLS | 46 条策略，全部启用 |
 | 函数 | `get_user_role` / `handle_new_user` / `update_updated_at_column` / `create_shipment_transactional` / `batch_match_variants` / `sync_warehouse_inventory` / `claim_sync_run` / `claim_sync_run_system` / `release_sync_run` / `heartbeat_sync_run` / `cleanup_expired_sync_runs` / `get_sync_runs` / `get_sync_run_detail` / `trg_sync_warehouse_lock_insert` |
 | 触发器 | 5 个 updated_at + 1 个 on_auth_user_created |
 | Seed 数据 | 2 角色（admin/operator）+ 6 仓库（CN/TH/ID/MY/PH/VN） |
@@ -202,7 +175,7 @@ P5-SY11A~F 按**全局 ProductVariant 状态**实现归档（`product_variant.is
 
 | 日期 | 变更 |
 |---|---|
-| 2026-06-25 | **P5-SY11-REWORK 语义返工任务包创建。用户确认新业务语义：归档不是全局 ProductVariant 状态，而是每个用户自己的个人偏好。现有 P5-SY11A~F 使用全局 `is_archived` 列 + Admin 专用操作与确认语义严重冲突。任务包重写为 P5-SY11G：新建 `user_variant_preference` 表（user_id + variant_id + preference_type），所有登录用户均可归档/恢复，A 的归档不影响 B，预留"特别关注"扩展。仅文档更新，未修改业务代码。** |
+| 2026-06-25 | **P5-SY11-REWORK DONE。语义返工完成：归档从全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建表 + RLS；operator_select_variant 移除 is_archived 全局过滤。variantRepository 全部改用 user_variant_preference；archiveVariants/restoreVariants 改为 requireActiveAuth；Inventory 层按当前用户偏好过滤；UI 所有用户可归档/恢复。869/869 TS 测试 pass，lint 0 errors，build pass。is_archived 列保留为遗留列。** |
 | 2026-06-25 | **P5-SY11F DONE。同步非回归验证 + 质量门 + 文档收口完成。** 新增 p5-sy11f-non-regression.test.ts（22 项非回归测试）：验证已归档 Variant sync 链路不受影响（sync_warehouse_inventory INSERT ON CONFLICT DO NOTHING 不涉及 is_archived、Inventory 步骤按 sku+country 解析 variant_id 不过滤归档）；验证恢复后 Variant 重新出现在默认视图（restore 清空 is_archived+审计字段 → inventory 过滤通过 → 库存为最新同步值）；验证新 Variant 默认 is_archived=false（Migration 00011 DEFAULT false + Migration 00009 INSERT 列不含 is_archived）；归档不删除 inventory（仅修改 product_variant 表）；P5-SY11A~E 行为不退化（archive/restore 校验、list/getUnmatched 过滤、getOverseasStats JS 兜底 null/is_archived 排除）。最终质量门：914/914 TS 测试（29 文件），lint 0 errors（17 pre-existing warnings），build pass；Python 243 sync + 13 migration 00009 + 15 health_check = 271 通过（5 pre-existing collection errors）。文档：current-state.md / current-task.md / phase-5-sync.md 已同步。 |
 | 2026-06-25 | **P5-SY11D DONE。Inventory 层归档过滤完成。** getOverseasList/getLowStock/getOverseasStats 使用 variant:variant_id!inner + .eq('variant.is_archived', false) DB 层过滤 + JS 兜底排除 variant=null/is_archived=true。getByProductId 不过滤（产品详情保留已归档 Variant 库存）。19/19 测试，853/853 全量测试，lint 0 errors，build pass。P5-SY11E~F PENDING。 |
 | 2026-06-25 | **P5-SY11C DONE。Server Actions archiveVariants/restoreVariants 完成。** actions.ts 新增两个 Server Action：requireActiveAdmin + Zod schema 去重 + variantRepository + revalidatePath + 中文错误处理（VariantError/权限/停用/未知）。24/24 测试，834/834 全量测试，lint 0 errors，build pass。P5-SY11D~F PENDING。 |

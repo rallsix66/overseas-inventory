@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   // 获取海外库存统计（失败不影响首页渲染）
   let overseasStats;
   try {
-    overseasStats = await inventoryRepository.getOverseasStats();
+    overseasStats = await inventoryRepository.getOverseasStats(user?.id);
   } catch {
     // 统计获取失败时静默处理，首页仍可渲染
   }

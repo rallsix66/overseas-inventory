@@ -1,7 +1,10 @@
 // 待处理 SKU — Server Component
-// 显示活跃的未匹配/待确认 SKU（已归档 SKU 不显示）
+// 显示活跃的未匹配/待确认 SKU（当前用户已归档 SKU 不显示）
 // 无归档筛选标签、无归档/恢复按钮
 // Admin 和 Operator 均可查看
+//
+// P5-SY11G: 排除当前用户已归档 Variant（user_variant_preference），
+// 而非全局 is_archived。
 import { requireActiveAuth } from '@/lib/auth';
 import { variantRepository } from '@/features/variants/repository';
 import { variantColumns } from '@/features/variants/columns';
@@ -20,15 +23,15 @@ export const metadata: Metadata = {
 };
 
 export default async function UnmatchedVariantsPage() {
-  await requireActiveAuth();
-  const items = await variantRepository.getUnmatched();
+  const user = await requireActiveAuth();
+  const items = await variantRepository.getUnmatched(user.id);
 
   return (
     <div className="px-6">
       <h1 className="text-xl font-semibold mb-5">待处理 SKU</h1>
 
       <p className="text-sm text-muted-foreground mb-4">
-        以下 SKU 尚未匹配到标准产品，需要管理员处理。已归档 SKU 不在此显示。
+        以下 SKU 尚未匹配到标准产品，需要管理员处理。您已归档的 SKU 不在此显示。
       </p>
 
       {items.length === 0 ? (
