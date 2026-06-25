@@ -325,7 +325,7 @@ P5-SY11G-RUNTIME 修复内容（2026-06-25）：
 
 ## Current Build Status
 
-✅ 最近已知通过 — P5-SY8H 完成时质量门通过。P5-SY9 当前仅创建任务包，尚未执行新代码变更。实施 P5-SY9 后必须重新运行 `npm run test`、`npm run lint`、`npm run build` 与 Python tests；生产 Web 同步上线前还必须覆盖 Dry Run 绑定、生产无 Mock、heartbeat/timeout、批量审核写入和权限测试。
+✅ P5-SY11G-RUNTIME 质量门全部通过（2026-06-25）：896/896 TypeScript 测试（30 文件），lint 0 errors / 24 warnings（pre-existing），build 通过。Python 测试：315 passed + 5 collection errors（pre-existing，需 PG 环境变量）。
 
 ## Known Limitations
 
@@ -357,11 +357,11 @@ P5-SY11G-RUNTIME 修复内容（2026-06-25）：
 
 ## Current Blockers
 
-P5-SY9 当前阻断生产 Web 真实写入：BigSeller Session 复用不可靠、Dry Run 真实绑定未完成、Web 自动真实写入必须改为审核后二次确认、生产路径不得混入 Mock、heartbeat/timeout 尚需完善。Supabase 可继续作为当前生产数据库，但新增代码必须保持 Repository/Adapter 隔离，避免未来切换国内 PostgreSQL 兼容库时伤筋动骨。
+无阻塞。P5-SY11G-RUNTIME 已完成（Migration 00012 已手动执行至生产数据库 + getSyncRuns limit 契约已修正 + 人工验收通过）。等待用户确认下一任务，不自动进入 P5-SY12。
 
 ## Next Step
 
-P5-SY11-REWORK（P5-SY11G）：将归档从全局 ProductVariant 状态改为用户级个人偏好。P5-SY11A~F 技术实现已完成但业务语义冲突需返工。不进入 P5-SY12。P5-SY10 Phase B 自动 Real Write 设计预留，当前不启用。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。
+P5-SY11G-RUNTIME 已完成（2026-06-25）。下一任务待用户确认，不自动进入 P5-SY12。P5-SY10 Phase B 自动 Real Write 设计预留，当前不启用。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。
 
 ## P5-SY3A Dry Run 结果摘要（返工后）
 
@@ -714,25 +714,28 @@ BigSeller 实际 VXE 结构：
 
 ## Current Task References
 
-当前 P5-SY11-REWORK（P5-SY11G）任务包：将归档从全局 ProductVariant 状态改为用户级个人偏好。P5-SY11A~F 技术实现已完成但业务语义冲突需返工（全局 `is_archived` vs 每人独立归档偏好）。返工任务包详见 `docs/tasks/current-task.md`。
+P5-SY11-REWORK（P5-SY11G）已完成：归档从全局 `product_variant.is_archived` 迁移为用户级 `user_variant_preference` 个人偏好表。P5-SY11G-RUNTIME 已完成 2 项运行时修复 + 人工验收。
 
-**P5-SY11 核心文件（已完成）：**
-- ✅ `supabase/migrations/00011_add_variant_soft_archive.sql` — 新增 `is_archived` + `archived_at` + `archived_by` 列 + 部分索引 + RLS 调整 (P5-SY11A)
-- ✅ `src/types/database.ts` — product_variant 类型增加 `is_archived` / `archived_at` / `archived_by` (P5-SY11B)
-- ✅ `src/features/variants/types.ts` — `VariantFilters` 增加 `archiveStatus` (P5-SY11B)
-- ✅ `src/features/variants/schema.ts` — 新增 archive/restore Zod schemas (P5-SY11B)
-- ✅ `src/features/variants/repository.ts` — 新增 `archive()` / `restore()` 方法；`list()` / `getUnmatched()` 增加 `archiveStatus` 过滤；`match()` / `unmatch()` / `batchMatch()` 阻止已归档操作 (P5-SY11B)
-- ✅ `src/features/variants/actions.ts` — 新增 `archiveVariants()` / `restoreVariants()` Server Actions (P5-SY11C)
-- ✅ `src/features/inventory/repository.ts` — `getOverseasList()` / `getLowStock()` / `getOverseasStats()` 过滤已归档 Variant (P5-SY11D)
-- ✅ `src/features/variants/columns.tsx` — 新增 `is_archived` 归档状态列 (P5-SY11E)
-- ✅ `src/features/variants/components/archive-controls.tsx` — 批量归档/恢复操作组件（确认 Dialog + toast） (P5-SY11E)
-- ✅ `src/app/dashboard/variants/_components/variant-page-content.tsx` — 交互层（筛选标签/复选框/表格/分页） (P5-SY11E)
-- ✅ `src/app/dashboard/variants/page.tsx` — Server Component：数据表格 + 归档筛选标签 + Admin 批量操作 + SKU/名称搜索 (P5-SY11E)
-- ✅ `src/app/dashboard/variants/unmatched/page.tsx` — Server Component：仅活跃未匹配列表，requireActiveAuth (P5-SY11E)
-- ✅ `src/app/dashboard/variants/loading.tsx` — 加载骨架 (P5-SY11E)
-- ✅ `src/app/dashboard/variants/error.tsx` — 错误状态 + 重试 (P5-SY11E)
-- ✅ `src/features/variants/p5-sy11e-pages.test.ts` — 页面/UI 测试（30 项） (P5-SY11E)
-- ✅ `src/features/variants/p5-sy11f-non-regression.test.ts` — 同步非回归验证测试（22 项） (P5-SY11F)
+**P5-SY11G 最终核心文件：**
+
+| 文件 | 说明 |
+|---|---|
+| `supabase/migrations/00012_user_variant_preference.sql` | 新建 `user_variant_preference` 表 + RLS（4 策略）+ UNIQUE + 索引；移除 `operator_select_variant` 的 `is_archived` 全局过滤 |
+| `src/types/database.ts` | 新增 `user_variant_preference` 表的 Row/Insert/Update 类型；`product_variant.is_archived`/`archived_at`/`archived_by` 标记 `@deprecated` |
+| `src/features/variants/types.ts` | `VariantFilters.archiveStatus` 语义调整为当前用户偏好过滤 |
+| `src/features/variants/schema.ts` | `archiveVariantsSchema`/`restoreVariantsSchema`：移除 `archivedBy`，改为从 session 获取 userId |
+| `src/features/variants/repository.ts` | 全部归档操作改用 `user_variant_preference`（`getUserArchivedVariantIds()`/`archive()`/`restore()`/`list()` LEFT JOIN 当前用户偏好）；不再读写 `product_variant.is_archived` |
+| `src/features/variants/actions.ts` | `archiveVariants()`/`restoreVariants()` 使用 `requireActiveAuth()`（所有登录用户均可操作），从 session 获取 userId |
+| `src/features/inventory/repository.ts` | `getOverseasList()`/`getLowStock()`/`getOverseasStats()` 按当前用户 `user_variant_preference` 过滤（使用 `row.variant_id` 判断）；`getByProductId()` 不过滤 |
+| `src/features/sync/schema.ts` | `getSyncRunsSchema.limit`：`max(500).default(200)` → `max(100).default(100)`（与 DB RPC `p_limit > 100` 强制拒绝一致） |
+| `src/features/sync/server-actions.ts` | `getOverseasWarehouseSyncStatus()` limit: 500 → 100 |
+| `src/features/variants/components/archive-controls.tsx` | 所有已登录用户可见（移除 Admin 专属限制） |
+| `src/app/dashboard/variants/_components/variant-page-content.tsx` | 归档/恢复对所有用户开放 |
+| `src/app/dashboard/variants/page.tsx` | `requireActiveAuth()`；所有用户可操作归档筛选标签 |
+| `src/app/dashboard/variants/unmatched/page.tsx` | 按当前用户偏好排除已归档 Variant |
+| `src/features/sync/schema.test.ts` | limit 测试断言更新：默认 100 / 拒绝 > 100 |
+
+**遗留列声明**：`product_variant.is_archived`、`archived_at`、`archived_by` 保留在 DB 中，业务代码已全部停止读写。Migration 00011 不修改（约束：不修改已执行 Migration）。
 
 **P5-SY9 核心文件（已完成）：**
 - `src/features/sync/server-actions.ts`：`verifyBigSellerSession()` / `triggerDryRun()` / `confirmRealWrite()` / `triggerBatchDryRun()` / `triggerBatchRealWrite()` / `getOverseasWarehouseSyncStatus()` / `getSyncLogDetail()`
@@ -757,4 +760,4 @@ BigSeller 实际 VXE 结构：
 
 ## Last Updated
 
-2026-06-25（P5-SY11-REWORK 语义返工任务包已创建。用户确认归档为用户级个人偏好非全局状态。现有 P5-SY11A~F 全局 `is_archived` 方案与确认语义冲突。任务包重写为 P5-SY11G：新建 `user_variant_preference` 表，所有登录用户均可归档/恢复，每人独立视图。仅文档更新，等待 Codex 审查任务包后再开始实现。）
+2026-06-25 — P5-SY11G-RUNTIME DONE。Migration 00012（`user_variant_preference` 表）已由用户在 Supabase Dashboard SQL Editor 手动执行至生产数据库（Pooler 不识别 tenant `hzlhqyditalumhnxbaim`，自动连接不可用）。PostgREST schema cache 已通过 `NOTIFY pgrst, 'reload schema'` 刷新。用户人工验证通过：`/dashboard/inventory/overseas` 不再报 schema cache 错误，`/dashboard/sync` 正常加载，`/dashboard/variants` 归档/恢复正常，A 归档不影响 B 视图。getSyncRuns limit 契约已修正（Zod `max(100).default(100)` 与 DB RPC `p_limit > 100` 拒绝一致）。质量门：896/896 TS 测试，lint 0 errors，build pass。`product_variant.is_archived` 为遗留列，业务代码不再读写。等待用户确认下一任务，不自动进入 P5-SY12。
