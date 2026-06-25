@@ -135,10 +135,11 @@ export const inventoryRepository = {
     }
 
     // JS 兜底：排除 variant 为 null 或当前用户已归档的 inventory 行
+    // 使用 row.variant_id（inventory 自带），variant join 的 select 不含 id
     const activeData = data.filter((row) => {
-      const v = unwrapJoin<{ id?: string }>(row.variant);
-      if (!v || !v.id) return false;
-      return !archivedVariantIds.has(v.id);
+      const v = unwrapJoin<{ sku?: string }>(row.variant);
+      if (!v) return false;
+      return !archivedVariantIds.has(row.variant_id);
     });
 
     // 解包关联数据为扁平结构
@@ -218,10 +219,11 @@ export const inventoryRepository = {
     if (!data) return [];
 
     // JS 兜底：排除 variant 为 null 或当前用户已归档的 inventory 行
+    // 使用 row.variant_id（inventory 自带），variant join 的 select 不含 id
     const activeData = data.filter((row) => {
-      const v = unwrapJoin<{ id?: string }>(row.variant);
-      if (!v || !v.id) return false;
-      return !archivedVariantIds.has(v.id);
+      const v = unwrapJoin<{ sku?: string }>(row.variant);
+      if (!v) return false;
+      return !archivedVariantIds.has(row.variant_id);
     });
 
     return activeData

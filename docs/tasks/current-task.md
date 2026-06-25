@@ -6,7 +6,11 @@
 
 ## 状态
 
-`P5-SY11-REWORK DONE` — P5-SY11G A~F 全部完成。归档已从全局 product_variant.is_archived 迁移为用户级 user_variant_preference。
+`P5-SY11-REWORK DONE` — P5-SY11G A~F 全部完成。P5-SY11G 返工（2026-06-25）修复 3 项阻塞问题：
+
+1. **inventory repo 归档过滤 Bug**：`getOverseasList`/`getLowStock` 的 variant join select 不含 `id`，但过滤逻辑使用 `v.id` → 所有海外库存行被过滤为空。修复：改用 `row.variant_id` 判断 `archivedVariantIds.has(row.variant_id)`。
+2. **variants list() 分页后过滤**：DB range 分页 → JS filter 归档 → total 错误、archived tab 空页。修复：`.not('id','in',archivedArray)`/`.in('id',archivedArray)` 下推到 DB，分页前过滤。
+3. **archive/restore 返回假数量**：archive 返回总数非新增、restore 返回请求数。修复：先查询已有偏好，仅操作实际需要变更的记录，返回真实数量。
 
 ## 背景
 

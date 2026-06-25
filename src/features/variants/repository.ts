@@ -71,17 +71,26 @@ export const variantRepository = {
 
   /** 分页列表（含关联产品名 + 当前用户归档状态）
    *  @param filters.archiveStatus 默认 'active'（仅未归档），'archived' 仅已归档，'all' 不过滤
-   *  @param filters.userId 当前登录用户 ID（用于查询个人归档偏好） */
+   *  @param filters.userId 当前登录用户 ID（用于查询个人归档偏好）
+   *
+   *  归档过滤在 DB 层完成（分页前），确保 total 和每页条数准确。
+   *  'all' 时也加载 archivedVariantIds 用于 isArchivedByUser 标记。 */
   async list(filters: VariantFilters = {}): Promise<PaginatedResult<VariantItem>> {
     const supabase = await createClient();
     const { country, matchStatus, productId, search, archiveStatus = 'active', page = 1, pageSize = PAGE_SIZE, userId } = filters;
 
-    // 获取当前用户已归档的 Variant ID 集合
+    // 始终加载当前用户已归档 ID（all 也需要，用于 isArchivedByUser 标记）
     let archivedVariantIds = new Set<string>();
-    if (userId && archiveStatus !== 'all') {
+    if (userId) {
       archivedVariantIds = await this.getUserArchivedVariantIds(userId);
     }
 
+    // archived tab + 无已归档记录 → 直接返回空
+    if (archiveStatus === 'archived' && archivedVariantIds.size === 0) {
+      return { data: [], total: 0, page, pageSize };
+    }
+
+    // 不再使用 is_archived 列；归档过滤基于 user_variant_preference 在 DB 层完成
     let query = supabase.from('product_variant').select('*, product:product_id (name, code)', {
       count: 'exact',
     });
@@ -92,7 +101,18 @@ export const variantRepository = {
     if (search) {
       query = query.or(`sku.ilike.%${search}%,name.ilike.%${search}%`);
     }
-    // 不再使用 is_archived 列；归档过滤在 JS 层基于 user_variant_preference 完成
+
+    // DB 层归档过滤（分页前完成，确保 total 准确、分页不丢行）
+    if (userId) {
+      const archivedArray = [...archivedVariantIds];
+      if (archiveStatus === 'active' && archivedArray.length > 0) {
+        query = query.not('id', 'in', archivedArray);
+      } else if (archiveStatus === 'archived') {
+        query = query.in('id', archivedArray);
+      }
+      // archiveStatus === 'all': 不过滤
+      // archiveStatus === 'active' && archivedArray.length === 0: 无需过滤
+    }
 
     const from = (page - 1) * pageSize;
     const { data, error, count } = await query
@@ -104,34 +124,16 @@ export const variantRepository = {
     }
 
     if (!data || data.length === 0) {
-      return { data: [], total: 0, page, pageSize };
+      return { data: [], total: count ?? 0, page, pageSize };
     }
 
-    // JS 层按用户归档偏好过滤 + 标记 isArchivedByUser
-    let filtered: unknown[] = data;
-    if (userId) {
-      if (archiveStatus === 'active') {
-        filtered = data.filter((row: Record<string, unknown>) => !archivedVariantIds.has(row.id as string));
-      } else if (archiveStatus === 'archived') {
-        filtered = data.filter((row: Record<string, unknown>) => archivedVariantIds.has(row.id as string));
-      }
-    }
-
-    // 过滤后重新计算 total（含归档过滤的准确计数）
-    // 对于非 all 过滤，total 由 DB count 减去分页前被过滤的差异近似估算
-    // 实际分页准确性由前端接受（数据量较小时精确）
-    const items = filtered.map((row) =>
+    const items = data.map((row) =>
       mapVariantItem(row as unknown as Record<string, unknown>, archivedVariantIds)
     );
 
-    // count 为 DB 全量计数（不含用户归档过滤），保留原值；JS 过滤后 total 重新计算
-    const total = userId && archiveStatus !== 'all'
-      ? items.length  // 精确但仅限当前页过滤后的数量；total 估算用 DB count 保守
-      : (count ?? 0);
-
     return {
       data: items,
-      total,
+      total: count ?? 0,
       page,
       pageSize,
     };
@@ -195,7 +197,7 @@ export const variantRepository = {
 
   /** 批量归档 Variant（INSERT INTO user_variant_preference）
    *  @param userId 当前登录用户 ID
-   *  @returns 实际归档数量 */
+   *  @returns 本次实际新增的归档数量（已归档的不会重复计入） */
   async archive(variantIds: string[], userId: string): Promise<{ archived: number }> {
     if (variantIds.length === 0) {
       throw new VariantError('请选择至少一个 SKU', 'INVALID_ID');
@@ -230,9 +232,27 @@ export const variantRepository = {
       }
     }
 
-    // 批量 INSERT INTO user_variant_preference（忽略重复）
-    // ON CONFLICT DO NOTHING: 已归档的 Variant 不报错，静默跳过
-    const rows = uniqueIds.map((variantId) => ({
+    // 查询当前用户已归档的 Variant（避免重复插入）
+    const { data: existing, error: existingError } = await supabase
+      .from('user_variant_preference')
+      .select('variant_id')
+      .in('variant_id', uniqueIds)
+      .eq('user_id', userId)
+      .eq('preference_type', 'archived');
+
+    if (existingError) {
+      throw new VariantError('查询归档状态失败', 'DB_ERROR');
+    }
+
+    const alreadyArchived = new Set((existing ?? []).map((r) => r.variant_id));
+    const toArchive = uniqueIds.filter((id) => !alreadyArchived.has(id));
+
+    if (toArchive.length === 0) {
+      return { archived: 0 };
+    }
+
+    // 仅插入尚未归档的记录
+    const rows = toArchive.map((variantId) => ({
       user_id: userId,
       variant_id: variantId,
       preference_type: 'archived' as const,
@@ -240,38 +260,18 @@ export const variantRepository = {
 
     const { error: insertError } = await supabase
       .from('user_variant_preference')
-      .upsert(rows, {
-        onConflict: 'user_id, variant_id, preference_type',
-        ignoreDuplicates: true,
-      });
+      .insert(rows);
 
     if (insertError) {
-      // 检查是否因 UNIQUE 约束导致全部跳过
-      if (insertError.code === '23505') {
-        return { archived: 0 };
-      }
       throw new VariantError('归档 SKU 失败', 'DB_ERROR');
     }
 
-    // 查询实际写入数量
-    const { data: inserted, error: countError } = await supabase
-      .from('user_variant_preference')
-      .select('id')
-      .in('variant_id', uniqueIds)
-      .eq('user_id', userId)
-      .eq('preference_type', 'archived');
-
-    if (countError) {
-      // 非关键路径，返回估算
-      return { archived: uniqueIds.length };
-    }
-
-    return { archived: inserted?.length ?? 0 };
+    return { archived: toArchive.length };
   },
 
   /** 批量恢复 Variant（DELETE FROM user_variant_preference）
    *  @param userId 当前登录用户 ID
-   *  @returns 实际恢复数量 */
+   *  @returns 本次实际恢复的数量（仅统计实际被删除的偏好记录） */
   async restore(variantIds: string[], userId: string): Promise<{ restored: number }> {
     if (variantIds.length === 0) {
       throw new VariantError('请选择至少一个 SKU', 'INVALID_ID');
@@ -306,11 +306,29 @@ export const variantRepository = {
       }
     }
 
-    // 删除当前用户的归档偏好记录
+    // 查询当前用户实际已归档的 Variant（仅删除实际存在的偏好记录）
+    const { data: existing, error: existingError } = await supabase
+      .from('user_variant_preference')
+      .select('variant_id')
+      .in('variant_id', uniqueIds)
+      .eq('user_id', userId)
+      .eq('preference_type', 'archived');
+
+    if (existingError) {
+      throw new VariantError('查询归档状态失败', 'DB_ERROR');
+    }
+
+    const actuallyArchived = (existing ?? []).map((r) => r.variant_id);
+
+    if (actuallyArchived.length === 0) {
+      return { restored: 0 };
+    }
+
+    // 仅删除实际存在的偏好记录
     const { error: deleteError } = await supabase
       .from('user_variant_preference')
       .delete()
-      .in('variant_id', uniqueIds)
+      .in('variant_id', actuallyArchived)
       .eq('user_id', userId)
       .eq('preference_type', 'archived');
 
@@ -318,9 +336,7 @@ export const variantRepository = {
       throw new VariantError('恢复 SKU 失败', 'DB_ERROR');
     }
 
-    // 无法从 supabase delete 返回值中获取删除行数
-    // 返回请求的 ID 数量作为近似值（DELETE 不会失败于不存在的行）
-    return { restored: uniqueIds.length };
+    return { restored: actuallyArchived.length };
   },
 
   /** 匹配 SKU 到标准产品 */

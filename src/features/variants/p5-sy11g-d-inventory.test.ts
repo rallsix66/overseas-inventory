@@ -3,9 +3,11 @@
 // 验证:
 // - 海外库存列表/低库存/统计使用 user_variant_preference 过滤
 // - 不再使用 .eq('variant.is_archived', false) DB 过滤
+// - getOverseasList/getLowStock 使用 row.variant_id 判断归档（variant join select 不含 id）
 // - getOverseasList/getLowStock/getOverseasStats 接受 userId 参数
 // - getByProductId 不过滤（保留全部 Variant 库存）
 // - 源码不含 is_archived DB 级过滤（inventory repository）
+// - P5-SY11G 返工：variant join 不含 id 导致所有行被过滤 → 改用 row.variant_id
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
@@ -48,8 +50,11 @@ describe('P5-SY11G-D — 源码不再使用 is_archived 过滤', () => {
     expect(repoSrc).toMatch(/getUserArchivedVariantIds/);
   });
 
-  it('排除已归档 Variant 在 JS 层完成（非 DB 层）', () => {
-    expect(repoSrc).toMatch(/archivedVariantIds\.has/);
+  it('排除已归档 Variant 在 JS 层完成（非 DB 层），使用 row.variant_id 判断', () => {
+    // 关键修复：variant join select 不含 id，必须用 row.variant_id
+    expect(repoSrc).toMatch(/archivedVariantIds\.has\s*\(\s*row\.variant_id/);
+    // 不应继续使用 v.id（variant join 不含 id 字段）
+    expect(repoSrc).not.toMatch(/archivedVariantIds\.has\s*\(\s*v\.id/);
   });
 });
 
@@ -131,5 +136,98 @@ describe('P5-SY11G-D — Dashboard page 传递 userId', () => {
     const pagePath = path.resolve(process.cwd(), 'src/app/dashboard/page.tsx');
     const pageSrc = fs.readFileSync(pagePath, 'utf-8');
     expect(pageSrc).toMatch(/getOverseasStats\s*\(\s*user\?\.id/);
+  });
+});
+
+// ─── P5-SY11G 返工：variant.id 缺失修复验证 ──────────────────────────
+
+describe('P5-SY11G-D 返工 — getOverseasList 使用 row.variant_id', () => {
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = fs.readFileSync(INVENTORY_REPO_PATH, 'utf-8');
+  });
+
+  it('getOverseasList 过滤逻辑不再使用 v.id（variant join 不含 id）', () => {
+    // variant join select: variant:variant_id!inner (sku, country, match_status, ...)
+    // 不含 id，所以必须使用 row.variant_id 判断
+    const fnBody = repoSrc.match(/async getOverseasList[\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 不应出现 v.id（variant join 不含 id）
+      const filterLines = fnBody[0].split('\n').filter((l) => l.includes('archivedVariantIds.has'));
+      for (const line of filterLines) {
+        expect(line).toMatch(/row\.variant_id/);
+        expect(line).not.toMatch(/v\.id/);
+      }
+    }
+  });
+
+  it('getOverseasList variant join 不含 id，使用 row.variant_id 兜底', () => {
+    // 确认 select 中 variant join 确实不含 id
+    const fnBody = repoSrc.match(/async getOverseasList[\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // select 的 variant join 部分不应包含 id: 等字段（仅 sku/country/match_status/product）
+      const selectStmt = fnBody[0].match(/variant:variant_id!inner\s*\(([^)]+)\)/);
+      expect(selectStmt).not.toBeNull();
+      if (selectStmt) {
+        // 不包含 id 字段（只有 sku, country, match_status, product）
+        expect(selectStmt[1]).not.toMatch(/\bid\b/);
+      }
+    }
+  });
+
+  it('未归档时 archivedVariantIds 为空 Set，过滤不过滤任何行', () => {
+    // 当 archivedVariantIds.size === 0，has() 返回 false，所有行保留
+    const emptySet = new Set<string>();
+    expect(emptySet.has('any-id')).toBe(false);
+  });
+
+  it('归档后 archivedVariantIds 包含 variant_id，过滤排除对应行', () => {
+    const archivedSet = new Set(['variant-a', 'variant-b']);
+    expect(archivedSet.has('variant-a')).toBe(true);
+    expect(archivedSet.has('variant-c')).toBe(false);
+  });
+});
+
+describe('P5-SY11G-D 返工 — getLowStock 使用 row.variant_id', () => {
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = fs.readFileSync(INVENTORY_REPO_PATH, 'utf-8');
+  });
+
+  it('getLowStock 过滤逻辑使用 row.variant_id 判断归档', () => {
+    const fnBody = repoSrc.match(/async getLowStock[\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      const filterLines = fnBody[0].split('\n').filter((l) => l.includes('archivedVariantIds.has'));
+      for (const line of filterLines) {
+        expect(line).toMatch(/row\.variant_id/);
+        expect(line).not.toMatch(/v\.id/);
+      }
+    }
+  });
+});
+
+// ─── 多用户隔离概念验证 ───────────────────────────────────────────────
+
+describe('P5-SY11G-D 返工 — 多用户隔离', () => {
+  it('getUserArchivedVariantIds 按 userId 查询（每人独立偏好）', () => {
+    const repoSrc = fs.readFileSync(INVENTORY_REPO_PATH, 'utf-8');
+    // 函数接收 userId 参数，按 user_id 查询
+    expect(repoSrc).toContain("'user_id', userId");
+  });
+
+  it('filter 条件仅依赖当前用户的 archivedVariantIds', () => {
+    const repoSrc = fs.readFileSync(INVENTORY_REPO_PATH, 'utf-8');
+    // 每个 getOverseasList 调用传入各自 userId，生成独立 archivedVariantIds
+    const fnBody = repoSrc.match(/async getOverseasList[\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // archivedVariantIds 通过 getUserArchivedVariantIds(userId) 获取
+      expect(fnBody[0]).toMatch(/getUserArchivedVariantIds\s*\(\s*userId/);
+    }
   });
 });

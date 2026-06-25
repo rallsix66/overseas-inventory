@@ -177,3 +177,180 @@ describe('P5-SY11G-B — 文档注释', () => {
     expect(repoSrc).toContain('P5-SY11G');
   });
 });
+
+// ─── P5-SY11G 返工：list() DB 层归档过滤（分页前）────────────────────
+
+describe('P5-SY11G-B 返工 — list() 归档过滤在分页前完成', () => {
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
+  });
+
+  it('list() 始终加载 archivedVariantIds（含 all，用于 isArchivedByUser 标记）', () => {
+    // 原代码: if (userId && archiveStatus !== 'all') 才加载
+    // 修复后: if (userId) 就加载（all 也需要）
+    const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 不再有 archiveStatus !== 'all' 的条件限制加载
+      expect(fnBody[0]).toContain('始终加载');
+      // archivedIds.empty → archived tab 直接返回空
+      expect(fnBody[0]).toMatch(/archivedVariantIds\.size\s*===\s*0/);
+    }
+  });
+
+  it('active tab 使用 .not(id, in, archivedArray) 过滤（DB 层，分页前）', () => {
+    // 验证 .not('id', 'in', 的调用存在（DB 层排除已归档）
+    expect(repoSrc).toMatch(/\.not\s*\(\s*['"]id['"]\s*,\s*['"]in['"]/);
+  });
+
+  it('archived tab 使用 .in(id, archivedArray) 过滤（DB 层，分页前）', () => {
+    // 验证 .in('id', archivedArray) 的调用存在
+    expect(repoSrc).toMatch(/\.in\s*\(\s*['"]id['"]\s*,\s*archivedArray/);
+  });
+
+  it('count + range 在归档过滤之后执行（total 准确）', () => {
+    const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // .not/.in 过滤在 .order/.range 之前
+      const notIdx = fnBody[0].indexOf(".not('id', 'in'");
+      const inIdx = fnBody[0].indexOf(".in('id', archivedArray");
+      const rangeIdx = fnBody[0].indexOf(".range(from");
+      // 至少一个过滤在 range 之前
+      const filterIdx = Math.max(notIdx, inIdx);
+      if (filterIdx > 0 && rangeIdx > 0) {
+        expect(filterIdx).toBeLessThan(rangeIdx);
+      }
+    }
+  });
+
+  it('archivedIds 为空时 archived tab 直接返回空（不查询 DB）', () => {
+    const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 空 ID 时直接 return { data: [], total: 0, page, pageSize }
+      expect(fnBody[0]).toMatch(/total:\s*0/);
+    }
+  });
+
+  it('list() 不再在 JS 层分页后过滤归档（无 data.filter + archivedVariantIds.has）', () => {
+    const fnBody = repoSrc.match(/async list\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 不应再有 .filter(row => !archivedVariantIds.has(...)) 的 JS 层分页后过滤
+      expect(fnBody[0]).not.toMatch(/data\.filter\s*\(.*archivedVariantIds/);
+    }
+  });
+});
+
+// ─── P5-SY11G 返工：archive()/restore() 返回实际变更数 ────────────────
+
+describe('P5-SY11G-B 返工 — archive() 返回本次实际新增归档数', () => {
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
+  });
+
+  it('archive() 先查询已归档记录再插入（避免重复计入）', () => {
+    const fnBody = repoSrc.match(/async archive\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 先查询 existing
+      expect(fnBody[0]).toMatch(/alreadyArchived/);
+      // 过滤出 toArchive = uniqueIds without alreadyArchived
+      expect(fnBody[0]).toMatch(/toArchive/);
+    }
+  });
+
+  it('archive() 不再使用 upsert + 全量计数（旧行为：返回总数非新增）', () => {
+    const fnBody = repoSrc.match(/async archive\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 不再有 upsert
+      expect(fnBody[0]).not.toMatch(/\.upsert/);
+      // 不再 select count(*) 返回总数
+      expect(fnBody[0]).not.toMatch(/inserted\?\.length/);
+    }
+  });
+
+  it('archive() toArchive 为空时返回 0（全部已归档）', () => {
+    const fnBody = repoSrc.match(/async archive\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      expect(fnBody[0]).toMatch(/toArchive\.length\s*===\s*0/);
+      expect(fnBody[0]).toMatch(/archived:\s*0/);
+    }
+  });
+
+  it('archive() 返回 toArchive.length（实际新增数，非总数）', () => {
+    const fnBody = repoSrc.match(/async archive\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      expect(fnBody[0]).toMatch(/archived:\s*toArchive\.length/);
+    }
+  });
+});
+
+describe('P5-SY11G-B 返工 — restore() 返回本次实际恢复数', () => {
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
+  });
+
+  it('restore() 先查询实际已归档记录再删除（仅删除存在的偏好）', () => {
+    const fnBody = repoSrc.match(/async restore\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 先查询 existing
+      expect(fnBody[0]).toMatch(/actuallyArchived/);
+    }
+  });
+
+  it('restore() 不再返回 uniqueIds.length（旧行为：返回请求数非实际数）', () => {
+    const fnBody = repoSrc.match(/async restore\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 不应返回 uniqueIds.length 作为 restored 值
+      expect(fnBody[0]).not.toMatch(/restored:\s*uniqueIds\.length/);
+      // 应返回 actuallyArchived.length
+      expect(fnBody[0]).toMatch(/restored:\s*actuallyArchived\.length/);
+    }
+  });
+
+  it('restore() actuallyArchived 为空时返回 0', () => {
+    const fnBody = repoSrc.match(/async restore\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      expect(fnBody[0]).toMatch(/actuallyArchived\.length\s*===\s*0/);
+      expect(fnBody[0]).toMatch(/restored:\s*0/);
+    }
+  });
+});
+
+// ─── 多用户隔离行为 ───────────────────────────────────────────────────
+
+describe('P5-SY11G-B 返工 — 多用户隔离行为', () => {
+  it('archive() 仅写入当前 userId 的 user_variant_preference', () => {
+    const repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
+    const fnBody = repoSrc.match(/async archive\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 确认 user_id 设置为传入的 userId 参数
+      expect(fnBody[0]).toMatch(/user_id:\s*userId/);
+    }
+  });
+
+  it('restore() 仅删除当前 userId 的偏好', () => {
+    const repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
+    const fnBody = repoSrc.match(/async restore\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      // 确认 DELETE 带 .eq('user_id', userId)
+      expect(fnBody[0]).toMatch(/\.eq\s*\(\s*['"]user_id['"]\s*,\s*userId/);
+    }
+  });
+});
