@@ -155,15 +155,16 @@ describe('P5-SY11G-F — 不实现 favorited', () => {
     // 但注释中可以提及 favorited 作为预留扩展说明
   });
 
-  it('业务代码不含 favorited 引用（测试文件和注释除外）', () => {
+  it('业务代码不含 favorited 引用（测试文件和新 P5-SY12 模块除外）', () => {
     const files = walkDir(SRC_DIR, ['.ts', '.tsx']);
     for (const file of files) {
-      // 排除测试文件和类型定义文件
+      // 排除：测试文件、类型定义文件、P5-SY12 preferences 模块
       if (file.includes('.test.ts') || file.includes('database.ts')) continue;
+      if (file.includes('preferences')) continue;
       const content = fs.readFileSync(file, 'utf-8');
       const lines = content.split('\n').filter((l) => {
         const t = l.trim();
-        return !t.startsWith('//') && !t.startsWith('--') && !t.startsWith('*') && !t.startsWith('*');
+        return !t.startsWith('//') && !t.startsWith('--') && !t.startsWith('*') && !t.startsWith('/**');
       });
       for (const line of lines) {
         expect(line).not.toMatch(/'favorited'/);

@@ -1,8 +1,10 @@
 // Dashboard 首页 — 库存概览
-// Server Component：展示各仓库库存入口和关键指标
+// Server Component：展示各仓库库存入口、关键指标和关注产品动态
 import { getCurrentUser } from '@/lib/auth';
 import { inventoryRepository } from '@/features/inventory/repository';
-import { Package, Globe, Truck, ArrowRight, AlertTriangle } from 'lucide-react';
+import { preferencesRepository } from '@/features/preferences/repository';
+import type { FollowedVariantBasic } from '@/features/preferences/types';
+import { Package, Globe, Truck, ArrowRight, AlertTriangle, Star } from 'lucide-react';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 
@@ -20,6 +22,16 @@ export default async function DashboardPage() {
     overseasStats = await inventoryRepository.getOverseasStats(user?.id);
   } catch {
     // 统计获取失败时静默处理，首页仍可渲染
+  }
+
+  // P5-SY12: 获取关注产品动态（失败不影响首页渲染）
+  let followedVariants: FollowedVariantBasic[] = [];
+  try {
+    followedVariants = user?.id
+      ? await preferencesRepository.getFollowedVariantsBasic(user.id)
+      : [];
+  } catch {
+    followedVariants = [];
   }
 
   return (
@@ -108,6 +120,97 @@ export default async function DashboardPage() {
             <p className="text-xs text-gray-400 mt-2">即将推出</p>
           </div>
         </div>
+      </div>
+
+      {/* P5-SY12: 关注产品动态 — 阶段 B 告警临时用 safety_stock */}
+      <div className="rounded-lg border p-5 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Star className="h-4 w-4 text-amber-500" />
+          <h2 className="text-sm font-semibold text-gray-900">关注产品动态</h2>
+          {followedVariants && followedVariants.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {followedVariants.length} 个关注
+              {followedVariants.filter((v) => v.isLowStock).length > 0 && (
+                <span className="text-red-600 ml-1">
+                  · {followedVariants.filter((v) => v.isLowStock).length} 个需关注
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+
+        {!followedVariants || followedVariants.length === 0 ? (
+          /* 空状态 */
+          <div className="text-center py-10">
+            <Star className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">暂无关注产品</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              在海外库存列表中点击星标关注您关心的 SKU
+            </p>
+          </div>
+        ) : (
+          /* 关注列表 — 低库存行置顶 */
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50 text-left text-xs font-medium text-muted-foreground">
+                  <th className="py-2 px-3">产品名称</th>
+                  <th className="py-2 px-3">仓库</th>
+                  <th className="py-2 px-3 text-right">库存</th>
+                  <th className="py-2 px-3 text-right">安全线</th>
+                  <th className="py-2 px-3">状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {followedVariants.map((v) => (
+                  <tr key={`${v.variantId}-${v.warehouseId}`} className="border-b last:border-0 hover:bg-gray-50">
+                    <td className="py-2 px-3">
+                      <span className="font-medium text-gray-900">{v.productName}</span>
+                      <span className="text-xs text-muted-foreground ml-1">({v.country})</span>
+                    </td>
+                    <td className="py-2 px-3 text-gray-600">{v.warehouseName}</td>
+                    <td className={`py-2 px-3 text-right tabular-nums ${v.isLowStock ? 'text-red-600 font-semibold' : ''}`}>
+                      {v.quantity}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+                      {v.safetyStock}
+                    </td>
+                    <td className="py-2 px-3">
+                      {v.isLowStock ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">
+                          低库存
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-600">
+                          正常
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {followedVariants && followedVariants.length > 0 && (followedVariants.filter((v) => v.isLowStock).length > 0) && (
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground border-t pt-3">
+            {followedVariants
+              .filter((v) => v.isLowStock)
+              .slice(0, 3)
+              .map((v) => (
+                <span key={`alert-${v.variantId}-${v.warehouseId}`} className="text-red-600 font-medium">
+                  <AlertTriangle className="inline h-3 w-3 mr-0.5" />
+                  {v.productName}({v.warehouseName}) {v.alertReason}
+                </span>
+              ))}
+            {followedVariants.filter((v) => v.isLowStock).length > 3 && (
+              <span className="text-red-600">
+                等 {followedVariants.filter((v) => v.isLowStock).length} 项
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 操作入口 */}

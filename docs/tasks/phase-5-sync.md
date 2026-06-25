@@ -29,6 +29,7 @@
 | P5-SY10 | 自动 Dry Run 预审与后续自动化分阶段框架 | P5-SY9 全部海外仓批量真实写入完成并验收 | DONE（P5-SY10A~F 全部 DONE。规则引擎设计：11 条规则优先级 R1~R11，冷启动/有基线双路径，session unhealthy / plan_drift / all_zero / consecutive_failures → BLOCK；warehouse_rename / high_new / high_invalid / row_anomaly → WARN；PASS 仍需人工确认 Real Write。首版仅 Phase A，Phase B 自动 Real Write 设计预留。质量门：744/744 TS，lint 0，build pass，253 Python。） |
 | P5-SY11 | ProductVariant 软归档与库存视图降噪 | P5-SY10 全部子任务（A~F）DONE | **DONE** — P5-SY11G 语义返工完成。P5-SY11G-RUNTIME（2026-06-25）通过人工验收。全局 is_archived 迁移为 user_variant_preference 用户级偏好表，所有用户均可归档/恢复，每人独立视图。Migration 00012 已手动执行至生产数据库。P5-SY11G 返工修复 4 项阻塞 + RUNTIME 修复 2 项（limit 契约 + Migration 00012 执行）。质量门：896/896 TS 测试，lint 0 errors，build pass。 |
 | P5-SY11G | 语义返工：用户级 Variant 归档偏好（user_variant_preference 表） | P5-SY11A~F | **DONE** — 2026-06-25。Migration 00012 + 类型同步 + Repository 重写 + Server Actions (requireActiveAuth) + Inventory 过滤 + UI + 896 TS 测试 pass，lint 0 errors，build pass。P5-SY11G-RUNTIME（2026-06-25）：Migration 00012 由用户手动执行至生产 DB + getSyncRuns limit 契约修正 + 人工验收通过。 |
+| **P5-SY12** | **特别关注阶段 B 最小闭环：扩展 `preference_type` 支持 `'favorited'`（Migration 00013）；`src/features/preferences/` 模块；库存列表星标按钮；Dashboard"关注产品动态"区；阶段 B 告警临时用 `product.safety_stock`** | P5-SY11G | **DONE**（2026-06-25。Migration 00013 + preferences 模块 + 星标 + Dashboard 关注区 + 979/979 TS 测试 pass，lint 0 errors，build pass。不新建 variant_follows、不改 sync RPC/Python、阶段 B 告警仅用 safety_stock。） |
 
 P5-SY8 已完成逐仓端到端闭环。P5-SY9 起进入生产化阶段：允许批量处理全部启用海外仓，但必须先批量 Dry Run、页面审核、二次确认后再逐仓真实写入；禁止普通按钮直接自动真实写入。
 

@@ -91,6 +91,7 @@ export const inventoryRepository = {
         warehouseType: warehouse?.type ?? '',
         safetyStock: product?.safety_stock ?? 0,
         matchStatus: variant?.match_status ?? 'unmatched',
+        isFavorited: false,
       };
     });
 
@@ -162,6 +163,7 @@ export const inventoryRepository = {
         warehouseType: warehouse?.type ?? '',
         safetyStock: product?.safety_stock ?? 0,
         matchStatus: variant?.match_status ?? 'unmatched',
+        isFavorited: false,
       };
     });
 
@@ -246,6 +248,7 @@ export const inventoryRepository = {
           warehouseType: warehouse?.type ?? '',
           safetyStock: product?.safety_stock ?? 0,
           matchStatus: variant?.match_status ?? 'unmatched',
+          isFavorited: false,
         };
       })
       .filter((item) => item.quantity <= item.safetyStock);
@@ -284,6 +287,7 @@ export const inventoryRepository = {
         warehouseType: warehouse?.type ?? '',
         safetyStock: 0,
         matchStatus: variant?.match_status ?? 'unmatched',
+        isFavorited: false,
       };
     });
   },

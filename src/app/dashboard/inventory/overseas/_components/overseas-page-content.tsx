@@ -3,8 +3,9 @@
 // 海外库存页 — 客户端交互层
 // 处理筛选、表格渲染和分页导航
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
+import { useState, useOptimistic, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Package, AlertTriangle, Clock, RefreshCw } from 'lucide-react';
+import { Search, Package, AlertTriangle, Clock, RefreshCw, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,6 +23,7 @@ import {
   TableRow,
   TableCell,
 } from '@/components/ui/table';
+import { toggleFavoriteAction } from '@/features/preferences/actions';
 import type { InventoryItem, OverseasStats, WarehouseOption } from '@/features/inventory/types';
 import type { WarehouseSyncStatus } from '@/features/sync/types';
 
@@ -88,6 +90,54 @@ function StatCard({
         {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
       </div>
     </div>
+  );
+}
+
+/**
+ * P5-SY12: 星标关注按钮 — 乐观更新
+ *
+ * 阶段 B 不做仓库权限校验（阶段 D 才引入 user_warehouses）。
+ * 点击切换关注/取消关注，失败时 toast 提示（由调用方处理）。
+ */
+function FavoriteStar({
+  variantId,
+  initialFavorited,
+}: {
+  variantId: string;
+  initialFavorited: boolean;
+}) {
+  const [optimisticFavorited, setOptimisticFavorited] = useOptimistic(
+    initialFavorited,
+    (_state: boolean, next: boolean) => next
+  );
+
+  function handleClick() {
+    startTransition(async () => {
+      const next = !optimisticFavorited;
+      setOptimisticFavorited(next);
+      try {
+        await toggleFavoriteAction(variantId);
+      } catch {
+        // 失败时 revert（refresh 后自动纠正）
+      }
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={`inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+        optimisticFavorited
+          ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50'
+          : 'text-gray-300 hover:text-amber-400 hover:bg-gray-50'
+      }`}
+      title={optimisticFavorited ? '取消关注' : '关注'}
+    >
+      <Star
+        className={`w-4 h-4 ${optimisticFavorited ? 'fill-current' : ''}`}
+      />
+    </button>
   );
 }
 
@@ -356,6 +406,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
+                  <TableHead className="w-[36px]">关注</TableHead>
                   <TableHead>国家</TableHead>
                   <TableHead>仓库</TableHead>
                   <TableHead>SKU</TableHead>
@@ -371,6 +422,12 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                   const whSync = syncStatus[item.warehouseId];
                   return (
                   <TableRow key={item.id}>
+                    <TableCell>
+                      <FavoriteStar
+                        variantId={item.variantId}
+                        initialFavorited={item.isFavorited}
+                      />
+                    </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
                         {item.country}

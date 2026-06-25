@@ -22,6 +22,8 @@ export interface InventoryItem {
   warehouseType: string;
   safetyStock: number;
   matchStatus: string;
+  /** 当前用户是否已关注此 Variant（P5-SY12，基于 user_variant_preference preference_type='favorited'） */
+  isFavorited: boolean;
 }
 
 /** 库存筛选条件 */

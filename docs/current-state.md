@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY11G-RUNTIME` — 运行时修复与生产验证已完成。等待用户确认下一任务（不自动进入 P5-SY12）。
+`P5-SY12` — 特别关注阶段 B 最小闭环（DONE，2026-06-25）
 
 ## Completed Tasks
 
@@ -67,8 +67,9 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY10E` — 调度机制：Vercel Cron Route Handler + 手动触发入口（2026-06-24 DONE，2026-06-24 返工完成。返工原因：Cron Route 通过 API key 后无 Supabase 用户 session，`claim_sync_run` 要求 `auth.uid()`，Cron 生产路径会失败。返工方案：① Migration 00010 新增 `claim_sync_run_system` RPC（SECURITY DEFINER，service_role only，校验 p_triggered_by 是激活 admin，仅允许 dry_run，复用并发锁/warehouse 校验/lease/僵尸回收逻辑）；② Repository 新增 `claimSyncRunSystem` 方法；③ SyncService 新增 `_systemClaimConfig` 配置项；④ 移除 `actions.ts` 中 `systemTriggeredBy` 绕权参数（`triggerBatchDryRun`/`runAutoPreReview` 始终调用 `requireActiveAdmin`）；⑤ `server-actions.ts` `runScheduledAutoPreReview` 直接构造带 `_systemClaimConfig` 的 SyncService，不经过 `createSyncActions`。新增 Migration 00010 静态测试 + claim_sync_run 未修改验证 + 系统 claim 路径 Mock 测试 + real_write 拒绝测试。744/744 TS 测试（23 文件），lint 0 errors，build pass，253 Python 通过。）
 - `P5-SY11-REWORK` (P5-SY11G A~F) — 语义返工：用户级 Variant 归档偏好（2026-06-25 DONE。全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建 user_variant_preference 表 + RLS + 移除 operator_select_variant 的 is_archived 全局过滤。variantRepository archive/restore/list/getUnmatched 全部改用 user_variant_preference，每人独立归档。Server Actions 改为 requireActiveAuth，Admin/Operator 均可操作。Inventory 层按当前用户归档偏好过滤。UI 所有登录用户可归档/恢复。P5-SY11G 返工（2026-06-25）：修复 4 项阻塞问题 — 1) inventory repository getOverseasList/getLowStock 从 v.id 改为 row.variant_id 判断归档；2) list() 归档过滤从 JS 后置改为 DB 层 notIn/in 在分页前完成；3) archive/restore 返回实际变更数；4) list() active tab 改用 query.notIn() 替代 query.not('id','in',...)，.not() 期望 PostgREST 原始括号语法而 JS 数组无括号导致过滤失效。质量门：896/896 TS 测试，30 文件，lint 0 errors，build pass。Python：315 passed + 5 collection errors。）
 - `P5-SY11G-RUNTIME` — 运行时修复与生产验证（2026-06-25 DONE。两项修复：1) Migration 00012 由用户在 Supabase Dashboard 手动执行（Pooler 不识别 tenant，自动连接不可用），验证 user_variant_preference 表 + 4 条 RLS 策略存在，PostgREST schema cache 已刷新；2) getSyncRuns limit 契约修正：Zod schema max(500).default(200) → max(100).default(100)，server-actions.ts limit:500→100，与 DB RPC get_sync_runs p_limit > 100 强制拒绝一致。人工验收通过：/dashboard/inventory/overseas 正常加载（不再报 schema cache 错误），/dashboard/sync 正常加载，/dashboard/variants 归档/恢复正常，A 归档后 B 视图不受影响，归档是个人偏好非全局。质量门：896/896 TS 测试，lint 0 errors，build pass。）
+- `P5-SY12` — 特别关注阶段 B 最小闭环（2026-06-25 DONE。Migration 00013 扩展 `user_variant_preference.preference_type` CHECK 约束支持 `'favorited'`（不新建表）。新增 `src/features/preferences/` 模块：types（PreferenceError / PreferenceResult / FollowedVariantBasic）+ schema（toggleFavoriteSchema）+ repository（getFavoritedVariantIds / isFavorited / favorite / unfavorite / toggleFavorite / getFollowedVariantsBasic）+ actions（toggleFavoriteAction — requireActiveAuth）。海外库存列表每行新增星标按钮（乐观更新）。Dashboard 首页新增「关注产品动态」区（空状态 / 表格 + 低库存置顶 + 告警摘要条）。阶段 B 告警临时用 `product.safety_stock`。归档与关注可共存（UNIQUE 按 user_id+variant_id+preference_type）。不新增 variant_follows 表、不新增 daily_sales/est_days/lead_time_days、不改 sync RPC / Python。质量门：979/979 TS 测试（34 文件，新增 83 项），lint 0 errors，build pass。）
 
-## Awaiting Review — 无
+## Awaiting Review — P5-SY12 等待 Codex 独立复核
 
 P5-SY11-REWORK 已完成并返工修复（P5-SY11G A~F）。P5-SY11G-RUNTIME 两项运行时修复已完成并通过人工验收。所有子任务通过验收。`product_variant.is_archived` 保留为遗留列，不再被业务代码读写。归档已迁移为用户级 `user_variant_preference` 表（个人偏好，A 归档不影响 B）。Migration 00012 由用户在 Supabase Dashboard 手动执行。
 
@@ -83,7 +84,7 @@ P5-SY11G-RUNTIME 修复内容（2026-06-25）：
 2. `getSyncRuns` limit 契约修正：Zod `max(500).default(200)` → `max(100).default(100)`，与 DB RPC `p_limit > 100` 拒绝一致
 3. 验证：海外库存页不再报 schema cache 错误；归档/恢复个人偏好隔离正确
 
-**Current Task**: 等待用户确认下一任务。**Next Step**: 根据真实业务需求确定（不自动进入 P5-SY12）。
+**Current Task**: P5-SY12 特别关注阶段 B（DONE，2026-06-25）。等待用户确认下一任务，不自动进入 P5-SY12 阶段 C。
 
 ## Authentication Status
 
@@ -357,11 +358,11 @@ P5-SY11G-RUNTIME 修复内容（2026-06-25）：
 
 ## Current Blockers
 
-无阻塞。P5-SY11G-RUNTIME 已完成（Migration 00012 已手动执行至生产数据库 + getSyncRuns limit 契约已修正 + 人工验收通过）。等待用户确认下一任务，不自动进入 P5-SY12。
+无阻塞。P5-SY12 特别关注阶段 B 最小闭环实施中（2026-06-25 启动）。
 
 ## Next Step
 
-P5-SY11G-RUNTIME 已完成（2026-06-25）。下一任务待用户确认，不自动进入 P5-SY12。P5-SY10 Phase B 自动 Real Write 设计预留，当前不启用。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。
+P5-SY12 特别关注阶段 B 最小闭环已完成（2026-06-25）。Migration 00013 扩展 `preference_type` CHECK 约束支持 `'favorited'`；新增 `src/features/preferences/` 模块；库存列表星标按钮正常；Dashboard"关注产品动态"区正常。阶段 B 告警使用 `product.safety_stock` 临时规则。质量门：979/979 TS 测试，lint 0 errors，build pass。等待用户确认下一任务，不自动进入 P5-SY12 阶段 C/D。P5-SY10 Phase B 自动 Real Write 设计预留，当前不启用。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。
 
 ## P5-SY3A Dry Run 结果摘要（返工后）
 
@@ -714,9 +715,28 @@ BigSeller 实际 VXE 结构：
 
 ## Current Task References
 
-P5-SY11-REWORK（P5-SY11G）已完成：归档从全局 `product_variant.is_archived` 迁移为用户级 `user_variant_preference` 个人偏好表。P5-SY11G-RUNTIME 已完成 2 项运行时修复 + 人工验收。
+P5-SY11-REWORK（P5-SY11G）已完成。P5-SY11G-RUNTIME 已完成 2 项运行时修复 + 人工验收。
 
-**P5-SY11G 最终核心文件：**
+**P5-SY12 特别关注阶段 B 核心文件（IN_PROGRESS）：**
+
+| 文件 | 说明 |
+|---|---|
+| `supabase/migrations/00013_extend_user_variant_preference_favorited.sql` | 扩展 CHECK 约束支持 `'favorited'`（不新建表） |
+| `src/types/database.ts` | `user_variant_preference.preference_type` 扩展为 `'archived' \| 'favorited'` |
+| `src/features/preferences/types.ts` | `PreferenceError` / `PreferenceResult<T>` / `FollowedVariantBasic` |
+| `src/features/preferences/schema.ts` | `toggleFavoriteSchema`（variantId UUID） |
+| `src/features/preferences/repository.ts` | `getFavoritedVariantIds()` / `isFavorited()` / `favorite()` / `unfavorite()` / `toggleFavorite()` / `getFollowedVariantsBasic()` |
+| `src/features/preferences/actions.ts` | `toggleFavoriteAction()` — `requireActiveAuth()` + Zod + revalidatePath |
+| `src/features/inventory/types.ts` | `InventoryItem` 新增 `isFavorited` 字段 |
+| `src/features/inventory/repository.ts` | `getOverseasList()` 同时加载 `favoritedVariantIds` |
+| `src/features/inventory/actions.ts` | `getOverseasInventory()` 返回 `favoritedVariantIds` |
+| `src/app/dashboard/inventory/overseas/page.tsx` | 传递 `favoritedVariantIds` 到客户端 |
+| `src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx` | 每行新增星标按钮（⭐） |
+| `src/app/dashboard/page.tsx` | 新增「关注产品动态」区（空状态 / 列表 + 低库存置顶） |
+
+**遗留列声明**：`product_variant.is_archived`、`archived_at`、`archived_by` 保留在 DB 中，业务代码已全部停止读写。Migration 00011 不修改（约束：不修改已执行 Migration）。
+
+**P5-SY11G 最终核心文件（DONE）：**
 
 | 文件 | 说明 |
 |---|---|
@@ -760,4 +780,4 @@ P5-SY11-REWORK（P5-SY11G）已完成：归档从全局 `product_variant.is_arch
 
 ## Last Updated
 
-2026-06-25 — P5-SY11G-RUNTIME DONE。Migration 00012（`user_variant_preference` 表）已由用户在 Supabase Dashboard SQL Editor 手动执行至生产数据库（Pooler 不识别 tenant `hzlhqyditalumhnxbaim`，自动连接不可用）。PostgREST schema cache 已通过 `NOTIFY pgrst, 'reload schema'` 刷新。用户人工验证通过：`/dashboard/inventory/overseas` 不再报 schema cache 错误，`/dashboard/sync` 正常加载，`/dashboard/variants` 归档/恢复正常，A 归档不影响 B 视图。getSyncRuns limit 契约已修正（Zod `max(100).default(100)` 与 DB RPC `p_limit > 100` 拒绝一致）。质量门：896/896 TS 测试，lint 0 errors，build pass。`product_variant.is_archived` 为遗留列，业务代码不再读写。等待用户确认下一任务，不自动进入 P5-SY12。
+2026-06-25 — P5-SY12 DONE。特别关注阶段 B 最小闭环完成：Migration 00013（扩展 `preference_type` CHECK 支持 `'favorited'`）+ `src/features/preferences/` 模块（types / schema / repository / actions）+ 海外库存列表星标按钮 + Dashboard"关注产品动态"区 + 83 项新测试。阶段 B 告警临时用 `product.safety_stock`。不新增 variant_follows 表、不新增 daily_sales/est_days/lead_time_days、不改 sync RPC / Python。质量门：979/979 TS 测试（34 文件），lint 0 errors / 28 pre-existing warnings，build pass。`product_variant.is_archived` 为遗留列，业务代码不再读写。等待用户确认下一任务，不自动进入 P5-SY12 阶段 C/D。

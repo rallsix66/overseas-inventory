@@ -413,21 +413,21 @@ export type Database = {
           id: string
           user_id: string
           variant_id: string
-          preference_type: string
+          preference_type: 'archived' | 'favorited'
           created_at: string
         }
         Insert: {
           id?: string
           user_id: string
           variant_id: string
-          preference_type: string
+          preference_type: 'archived' | 'favorited'
           created_at?: string
         }
         Update: {
           id?: string
           user_id?: string
           variant_id?: string
-          preference_type?: string
+          preference_type?: 'archived' | 'favorited'
           created_at?: string
         }
         Relationships: []

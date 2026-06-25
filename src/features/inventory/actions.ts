@@ -4,6 +4,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { inventoryRepository } from './repository';
+import { preferencesRepository } from '@/features/preferences/repository';
 import { inventoryUpdateSchema, inventorySearchSchema } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } from './types';
@@ -12,7 +13,7 @@ import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } 
 export type { InventoryItem, OverseasStats, WarehouseOption } from './types';
 
 /**
- * 获取海外库存数据 — 统计、仓库列表、分页列表
+ * 获取海外库存数据 — 统计、仓库列表、分页列表 + 当前用户关注状态
  * 查询失败时抛出错误，由页面 error.tsx 边界处理
  */
 export async function getOverseasInventory(filters: InventoryFilters): Promise<{
@@ -32,11 +33,20 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
 
   const userId = user.id;
 
-  const [stats, warehouses, result] = await Promise.all([
+  const [stats, warehouses, result, favoritedVariantIds] = await Promise.all([
     inventoryRepository.getOverseasStats(userId),
     inventoryRepository.getOverseasWarehouses(),
     inventoryRepository.getOverseasList({ ...parsed.data, userId }),
+    preferencesRepository.getFavoritedVariantIds(userId).catch(() => new Set<string>()),
   ]);
+
+  // 标记当前用户关注状态
+  if (favoritedVariantIds.size > 0) {
+    result.data = result.data.map((item) => ({
+      ...item,
+      isFavorited: favoritedVariantIds.has(item.variantId),
+    }));
+  }
 
   return { stats, warehouses, result };
 }
