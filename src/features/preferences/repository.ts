@@ -194,23 +194,33 @@ export const preferencesRepository = {
     if (favoritedVariantIds.size === 0) return [];
 
     // 步骤 2：从 inventory 正向查询这些 variant 的库存行（join variant/product/warehouse）
-    // 使用与 getOverseasList 一致的查询模式：mutable chain + eq/order
+    // 使用与 getOverseasList 一致的查询模式：mutable chain + eq + order
     // 关注区显示所有 favorited variant（不排除同时 archived 的）
-    const { data, error } = await supabase
+    // warehouse.type = 'overseas' 过滤与 getOverseasList 保持一致
+    const query = supabase
       .from('inventory')
       .select(
         `id, variant_id, warehouse_id, quantity, last_sync_at,
          variant:variant_id!inner (id, country, product:product_id (id, name, code, safety_stock)),
-         warehouse:warehouse_id!inner (id, name, country, type)`,
-        { count: 'exact' }
+         warehouse:warehouse_id!inner (id, name, country, type)`
       )
-      .in('variant_id', [...favoritedVariantIds]);
+      .in('variant_id', [...favoritedVariantIds])
+      .eq('warehouse.type', 'overseas')
+      .order('quantity', { ascending: true });
+
+    const { data, error } = await query;
 
     if (error) {
       throw new PreferenceError('DB_ERROR', `查询关注列表失败: ${error.message}`);
     }
 
-    if (!data || data.length === 0) return [];
+    // 用户有 favorited 但 inventory 查询返回空 → 诊断错误（不静默伪装成"暂无关注产品"）
+    if (!data || data.length === 0) {
+      throw new PreferenceError(
+        'EMPTY_RESULT',
+        `已关注 ${favoritedVariantIds.size} 个 SKU 但未找到对应库存记录，请确认对应 variant 在 inventory 表中存在且 warehouse.type = 'overseas'`
+      );
+    }
 
     const results: FollowedVariantBasic[] = [];
     for (const row of data as unknown[]) {

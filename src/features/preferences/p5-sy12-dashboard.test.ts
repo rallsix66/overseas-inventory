@@ -163,3 +163,41 @@ describe('P5-SY12 — 海外库存关注排序', () => {
     expect(archivedFilterIdx).toBeLessThan(favoritedMarkIdx);
   });
 });
+
+// ─── Dashboard 动态渲染（防缓存回归）──────────────────────────────────
+
+describe('P5-SY12 — Dashboard 动态渲染', () => {
+  it('Dashboard 使用 force-dynamic 防止静态预渲染缓存', () => {
+    const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
+    expect(dashboardSrc).toMatch(/export const dynamic = 'force-dynamic'/);
+  });
+
+  it('Dashboard 错误状态显示具体错误信息而非硬编码文本', () => {
+    const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
+    // followedError 现在是 string | null，错误时显示具体消息
+    expect(dashboardSrc).toMatch(/followedError: string \| null/);
+    expect(dashboardSrc).toMatch(/\{followedError\}/);
+  });
+});
+
+// ─── getFollowedVariantsBasic 诊断错误 ──────────────────────────────
+
+describe('P5-SY12 — getFollowedVariantsBasic 诊断', () => {
+  const repoPath = path.resolve(process.cwd(), 'src/features/preferences/repository.ts');
+  const repoSrc = fs.readFileSync(repoPath, 'utf-8');
+
+  it('查询使用可变链 .eq(warehouse.type, overseas) 与 getOverseasList 一致', () => {
+    expect(repoSrc).toMatch(/\.eq\('warehouse\.type', 'overseas'\)/);
+  });
+
+  it('favorited 非空但 inventory 返回空时抛出 EMPTY_RESULT 而非静默返回 []', () => {
+    expect(repoSrc).toMatch(/'EMPTY_RESULT'/);
+    expect(repoSrc).toMatch(/已关注.*个 SKU 但未找到对应库存记录/);
+  });
+
+  it('EMPTY_RESULT 已加入 PreferenceErrorCode 联合类型', () => {
+    const typesPath = path.resolve(process.cwd(), 'src/features/preferences/types.ts');
+    const typesSrc = fs.readFileSync(typesPath, 'utf-8');
+    expect(typesSrc).toMatch(/'EMPTY_RESULT'/);
+  });
+});

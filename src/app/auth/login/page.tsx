@@ -10,6 +10,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Package } from 'lucide-react';
 
+const LOGIN_TIMEOUT_MS = 15_000;
+
+function withLoginTimeout<T>(promise: Promise<T>): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('登录请求超时，请检查网络或 Supabase 配置后重试')), LOGIN_TIMEOUT_MS)
+  );
+  return Promise.race([promise, timeout]);
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -27,27 +36,37 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
 
-    if (authError) {
-      // 映射常见错误为用户友好的提示
-      if (authError.message.includes('Invalid login credentials')) {
-        setError('邮箱或密码错误');
-      } else if (authError.message.includes('Email not confirmed')) {
-        setError('邮箱未验证，请检查收件箱');
-      } else {
-        setError(authError.message);
+    try {
+      const supabase = createClient();
+      const { error: authError } = await withLoginTimeout(
+        supabase.auth.signInWithPassword({ email, password })
+      );
+
+      if (authError) {
+        // 映射常见错误为用户友好的提示
+        if (authError.message.includes('Invalid login credentials')) {
+          setError('邮箱或密码错误');
+        } else if (authError.message.includes('Email not confirmed')) {
+          setError('邮箱未验证，请检查收件箱');
+        } else {
+          setError(authError.message);
+        }
+        setLoading(false);
+        return;
       }
+
+      router.push('/dashboard');
+      router.refresh();
+    } catch (loginError) {
+      setError(
+        loginError instanceof Error
+          ? loginError.message
+          : '登录请求失败，请检查网络或 Supabase 配置后重试'
+      );
       setLoading(false);
       return;
     }
-
-    router.push('/dashboard');
-    router.refresh();
   }
 
   return (

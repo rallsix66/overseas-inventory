@@ -10,7 +10,8 @@ export type PreferenceErrorCode =
   | 'ALREADY_FAVORITED'   // 已关注（幂等）
   | 'NOT_FAVORITED'        // 未关注（取消关注时不存在偏好记录）
   | 'RLS_REJECTED'         // RLS 拒绝写入（用户无权操作该偏好）
-  | 'DB_ERROR';            // 未知数据库错误
+  | 'DB_ERROR'             // 未知数据库错误
+  | 'EMPTY_RESULT';        // 已关注但 inventory 查询返回空（诊断用）
 
 export class PreferenceError extends Error {
   constructor(
@@ -34,6 +35,7 @@ export function preferenceErrorMessage(code: PreferenceErrorCode): string {
     case 'NOT_FAVORITED':      return '未关注该 SKU';
     case 'RLS_REJECTED':       return '无权操作该 SKU';
     case 'DB_ERROR':           return '数据库错误，请稍后重试';
+    case 'EMPTY_RESULT':       return '关注数据查询异常，请刷新重试';
   }
 }
 

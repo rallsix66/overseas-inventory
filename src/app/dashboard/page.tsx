@@ -8,6 +8,8 @@ import { Package, Globe, Truck, ArrowRight, AlertTriangle, Star } from 'lucide-r
 import Link from 'next/link';
 import type { Metadata } from 'next';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: '首页',
 };
@@ -27,12 +29,12 @@ export default async function DashboardPage() {
   // P5-SY12: 获取关注产品动态
   // 查询失败时显示错误状态，不伪装成"暂无关注产品"
   let followedVariants: FollowedVariantBasic[] = [];
-  let followedError = false;
+  let followedError: string | null = null;
   if (user?.id) {
     try {
       followedVariants = await preferencesRepository.getFollowedVariantsBasic(user.id);
-    } catch {
-      followedError = true;
+    } catch (e) {
+      followedError = e instanceof Error ? e.message : '关注产品加载失败';
     }
   }
 
@@ -147,7 +149,7 @@ export default async function DashboardPage() {
             <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
             <p className="text-sm text-red-600">关注产品加载失败</p>
             <p className="text-xs text-muted-foreground mt-1">
-              请刷新页面重试，或联系管理员
+              {followedError}
             </p>
           </div>
         ) : !followedVariants || followedVariants.length === 0 ? (
