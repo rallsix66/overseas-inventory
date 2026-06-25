@@ -1,8 +1,8 @@
 {
   "sessionId": "9ef3d5a4-d974-43fa-b44f-20dfca378c84",
-  "startedAt": "2026-06-25T09:12:40.473Z",
+  "startedAt": "2026-06-25T09:47:22.876Z",
   "turns": 1,
-  "compactions": 1,
-  "lastCompaction": "2026-06-25T09:46:31.114Z",
-  "lastUpdated": "2026-06-25T09:46:31.115Z"
+  "compactions": 0,
+  "lastCompaction": null,
+  "lastUpdated": "2026-06-25T09:52:03.848Z"
 }

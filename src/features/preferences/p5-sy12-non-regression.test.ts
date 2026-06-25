@@ -12,7 +12,7 @@
 // - 不修改已执行 Migration 00012
 // - 不读取或输出真实密钥
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
