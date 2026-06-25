@@ -87,9 +87,9 @@ export const inventoryRepository = {
     // 加载全部海外库存数据（仅 warehouse.type = 'overseas'）
     let query = supabase.from('inventory').select(
       `id, variant_id, warehouse_id, quantity, last_sync_at,
-       variant:variant_id (sku, country, match_status, product:product_id (name, code, safety_stock)),
+       variant:variant_id!inner (sku, country, match_status, is_archived, product:product_id (name, code, safety_stock)),
        warehouse:warehouse_id!inner (name, type)`
-    ).eq('warehouse.type', 'overseas');
+    ).eq('warehouse.type', 'overseas').eq('variant.is_archived', false);
 
     // 简单 eq 筛选下推到 Supabase（减少数据传输量）
     if (warehouseId) {
@@ -106,9 +106,15 @@ export const inventoryRepository = {
       return { data: [], total: 0, page, pageSize };
     }
 
+    // JS 兜底：排除 variant 为 null 或已归档的 inventory 行
+    const activeData = data.filter((row) => {
+      const v = unwrapJoin<{ is_archived?: boolean }>(row.variant);
+      return v != null && v.is_archived !== true;
+    });
+
     // 解包关联数据为扁平结构
-    let items: InventoryItem[] = data.map((row) => {
-      const variant = unwrapJoin<{ sku: string; country: string; match_status: string; product: unknown }>(row.variant);
+    let items: InventoryItem[] = activeData.map((row) => {
+      const variant = unwrapJoin<{ sku: string; country: string; match_status: string; is_archived: boolean; product: unknown }>(row.variant);
       const product = unwrapJoin<{ name: string; code: string; safety_stock: number }>(variant?.product);
       const warehouse = unwrapJoin<{ name: string; type: string }>(row.warehouse);
 
@@ -175,9 +181,9 @@ export const inventoryRepository = {
     const supabase = await createClient();
     const { data, error } = await supabase.from('inventory').select(
       `id, variant_id, warehouse_id, quantity, last_sync_at,
-       variant:variant_id (sku, country, match_status, product_id, product:product_id (name, code, safety_stock)),
+       variant:variant_id!inner (sku, country, match_status, product_id, is_archived, product:product_id (name, code, safety_stock)),
        warehouse:warehouse_id (name, type)`
-    );
+    ).eq('variant.is_archived', false);
 
     if (error) {
       throw new Error(`低库存查询失败: ${error.message}`);
@@ -185,9 +191,15 @@ export const inventoryRepository = {
 
     if (!data) return [];
 
-    return data
+    // JS 兜底：排除 variant 为 null 或已归档的 inventory 行
+    const activeData = data.filter((row) => {
+      const v = unwrapJoin<{ is_archived?: boolean }>(row.variant);
+      return v != null && v.is_archived !== true;
+    });
+
+    return activeData
       .map((row) => {
-        const variant = unwrapJoin<{ sku: string; country: string; match_status: string; product_id: string; product: unknown }>(row.variant);
+        const variant = unwrapJoin<{ sku: string; country: string; match_status: string; product_id: string; is_archived: boolean; product: unknown }>(row.variant);
         const product = unwrapJoin<{ name: string; code: string; safety_stock: number }>(variant?.product);
         const warehouse = unwrapJoin<{ name: string; type: string }>(row.warehouse);
 
@@ -273,9 +285,9 @@ export const inventoryRepository = {
     const supabase = await createClient();
     const { data, error } = await supabase.from('inventory').select(
       `id, quantity, last_sync_at, variant_id,
-       variant:variant_id (product_id, product:product_id (safety_stock)),
+       variant:variant_id!inner (product_id, is_archived, product:product_id (safety_stock)),
        warehouse:warehouse_id!inner (type)`
-    ).eq('warehouse.type', 'overseas');
+    ).eq('warehouse.type', 'overseas').eq('variant.is_archived', false);
 
     if (error) {
       throw new Error(`海外库存统计查询失败: ${error.message}`);
@@ -291,10 +303,14 @@ export const inventoryRepository = {
     let lastSyncAt: string | null = null;
 
     for (const row of data) {
+      // JS 兜底：排除 variant 为 null 或已归档的 inventory 行
+      const variantRaw = unwrapJoin<{ is_archived?: boolean; product: unknown }>(row.variant);
+      if (!variantRaw || variantRaw.is_archived === true) continue;
+
       totalQuantity += (row.quantity as number) ?? 0;
       if (row.variant_id) skuSet.add(row.variant_id);
 
-      const variant = unwrapJoin<{ product: unknown }>(row.variant);
+      const variant = variantRaw;
       const product = unwrapJoin<{ safety_stock: number }>(variant?.product);
       // 低库存：已匹配 + quantity > 0 + quantity <= safety_stock
       // 未匹配 SKU 不参与低库存统计

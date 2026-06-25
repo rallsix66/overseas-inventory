@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY11` — ProductVariant 软归档与库存视图降噪（P5-SY11B DONE — 类型同步 + Repository 软归档能力完成。下一步 P5-SY11C。P5-SY11C~F PENDING。）
+`P5-SY11` — ProductVariant 软归档与库存视图降噪（P5-SY11C DONE — Server Actions archiveVariants/restoreVariants 完成。P5-SY11D DONE — Inventory 层归档过滤完成。下一步 P5-SY11E。P5-SY11E~F PENDING。）
 
 ## Completed Tasks
 
@@ -68,7 +68,10 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Awaiting Review
 
-- P5-SY11B DONE — 等待 Codex 独立验收（2026-06-24）。类型同步 + Repository 软归档能力：database.ts 新字段 / VariantArchiveStatus / archiveStatus 过滤 / archive() / restore() / match/unmatch/batchMatch 阻止已归档。31/31 测试通过。P5-SY11C~F PENDING。P5-SY10 全部子任务（A~F）DONE。P5-SY10 Phase B（PASS 仓库自动 Real Write）设计预留，当前不启用。
+- P5-SY11B DONE — 等待 Codex 独立验收（2026-06-24）。类型同步 + Repository 软归档能力：database.ts 新字段 / VariantArchiveStatus / archiveStatus 过滤 / archive() / restore() / match/unmatch/batchMatch 阻止已归档。31/31 测试通过。
+- P5-SY11C DONE — 等待 Codex 独立验收（2026-06-25）。Server Actions archiveVariants/restoreVariants：requireActiveAdmin + Zod schema 去重 + revalidatePath + 中文错误处理。24/24 测试通过。
+- P5-SY11D DONE — 等待 Codex 独立验收（2026-06-25）。Inventory 层归档过滤：getOverseasList/getLowStock/getOverseasStats 使用 variant:variant_id!inner + .eq('variant.is_archived', false) DB 层过滤 + JS 兜底排除 variant=null/is_archived=true。getByProductId 不过滤。19/19 测试通过。
+- P5-SY11E~F PENDING。P5-SY10 全部子任务（A~F）DONE。P5-SY10 Phase B（PASS 仓库自动 Real Write）设计预留，当前不启用。
 
 ## Authentication Status
 
@@ -174,6 +177,8 @@ Phase 5 — 海外仓库存同步生产化
 
 | 日期 | 变更 |
 |---|---|
+| 2026-06-25 | **P5-SY11D DONE。Inventory 层归档过滤完成。** getOverseasList/getLowStock/getOverseasStats 使用 variant:variant_id!inner + .eq('variant.is_archived', false) DB 层过滤 + JS 兜底排除 variant=null/is_archived=true。getByProductId 不过滤（产品详情保留已归档 Variant 库存）。19/19 测试，853/853 全量测试，lint 0 errors，build pass。P5-SY11E~F PENDING。 |
+| 2026-06-25 | **P5-SY11C DONE。Server Actions archiveVariants/restoreVariants 完成。** actions.ts 新增两个 Server Action：requireActiveAdmin + Zod schema 去重 + variantRepository + revalidatePath + 中文错误处理（VariantError/权限/停用/未知）。24/24 测试，834/834 全量测试，lint 0 errors，build pass。P5-SY11D~F PENDING。 |
 | 2026-06-24 | **P5-SY9J 生产启用受控验证通过。P5-SY9 全子任务（A~J）DONE。** WEBSYNC_REAL_WRITE_ENABLED=true 已在 .env.local 启用。受控验证：PH 仓 Web Dry Run（104 行 → 6 新 + 80 更新 + 18 未变）→ 审核通过 → Real Write 成功（sync_log status=success，new_variants_count=6，库存验证通过）。修复 web_bridge.py execute_plan_v2 签名不匹配。已知小问题：RPC summary 返回全零（仅显示，sync_log 正确）。 |
 | 2026-06-24 | **P5-SY9I Codex 独立验收通过，标记 DONE。P5-SY9 全子任务（A~I）完成。** 质量门确认：523/523 TS + 242/242 Python，lint 0 errors，build 通过，架构合规。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。下一步：用户授权后生产启用。 |
 | 2026-06-24 | P5-SY9H Codex 独立验收通过，标记 DONE。P5-SY9I IN_PROGRESS。 |
