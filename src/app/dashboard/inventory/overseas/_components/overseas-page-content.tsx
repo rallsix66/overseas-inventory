@@ -3,9 +3,10 @@
 // 海外库存页 — 客户端交互层
 // 处理筛选、表格渲染和分页导航
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
-import { useState, useOptimistic, startTransition } from 'react';
+import { useOptimistic, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Package, AlertTriangle, Clock, RefreshCw, Star } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -97,7 +98,10 @@ function StatCard({
  * P5-SY12: 星标关注按钮 — 乐观更新
  *
  * 阶段 B 不做仓库权限校验（阶段 D 才引入 user_warehouses）。
- * 点击切换关注/取消关注，失败时 toast 提示（由调用方处理）。
+ * 点击切换关注/取消关注：
+ * - 乐观更新即时切换 UI
+ * - 成功：以服务端返回的 isFavorited 为准 + router.refresh()
+ * - 失败：回滚乐观状态 + toast.error 提示
  */
 function FavoriteStar({
   variantId,
@@ -106,6 +110,7 @@ function FavoriteStar({
   variantId: string;
   initialFavorited: boolean;
 }) {
+  const router = useRouter();
   const [optimisticFavorited, setOptimisticFavorited] = useOptimistic(
     initialFavorited,
     (_state: boolean, next: boolean) => next
@@ -116,9 +121,20 @@ function FavoriteStar({
       const next = !optimisticFavorited;
       setOptimisticFavorited(next);
       try {
-        await toggleFavoriteAction(variantId);
+        const result = await toggleFavoriteAction(variantId);
+        if (!result.success) {
+          // 失败：回滚乐观状态 + toast
+          setOptimisticFavorited(!next);
+          toast.error(result.error ?? '关注操作失败');
+          return;
+        }
+        // 成功：以服务端返回为准更新本地状态，并刷新页面保证一致性
+        setOptimisticFavorited(result.data!.isFavorited);
+        router.refresh();
       } catch {
-        // 失败时 revert（refresh 后自动纠正）
+        // 异常：回滚 + toast
+        setOptimisticFavorited(!next);
+        toast.error('关注操作失败，请稍后重试');
       }
     });
   }

@@ -37,7 +37,7 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
     inventoryRepository.getOverseasStats(userId),
     inventoryRepository.getOverseasWarehouses(),
     inventoryRepository.getOverseasList({ ...parsed.data, userId }),
-    preferencesRepository.getFavoritedVariantIds(userId).catch(() => new Set<string>()),
+    preferencesRepository.getFavoritedVariantIds(userId),
   ]);
 
   // 标记当前用户关注状态

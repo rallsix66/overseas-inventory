@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { requireActiveAuth } from '@/lib/auth';
 import { preferencesRepository } from './repository';
 import { toggleFavoriteSchema } from './schema';
-import { preferenceErrorMessage, type PreferenceErrorCode } from './types';
+import { preferenceErrorMessage } from './types';
 import type { ActionResult } from '@/types/common';
 
 export type ToggleFavoriteResult = ActionResult<{ isFavorited: boolean }>;

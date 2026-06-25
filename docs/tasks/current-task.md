@@ -41,13 +41,13 @@ P5-SY11G 已创建 `user_variant_preference` 表（`preference_type IN ('archive
 
 | Sub-Task ID | 任务 | 依赖 | 状态 |
 |---|---|---|---|
-| **P5-SY12-1** | Migration 00013：扩展 `preference_type` CHECK 约束 + 静态测试 | — | IN_PROGRESS |
-| **P5-SY12-2** | 类型更新：`database.ts` + `preferences/types.ts` + `inventory/types.ts` | P5-SY12-1 | PENDING |
-| **P5-SY12-3** | `src/features/preferences/` 模块：schema + repository + actions | P5-SY12-2 | PENDING |
-| **P5-SY12-4** | 库存列表星标按钮（overseas page UI） | P5-SY12-3 | PENDING |
-| **P5-SY12-5** | Dashboard 关注区 | P5-SY12-3 | PENDING |
-| **P5-SY12-6** | 测试：migration + repository + actions + dashboard + non-regression | P5-SY12-3~5 | PENDING |
-| **P5-SY12-7** | 质量门：`npm run test` / `npm run lint` / `npm run build` | P5-SY12-6 | PENDING |
+| **P5-SY12-1** | Migration 00013：扩展 `preference_type` CHECK 约束 + 静态测试 | — | DONE |
+| **P5-SY12-2** | 类型更新：`database.ts` + `preferences/types.ts` + `inventory/types.ts` | P5-SY12-1 | DONE |
+| **P5-SY12-3** | `src/features/preferences/` 模块：schema + repository + actions | P5-SY12-2 | DONE |
+| **P5-SY12-4** | 库存列表星标按钮（overseas page UI） | P5-SY12-3 | DONE |
+| **P5-SY12-5** | Dashboard 关注区 | P5-SY12-3 | DONE |
+| **P5-SY12-6** | 测试：migration + repository + actions + dashboard + non-regression | P5-SY12-3~5 | DONE |
+| **P5-SY12-7** | 质量门：`npm run test` / `npm run lint` / `npm run build` | P5-SY12-6 | DONE |
 
 ## 阶段 B 告警规则（临时，非最终动态告警）
 

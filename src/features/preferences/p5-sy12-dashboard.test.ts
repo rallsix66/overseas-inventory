@@ -53,10 +53,10 @@ describe('P5-SY12 — Dashboard 关注区', () => {
     expect(src).not.toMatch(/daily_sales|est_days|lead_time_days|日销|可售|补货周期/);
   });
 
-  it('Dashboard getFollowedVariantsBasic 在 try-catch 中容错', () => {
+  it('Dashboard 查询失败显示错误状态而非空列表', () => {
     expect(src).toMatch(/preferencesRepository\.getFollowedVariantsBasic/);
-    // try-catch 保证失败不影响首页渲染
-    expect(src).toContain('try {');
+    // 失败时显示"关注产品加载失败"，不伪装成"暂无关注产品"
+    expect(src).toContain('关注产品加载失败');
   });
 
   it('Dashboard page 不含 any', () => {

@@ -24,14 +24,16 @@ export default async function DashboardPage() {
     // 统计获取失败时静默处理，首页仍可渲染
   }
 
-  // P5-SY12: 获取关注产品动态（失败不影响首页渲染）
+  // P5-SY12: 获取关注产品动态
+  // 查询失败时显示错误状态，不伪装成"暂无关注产品"
   let followedVariants: FollowedVariantBasic[] = [];
-  try {
-    followedVariants = user?.id
-      ? await preferencesRepository.getFollowedVariantsBasic(user.id)
-      : [];
-  } catch {
-    followedVariants = [];
+  let followedError = false;
+  if (user?.id) {
+    try {
+      followedVariants = await preferencesRepository.getFollowedVariantsBasic(user.id);
+    } catch {
+      followedError = true;
+    }
   }
 
   return (
@@ -139,7 +141,16 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {!followedVariants || followedVariants.length === 0 ? (
+        {followedError ? (
+          /* 查询失败状态 */
+          <div className="text-center py-10">
+            <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+            <p className="text-sm text-red-600">关注产品加载失败</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              请刷新页面重试，或联系管理员
+            </p>
+          </div>
+        ) : !followedVariants || followedVariants.length === 0 ? (
           /* 空状态 */
           <div className="text-center py-10">
             <Star className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />

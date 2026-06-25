@@ -17,7 +17,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
 import { PreferenceError, type PreferenceResult, type FollowedVariantBasic } from './types';
-import type { Database } from '@/types/database';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -198,7 +197,6 @@ export const preferencesRepository = {
     if (!validateUUID(userId)) return [];
 
     const supabase = await createClient();
-    type UvpRow = Database['public']['Tables']['user_variant_preference']['Row'];
 
     const { data, error } = await supabase
       .from('user_variant_preference')
