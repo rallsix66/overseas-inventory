@@ -24,15 +24,6 @@ function validateUUID(id: string): boolean {
   return UUID_RE.test(id);
 }
 
-/** Supabase join 展开后的 inventory 行（阶段 B 字段子集） */
-type InventoryJoinRow = {
-  quantity: number;
-  last_sync_at: string | null;
-  warehouse: {
-    id: string; name: string; country: string; type: string;
-  } | null;
-};
-
 export const preferencesRepository = {
   // ─── 关注状态查询 ──────────────────────────────────────────────────
 
@@ -198,57 +189,54 @@ export const preferencesRepository = {
 
     const supabase = await createClient();
 
-    const { data, error } = await supabase
-      .from('user_variant_preference')
-      .select(`
-        variant:variant_id (
-          id, country,
-          product:product_id (id, name, code, safety_stock),
-          inventory:inventory (
-            quantity, last_sync_at,
-            warehouse:warehouse_id (id, name, country, type)
-          )
-        )
-      `)
-      .eq('user_id', userId)
-      .eq('preference_type', 'favorited');
+    // 步骤 1：读取当前用户 favorited variant_id 集合
+    const favoritedVariantIds = await this.getFavoritedVariantIds(userId);
+    if (favoritedVariantIds.size === 0) return [];
 
-    // 查询失败 → 抛出错误，由调用方处理
+    // 步骤 2：从 inventory 正向查询这些 variant 的库存行（join variant/product/warehouse）
+    // 使用与 getOverseasList 一致的查询模式：mutable chain + eq/order
+    // 关注区显示所有 favorited variant（不排除同时 archived 的）
+    const { data, error } = await supabase
+      .from('inventory')
+      .select(
+        `id, variant_id, warehouse_id, quantity, last_sync_at,
+         variant:variant_id!inner (id, country, product:product_id (id, name, code, safety_stock)),
+         warehouse:warehouse_id!inner (id, name, country, type)`,
+        { count: 'exact' }
+      )
+      .in('variant_id', [...favoritedVariantIds]);
+
     if (error) {
       throw new PreferenceError('DB_ERROR', `查询关注列表失败: ${error.message}`);
     }
 
-    // null/undefined data 视为空列表（用户无关注）
     if (!data || data.length === 0) return [];
 
     const results: FollowedVariantBasic[] = [];
-    for (const f of data) {
-      const variant = unwrapJoin<{ id: string; country: string; product: unknown; inventory: unknown }>(f.variant);
+    for (const row of data as unknown[]) {
+      const r = row as Record<string, unknown>;
+      const variant = unwrapJoin<{ id: string; country: string; product: unknown }>(r.variant);
       if (!variant) continue;
       const product = unwrapJoin<{ id: string; name: string; code: string; safety_stock: number }>(variant.product);
       if (!product) continue;
-      const inventoryRows = (variant.inventory ?? []) as unknown as InventoryJoinRow[];
+      const wh = unwrapJoin<{ id: string; name: string; country: string; type: string }>(r.warehouse);
 
-      for (const inv of inventoryRows) {
-        const wh = unwrapJoin<{ id: string; name: string; country: string; type: string }>(inv.warehouse);
-        if (!wh) continue;
+      const safetyStock = product.safety_stock ?? 0;
+      const qty = (r.quantity as number) ?? 0;
+      const isLow = qty < safetyStock;
 
-        const safetyStock = product.safety_stock ?? 0;
-        const isLow = inv.quantity < safetyStock;  // 阶段 B 临时规则
-
-        results.push({
-          variantId: variant.id,
-          productName: product.name,
-          productCode: product.code,
-          country: variant.country,
-          warehouseId: wh.id,
-          warehouseName: wh.name,
-          quantity: inv.quantity,
-          safetyStock,
-          isLowStock: isLow,
-          alertReason: isLow ? `低于安全线 ${safetyStock}` : null,
-        });
-      }
+      results.push({
+        variantId: variant.id,
+        productName: product.name,
+        productCode: product.code,
+        country: variant.country,
+        warehouseId: wh?.id ?? (r.warehouse_id as string),
+        warehouseName: wh?.name ?? '未知仓库',
+        quantity: qty,
+        safetyStock,
+        isLowStock: isLow,
+        alertReason: isLow ? `低于安全线 ${safetyStock}` : null,
+      });
     }
 
     // 低库存行置顶

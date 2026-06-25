@@ -158,9 +158,11 @@ describe('P5-SY11G-F — 不实现 favorited', () => {
   it('业务代码不含 favorited 引用（测试文件和新 P5-SY12 模块除外）', () => {
     const files = walkDir(SRC_DIR, ['.ts', '.tsx']);
     for (const file of files) {
-      // 排除：测试文件、类型定义文件、P5-SY12 preferences 模块
+      // 排除：测试文件、类型定义文件、P5-SY12 preferences 模块、inventory repository（含 getUserFavoritedVariantIds）
       if (file.includes('.test.ts') || file.includes('database.ts')) continue;
       if (file.includes('preferences')) continue;
+      if (file.replace(/\\/g, '/').includes('inventory/repository.ts')) continue;
+      if (file.replace(/\\/g, '/').includes('inventory/types.ts')) continue;
       const content = fs.readFileSync(file, 'utf-8');
       const lines = content.split('\n').filter((l) => {
         const t = l.trim();

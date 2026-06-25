@@ -4,7 +4,6 @@
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { inventoryRepository } from './repository';
-import { preferencesRepository } from '@/features/preferences/repository';
 import { inventoryUpdateSchema, inventorySearchSchema } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } from './types';
@@ -33,20 +32,13 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
 
   const userId = user.id;
 
-  const [stats, warehouses, result, favoritedVariantIds] = await Promise.all([
+  // getOverseasList 内部已完成：归档过滤 → 关注标记 → 排序（关注置顶）→ 分页
+  // 不在此处重复标记 isFavorited，避免对已分页数据二次覆盖
+  const [stats, warehouses, result] = await Promise.all([
     inventoryRepository.getOverseasStats(userId),
     inventoryRepository.getOverseasWarehouses(),
     inventoryRepository.getOverseasList({ ...parsed.data, userId }),
-    preferencesRepository.getFavoritedVariantIds(userId),
   ]);
-
-  // 标记当前用户关注状态
-  if (favoritedVariantIds.size > 0) {
-    result.data = result.data.map((item) => ({
-      ...item,
-      isFavorited: favoritedVariantIds.has(item.variantId),
-    }));
-  }
 
   return { stats, warehouses, result };
 }

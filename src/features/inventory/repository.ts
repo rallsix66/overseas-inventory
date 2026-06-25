@@ -31,6 +31,24 @@ async function getUserArchivedVariantIds(userId: string | undefined): Promise<Se
   return new Set((data ?? []).map((r) => r.variant_id));
 }
 
+/** 获取当前用户已关注的 Variant ID 集合 */
+async function getUserFavoritedVariantIds(userId: string | undefined): Promise<Set<string>> {
+  if (!userId) return new Set();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('user_variant_preference')
+    .select('variant_id')
+    .eq('user_id', userId)
+    .eq('preference_type', 'favorited');
+
+  if (error) {
+    throw new Error(`查询关注偏好失败: ${error.message}`);
+  }
+
+  return new Set((data ?? []).map((r) => r.variant_id));
+}
+
 export const inventoryRepository = {
   /** 分页列表（关联 product_variant + product + warehouse） */
   async list(filters: InventoryFilters = {}): Promise<PaginatedResult<InventoryItem>> {
@@ -109,8 +127,11 @@ export const inventoryRepository = {
     const supabase = await createClient();
     const { country, stockStatus, search, page = 1, pageSize = PAGE_SIZE, warehouseId, userId } = filters;
 
-    // 获取当前用户已归档 Variant ID 集合
-    const archivedVariantIds = await getUserArchivedVariantIds(userId);
+    // 获取当前用户已归档 / 已关注 Variant ID 集合
+    const [archivedVariantIds, favoritedVariantIds] = await Promise.all([
+      getUserArchivedVariantIds(userId),
+      getUserFavoritedVariantIds(userId),
+    ]);
 
     // 加载全部海外库存数据（仅 warehouse.type = 'overseas'）
     // 不再使用 variant.is_archived 过滤；归档过滤在 JS 层基于 user_variant_preference 完成
@@ -163,7 +184,7 @@ export const inventoryRepository = {
         warehouseType: warehouse?.type ?? '',
         safetyStock: product?.safety_stock ?? 0,
         matchStatus: variant?.match_status ?? 'unmatched',
-        isFavorited: false,
+        isFavorited: favoritedVariantIds.has(row.variant_id),
       };
     });
 
@@ -195,6 +216,9 @@ export const inventoryRepository = {
         return true;
       });
     }
+
+    // 关注产品置顶，其次保持原本的库存数量升序。
+    items.sort((a, b) => Number(b.isFavorited) - Number(a.isFavorited) || a.quantity - b.quantity);
 
     const total = items.length;
     const pagedFrom = (page - 1) * pageSize;

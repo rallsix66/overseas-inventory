@@ -1,0 +1,204 @@
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+Error: fetch failed
+    at context.fetch (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\context.js:321:60)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/helpers.js:121:25)
+    at _handleRequest (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:122:24)
+    at _request (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:112:24)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2603:82)
+    at SupabaseAuthClient._useSession (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2412:26)
+    at async SupabaseAuthClient._getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2593:20)
+    at async SupabaseAuthClient.getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2577:22)
+    at async updateSession (webpack-internal:///(middleware)/./src/lib/supabase/middleware.ts:29:32)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/build/webpack/loaders/next-middleware-loader.js?absolutePagePath=E%3A%5CAI%5Coverseas-inventory%5Csrc%5Cmiddleware.ts&page=%2Fmiddleware&rootDir=E%3A%5CAI%5Coverseas-inventory&matchers=&preferredRegion=&middlewareConfig=e30%3D!:47:20)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:264:28)
+    at async adapter (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:218:16)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:115:26
+    at async runWithTaggedErrors (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:112:9)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:1207:22)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:392:26)
+    at async DevServer.handleRequestImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\base-server.js:941:28)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:394:20
+    at async Span.traceAsyncFn (E:\AI\overseas-inventory\node_modules\next\dist\trace\trace.js:164:20)
+    at async DevServer.handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:390:24)
+    at async handleRoute (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:366:33)
+    at async resolveRoutes (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:622:28)
+    at async handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:314:96)
+    at async requestHandlerImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:514:13)
+    at async Server.requestListener (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\start-server.js:225:13) {
+  
+}
+Error: fetch failed
+    at context.fetch (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\context.js:321:60)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/helpers.js:121:25)
+    at _handleRequest (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:122:24)
+    at _request (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:112:24)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2603:82)
+    at SupabaseAuthClient._useSession (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2412:26)
+    at async SupabaseAuthClient._getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2593:20)
+    at async SupabaseAuthClient.getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2577:22)
+    at async updateSession (webpack-internal:///(middleware)/./src/lib/supabase/middleware.ts:29:32)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/build/webpack/loaders/next-middleware-loader.js?absolutePagePath=E%3A%5CAI%5Coverseas-inventory%5Csrc%5Cmiddleware.ts&page=%2Fmiddleware&rootDir=E%3A%5CAI%5Coverseas-inventory&matchers=&preferredRegion=&middlewareConfig=e30%3D!:47:20)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:264:28)
+    at async adapter (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:218:16)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:115:26
+    at async runWithTaggedErrors (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:112:9)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:1207:22)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:392:26)
+    at async DevServer.handleRequestImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\base-server.js:941:28)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:394:20
+    at async Span.traceAsyncFn (E:\AI\overseas-inventory\node_modules\next\dist\trace\trace.js:164:20)
+    at async DevServer.handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:390:24)
+    at async handleRoute (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:366:33)
+    at async resolveRoutes (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:622:28)
+    at async handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:314:96)
+    at async requestHandlerImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:514:13)
+    at async Server.requestListener (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\start-server.js:225:13) {
+  
+}
+Error: fetch failed
+    at context.fetch (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\context.js:321:60)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/helpers.js:121:25)
+    at _handleRequest (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:122:24)
+    at _request (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:112:24)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2603:82)
+    at SupabaseAuthClient._useSession (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2412:26)
+    at async SupabaseAuthClient._getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2593:20)
+    at async SupabaseAuthClient.getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2577:22)
+    at async updateSession (webpack-internal:///(middleware)/./src/lib/supabase/middleware.ts:29:32)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/build/webpack/loaders/next-middleware-loader.js?absolutePagePath=E%3A%5CAI%5Coverseas-inventory%5Csrc%5Cmiddleware.ts&page=%2Fmiddleware&rootDir=E%3A%5CAI%5Coverseas-inventory&matchers=&preferredRegion=&middlewareConfig=e30%3D!:47:20)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:264:28)
+    at async adapter (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:218:16)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:115:26
+    at async runWithTaggedErrors (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:112:9)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:1207:22)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:392:26)
+    at async DevServer.handleRequestImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\base-server.js:941:28)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:394:20
+    at async Span.traceAsyncFn (E:\AI\overseas-inventory\node_modules\next\dist\trace\trace.js:164:20)
+    at async DevServer.handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:390:24)
+    at async handleRoute (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:366:33)
+    at async resolveRoutes (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:622:28)
+    at async handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:314:96)
+    at async requestHandlerImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:514:13)
+    at async Server.requestListener (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\start-server.js:225:13) {
+  
+}
+Error: fetch failed
+    at context.fetch (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\context.js:321:60)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/helpers.js:121:25)
+    at _handleRequest (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:122:24)
+    at _request (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:112:24)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2603:82)
+    at SupabaseAuthClient._useSession (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2412:26)
+    at async SupabaseAuthClient._getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2593:20)
+    at async SupabaseAuthClient.getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2577:22)
+    at async updateSession (webpack-internal:///(middleware)/./src/lib/supabase/middleware.ts:29:32)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/build/webpack/loaders/next-middleware-loader.js?absolutePagePath=E%3A%5CAI%5Coverseas-inventory%5Csrc%5Cmiddleware.ts&page=%2Fmiddleware&rootDir=E%3A%5CAI%5Coverseas-inventory&matchers=&preferredRegion=&middlewareConfig=e30%3D!:47:20)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:264:28)
+    at async adapter (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:218:16)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:115:26
+    at async runWithTaggedErrors (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:112:9)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:1207:22)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:392:26)
+    at async DevServer.handleRequestImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\base-server.js:941:28)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:394:20
+    at async Span.traceAsyncFn (E:\AI\overseas-inventory\node_modules\next\dist\trace\trace.js:164:20)
+    at async DevServer.handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:390:24)
+    at async handleRoute (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:366:33)
+    at async resolveRoutes (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:622:28)
+    at async handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:314:96)
+    at async requestHandlerImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:514:13)
+    at async Server.requestListener (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\start-server.js:225:13) {
+  
+}
+Error: fetch failed
+    at context.fetch (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\context.js:321:60)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/helpers.js:121:25)
+    at _handleRequest (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:122:24)
+    at _request (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:112:24)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2603:82)
+    at SupabaseAuthClient._useSession (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2412:26)
+    at async SupabaseAuthClient._getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2593:20)
+    at async SupabaseAuthClient.getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2577:22)
+    at async updateSession (webpack-internal:///(middleware)/./src/lib/supabase/middleware.ts:29:32)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/build/webpack/loaders/next-middleware-loader.js?absolutePagePath=E%3A%5CAI%5Coverseas-inventory%5Csrc%5Cmiddleware.ts&page=%2Fmiddleware&rootDir=E%3A%5CAI%5Coverseas-inventory&matchers=&preferredRegion=&middlewareConfig=e30%3D!:47:20)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:264:28)
+    at async adapter (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:218:16)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:115:26
+    at async runWithTaggedErrors (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:112:9)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:1207:22)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:392:26)
+    at async DevServer.handleRequestImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\base-server.js:941:28)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:394:20
+    at async Span.traceAsyncFn (E:\AI\overseas-inventory\node_modules\next\dist\trace\trace.js:164:20)
+    at async DevServer.handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:390:24)
+    at async handleRoute (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:366:33)
+    at async resolveRoutes (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:622:28)
+    at async handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:314:96)
+    at async requestHandlerImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:514:13)
+    at async Server.requestListener (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\start-server.js:225:13) {
+  
+}
+Error: fetch failed
+    at context.fetch (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\context.js:321:60)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/helpers.js:121:25)
+    at _handleRequest (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:122:24)
+    at _request (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:112:24)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2603:82)
+    at SupabaseAuthClient._useSession (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2412:26)
+    at async SupabaseAuthClient._getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2593:20)
+    at async SupabaseAuthClient.getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2577:22)
+    at async updateSession (webpack-internal:///(middleware)/./src/lib/supabase/middleware.ts:29:32)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/build/webpack/loaders/next-middleware-loader.js?absolutePagePath=E%3A%5CAI%5Coverseas-inventory%5Csrc%5Cmiddleware.ts&page=%2Fmiddleware&rootDir=E%3A%5CAI%5Coverseas-inventory&matchers=&preferredRegion=&middlewareConfig=e30%3D!:47:20)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:264:28)
+    at async adapter (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:218:16)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:115:26
+    at async runWithTaggedErrors (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:112:9)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:1207:22)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:392:26)
+    at async DevServer.handleRequestImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\base-server.js:941:28)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:394:20
+    at async Span.traceAsyncFn (E:\AI\overseas-inventory\node_modules\next\dist\trace\trace.js:164:20)
+    at async DevServer.handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:390:24)
+    at async handleRoute (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:366:33)
+    at async resolveRoutes (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:622:28)
+    at async handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:314:96)
+    at async requestHandlerImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:514:13)
+    at async Server.requestListener (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\start-server.js:225:13) {
+  
+}
+Error: fetch failed
+    at context.fetch (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\context.js:321:60)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/helpers.js:121:25)
+    at _handleRequest (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:122:24)
+    at _request (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/lib/fetch.js:112:24)
+    at eval (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2603:82)
+    at SupabaseAuthClient._useSession (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2412:26)
+    at async SupabaseAuthClient._getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2593:20)
+    at async SupabaseAuthClient.getUser (webpack-internal:///(middleware)/./node_modules/@supabase/auth-js/dist/module/GoTrueClient.js:2577:22)
+    at async updateSession (webpack-internal:///(middleware)/./src/lib/supabase/middleware.ts:29:32)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/build/webpack/loaders/next-middleware-loader.js?absolutePagePath=E%3A%5CAI%5Coverseas-inventory%5Csrc%5Cmiddleware.ts&page=%2Fmiddleware&rootDir=E%3A%5CAI%5Coverseas-inventory&matchers=&preferredRegion=&middlewareConfig=e30%3D!:47:20)
+    at async eval (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:264:28)
+    at async adapter (webpack-internal:///(middleware)/./node_modules/next/dist/esm/server/web/adapter.js:218:16)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:115:26
+    at async runWithTaggedErrors (E:\AI\overseas-inventory\node_modules\next\dist\server\web\sandbox\sandbox.js:112:9)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:1207:22)
+    at async DevServer.runMiddleware (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\next-server.js:392:26)
+    at async DevServer.handleRequestImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\base-server.js:941:28)
+    at async E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:394:20
+    at async Span.traceAsyncFn (E:\AI\overseas-inventory\node_modules\next\dist\trace\trace.js:164:20)
+    at async DevServer.handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\dev\next-dev-server.js:390:24)
+    at async handleRoute (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:366:33)
+    at async resolveRoutes (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-utils\resolve-routes.js:622:28)
+    at async handleRequest (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:314:96)
+    at async requestHandlerImpl (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\router-server.js:514:13)
+    at async Server.requestListener (E:\AI\overseas-inventory\node_modules\next\dist\server\lib\start-server.js:225:13) {
+  
+}
