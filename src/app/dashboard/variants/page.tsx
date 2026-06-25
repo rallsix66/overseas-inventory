@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default async function VariantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archiveStatus?: string; page?: string }>;
+  searchParams: Promise<{ archiveStatus?: string; page?: string; search?: string }>;
 }) {
   const user = await requireActiveAuth();
   const sp = await searchParams;
@@ -29,9 +29,11 @@ export default async function VariantsPage({
       : (rawArchiveStatus as VariantArchiveStatus);
 
   const page = Math.max(1, Number(sp.page) || 1);
+  const search = sp.search?.trim() || undefined;
 
   const result = await variantRepository.list({
     archiveStatus,
+    search,
     page,
     pageSize: 20,
   });
@@ -43,6 +45,7 @@ export default async function VariantsPage({
         result={result}
         isAdmin={isAdmin}
         archiveStatus={archiveStatus}
+        search={sp.search ?? ''}
       />
     </div>
   );

@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY11` — ProductVariant 软归档与库存视图降噪（P5-SY11E DONE — Variant 列表页面 + 归档/恢复 UI 完成。下一步 P5-SY11F。P5-SY11F PENDING。）
+`P5-SY11` — ProductVariant 软归档与库存视图降噪（P5-SY11E DONE — Variant 列表页面 + 归档/恢复 UI 完成，含搜索功能、loading/error 状态、页面测试。下一步 P5-SY11F。P5-SY11F PENDING。）
 
 ## Completed Tasks
 
@@ -71,7 +71,7 @@ Phase 5 — 海外仓库存同步生产化
 - P5-SY11B DONE — 等待 Codex 独立验收（2026-06-24）。类型同步 + Repository 软归档能力：database.ts 新字段 / VariantArchiveStatus / archiveStatus 过滤 / archive() / restore() / match/unmatch/batchMatch 阻止已归档。31/31 测试通过。
 - P5-SY11C DONE — 等待 Codex 独立验收（2026-06-25）。Server Actions archiveVariants/restoreVariants：requireActiveAdmin + Zod schema 去重 + revalidatePath + 中文错误处理。24/24 测试通过。
 - P5-SY11D DONE — 等待 Codex 独立验收（2026-06-25）。Inventory 层归档过滤：getOverseasList/getLowStock/getOverseasStats 使用 variant:variant_id!inner + .eq('variant.is_archived', false) DB 层过滤 + JS 兜底排除 variant=null/is_archived=true。getByProductId 不过滤。19/19 测试通过。
-- P5-SY11E DONE — 等待 Codex 独立验收（2026-06-25）。Variant 列表页面 + 归档/恢复 UI：variants/page.tsx（Server Component + Client Component，Admin 可见归档筛选标签/复选框/批量归档恢复按钮，Operator 只读活跃标签）、unmatched/page.tsx（仅活跃未匹配，无操作入口）、columns.tsx 新增 is_archived 列、archive-controls.tsx（确认 Dialog + toast 反馈）。853/853 测试，lint 0 errors，build pass。
+- P5-SY11E DONE — 等待 Codex 独立验收（2026-06-25）。Variant 列表页面 + 归档/恢复 UI：variants/page.tsx（Server Component + Client Component，Admin 可见归档筛选标签/复选框/批量归档恢复按钮，Operator 只读活跃标签）+ SKU/名称搜索（URL searchParams，切换搜索重置 page=1）、unmatched/page.tsx（仅活跃未匹配，requireActiveAuth，无操作入口）、columns.tsx 新增 is_archived 列、archive-controls.tsx（确认 Dialog + toast 反馈）、loading.tsx + error.tsx（覆盖 variants/ 及 unmatched/）。p5-sy11e-pages.test.ts 新增 30 项页面/UI 测试（buildQuery、archiveStatus 判定、空数据消息、search 参数、auth 验证、ArchiveControls 选择逻辑）。892/892 TS 测试（concurrency 需 PG 单独跑），lint 0 errors，build pass。
 - P5-SY11F PENDING。P5-SY10 全部子任务（A~F）DONE。P5-SY10 Phase B（PASS 仓库自动 Real Write）设计预留，当前不启用。
 
 ## Authentication Status
@@ -178,7 +178,7 @@ Phase 5 — 海外仓库存同步生产化
 
 | 日期 | 变更 |
 |---|---|
-| 2026-06-25 | **P5-SY11E DONE。Variant 列表页面 + 归档/恢复 UI 完成。** variants/page.tsx（Server Component + Client Component：Admin 可见活跃/已归档/全部归档筛选标签 + 复选框批量选择 + 归档/恢复按钮 + 确认 Dialog + toast 反馈；Operator 仅活跃标签只读）、unmatched/page.tsx（仅活跃未匹配 SKU，无操作入口）、columns.tsx 新增 is_archived 归档状态列、archive-controls.tsx（批量操作组件含确认 Dialog）。853/853 测试，lint 0 errors，build pass。P5-SY11F PENDING。 |
+| 2026-06-25 | **P5-SY11E 返工完成。** ① unmatched/page.tsx 改用 requireActiveAuth（非 requireAuth）；② variants 列表页新增 SKU/名称搜索功能（URL searchParams，切换搜索重置 page=1，分页/标签链接保留 search）；③ 新增 variants/loading.tsx（Skeleton）+ variants/error.tsx（错误+重试），覆盖 variants/ 及 unmatched/ 子路由；④ p5-sy11e-pages.test.ts 新增 30 项页面/UI 测试（buildQuery、archiveStatus 判定、空数据消息、search 参数、auth 验证、ArchiveControls 选择逻辑）；⑤ docs/current-state.md Last Updated 同步。892/892 测试，lint 0 errors，build pass。 |
 | 2026-06-25 | **P5-SY11D DONE。Inventory 层归档过滤完成。** getOverseasList/getLowStock/getOverseasStats 使用 variant:variant_id!inner + .eq('variant.is_archived', false) DB 层过滤 + JS 兜底排除 variant=null/is_archived=true。getByProductId 不过滤（产品详情保留已归档 Variant 库存）。19/19 测试，853/853 全量测试，lint 0 errors，build pass。P5-SY11E~F PENDING。 |
 | 2026-06-25 | **P5-SY11C DONE。Server Actions archiveVariants/restoreVariants 完成。** actions.ts 新增两个 Server Action：requireActiveAdmin + Zod schema 去重 + variantRepository + revalidatePath + 中文错误处理（VariantError/权限/停用/未知）。24/24 测试，834/834 全量测试，lint 0 errors，build pass。P5-SY11D~F PENDING。 |
 | 2026-06-24 | **P5-SY9J 生产启用受控验证通过。P5-SY9 全子任务（A~J）DONE。** WEBSYNC_REAL_WRITE_ENABLED=true 已在 .env.local 启用。受控验证：PH 仓 Web Dry Run（104 行 → 6 新 + 80 更新 + 18 未变）→ 审核通过 → Real Write 成功（sync_log status=success，new_variants_count=6，库存验证通过）。修复 web_bridge.py execute_plan_v2 签名不匹配。已知小问题：RPC summary 返回全零（仅显示，sync_log 正确）。 |
@@ -717,8 +717,11 @@ BigSeller 实际 VXE 结构：
 - ✅ `src/features/variants/columns.tsx` — 新增 `is_archived` 归档状态列 (P5-SY11E)
 - ✅ `src/features/variants/components/archive-controls.tsx` — 批量归档/恢复操作组件（确认 Dialog + toast） (P5-SY11E)
 - ✅ `src/app/dashboard/variants/_components/variant-page-content.tsx` — 交互层（筛选标签/复选框/表格/分页） (P5-SY11E)
-- ✅ `src/app/dashboard/variants/page.tsx` — Server Component：数据表格 + 归档筛选标签 + Admin 批量操作 (P5-SY11E)
-- ✅ `src/app/dashboard/variants/unmatched/page.tsx` — Server Component：仅活跃未匹配列表 (P5-SY11E)
+- ✅ `src/app/dashboard/variants/page.tsx` — Server Component：数据表格 + 归档筛选标签 + Admin 批量操作 + SKU/名称搜索 (P5-SY11E)
+- ✅ `src/app/dashboard/variants/unmatched/page.tsx` — Server Component：仅活跃未匹配列表，requireActiveAuth (P5-SY11E)
+- ✅ `src/app/dashboard/variants/loading.tsx` — 加载骨架 (P5-SY11E)
+- ✅ `src/app/dashboard/variants/error.tsx` — 错误状态 + 重试 (P5-SY11E)
+- ✅ `src/features/variants/p5-sy11e-pages.test.ts` — 页面/UI 测试（30 项） (P5-SY11E)
 
 **P5-SY9 核心文件（已完成）：**
 - `src/features/sync/server-actions.ts`：`verifyBigSellerSession()` / `triggerDryRun()` / `confirmRealWrite()` / `triggerBatchDryRun()` / `triggerBatchRealWrite()` / `getOverseasWarehouseSyncStatus()` / `getSyncLogDetail()`
@@ -743,4 +746,4 @@ BigSeller 实际 VXE 结构：
 
 ## Last Updated
 
-2026-06-24（P5-SY11B DONE：类型同步 + Repository 软归档能力完成 — database.ts 新增 is_archived/archived_at/archived_by + VariantArchiveStatus 类型 + archiveStatus 过滤 + archive()/restore() + match/unmatch/batchMatch 阻止已归档。31/31 测试。793/793 TS 全量测试（concurrency 需 PG 环境单独跑），lint 0 errors，build pass。P5-SY11C~F PENDING，下一步 P5-SY11C。P5-SY10 全部子任务（A~F）DONE。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。P5-SY10 Phase B 设计预留。）
+2026-06-25（P5-SY11E DONE + 返工完成 — Variant 列表页面 + 归档/恢复 UI + SKU/名称搜索 + loading/error 状态 + 30 项页面测试。unmatched 改用 requireActiveAuth。P5-SY11A~E DONE，P5-SY11F PENDING。P5-SY10 全部子任务（A~F）DONE。WEBSYNC_REAL_WRITE_ENABLED 仍 disabled。P5-SY10 Phase B 设计预留。）

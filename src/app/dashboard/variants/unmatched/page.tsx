@@ -2,7 +2,7 @@
 // 显示活跃的未匹配/待确认 SKU（已归档 SKU 不显示）
 // 无归档筛选标签、无归档/恢复按钮
 // Admin 和 Operator 均可查看
-import { requireAuth } from '@/lib/auth';
+import { requireActiveAuth } from '@/lib/auth';
 import { variantRepository } from '@/features/variants/repository';
 import { variantColumns } from '@/features/variants/columns';
 import {
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 export default async function UnmatchedVariantsPage() {
-  await requireAuth();
+  await requireActiveAuth();
   const items = await variantRepository.getUnmatched();
 
   return (
