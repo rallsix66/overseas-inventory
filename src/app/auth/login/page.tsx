@@ -11,10 +11,11 @@ import { Label } from '@/components/ui/label';
 import { Package } from 'lucide-react';
 
 const LOGIN_TIMEOUT_MS = 15_000;
+const LOGIN_TIMEOUT_MSG = '登录请求超时，请检查网络或 Supabase 配置后重试';
 
 function withLoginTimeout<T>(promise: Promise<T>): Promise<T> {
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('登录请求超时，请检查网络或 Supabase 配置后重试')), LOGIN_TIMEOUT_MS)
+    setTimeout(() => reject(new Error(LOGIN_TIMEOUT_MSG)), LOGIN_TIMEOUT_MS)
   );
   return Promise.race([promise, timeout]);
 }
@@ -59,9 +60,11 @@ export default function LoginPage() {
       router.push('/dashboard');
       router.refresh();
     } catch (loginError) {
+      // 只允许超时错误透出特定中文提示；其他网络/未知异常统一使用通用提示，防止泄露原始英文错误
+      const isTimeout = loginError instanceof Error && loginError.message === LOGIN_TIMEOUT_MSG;
       setError(
-        loginError instanceof Error
-          ? loginError.message
+        isTimeout
+          ? LOGIN_TIMEOUT_MSG
           : '登录请求失败，请检查网络或 Supabase 配置后重试'
       );
       setLoading(false);

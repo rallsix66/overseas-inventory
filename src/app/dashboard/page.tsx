@@ -186,10 +186,14 @@ export default async function DashboardPage() {
                       {v.quantity}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
-                      {v.safetyStock}
+                      {v.safetyStock > 0 ? v.safetyStock : '—'}
                     </td>
                     <td className="py-2 px-3">
-                      {v.isLowStock ? (
+                      {v.isUnmatched ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                          未匹配
+                        </span>
+                      ) : v.isLowStock ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">
                           低库存
                         </span>

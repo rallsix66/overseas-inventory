@@ -50,13 +50,16 @@ export function preferenceErrorMessage(code: PreferenceErrorCode): string {
  */
 export interface FollowedVariantBasic {
   variantId: string;
-  productName: string;
-  productCode: string;
+  productName: string;         // product?.name ?? variant.sku ?? '未匹配产品'
+  productCode: string;         // product?.code ?? variant.sku ?? ''
+  sku: string;                 // variant.sku（product 为空时用于展示 fallback）
+  matchStatus: string;         // variant.match_status（前端判断未匹配状态）
+  isUnmatched: boolean;        // product 为空 = variant 未匹配到 Product
   country: string;
   warehouseId: string;
   warehouseName: string;
   quantity: number;
-  safetyStock: number;         // product.safety_stock（阶段 B 唯一告警依据）
-  isLowStock: boolean;         // 临时规则：quantity < safetyStock（非动态告警，不是 bug）
-  alertReason: string | null;  // "低于安全线 X"（阶段 C 升级为 "可售X天 补货需Y天"）
+  safetyStock: number;         // product?.safety_stock ?? 0（无 product 时为 0）
+  isLowStock: boolean;         // 仅 product 存在且 quantity < safetyStock 时为 true
+  alertReason: string | null;  // "低于安全线 X"（无 product 时为 null）
 }

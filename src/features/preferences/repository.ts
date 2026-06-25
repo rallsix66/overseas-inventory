@@ -201,7 +201,7 @@ export const preferencesRepository = {
       .from('inventory')
       .select(
         `id, variant_id, warehouse_id, quantity, last_sync_at,
-         variant:variant_id!inner (id, country, product:product_id (id, name, code, safety_stock)),
+         variant:variant_id!inner (id, sku, match_status, country, product:product_id (id, name, code, safety_stock)),
          warehouse:warehouse_id!inner (id, name, country, type)`
       )
       .in('variant_id', [...favoritedVariantIds])
@@ -225,20 +225,26 @@ export const preferencesRepository = {
     const results: FollowedVariantBasic[] = [];
     for (const row of data as unknown[]) {
       const r = row as Record<string, unknown>;
-      const variant = unwrapJoin<{ id: string; country: string; product: unknown }>(r.variant);
+      const variant = unwrapJoin<{ id: string; sku: string; match_status: string; country: string; product: unknown }>(r.variant);
       if (!variant) continue;
-      const product = unwrapJoin<{ id: string; name: string; code: string; safety_stock: number }>(variant.product);
-      if (!product) continue;
+      const product = unwrapJoin<{ id: string; name: string; code: string; safety_stock: number } | null>(variant.product);
       const wh = unwrapJoin<{ id: string; name: string; country: string; type: string }>(r.warehouse);
 
-      const safetyStock = product.safety_stock ?? 0;
+      // product 为空时使用 variant.sku fallback，不丢弃关注项
+      const productName = product?.name ?? variant.sku ?? '未匹配产品';
+      const productCode = product?.code ?? variant.sku ?? '';
+      const safetyStock = product?.safety_stock ?? 0;
       const qty = (r.quantity as number) ?? 0;
-      const isLow = qty < safetyStock;
+      // 仅 product 存在时才按阶段 B 规则判断低库存；未匹配 SKU 不误判为低库存
+      const isLow = product ? qty < safetyStock : false;
 
       results.push({
         variantId: variant.id,
-        productName: product.name,
-        productCode: product.code,
+        productName,
+        productCode,
+        sku: variant.sku,
+        matchStatus: variant.match_status,
+        isUnmatched: !product,
         country: variant.country,
         warehouseId: wh?.id ?? (r.warehouse_id as string),
         warehouseName: wh?.name ?? '未知仓库',
@@ -247,6 +253,14 @@ export const preferencesRepository = {
         isLowStock: isLow,
         alertReason: isLow ? `低于安全线 ${safetyStock}` : null,
       });
+    }
+
+    // 防御：inventory 返回了行但全部被跳过（理论上不应发生，但保留诊断）
+    if (results.length === 0) {
+      throw new PreferenceError(
+        'EMPTY_RESULT',
+        `已关注 ${favoritedVariantIds.size} 个 SKU 但处理后无有效结果，请确认 variant 数据完整性`
+      );
     }
 
     // 低库存行置顶

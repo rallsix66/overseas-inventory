@@ -8,6 +8,7 @@
 // - Dashboard page 低库存列置顶（由 repository 排序保证）
 // - 关注不影响同步链路
 // - 禁止 any
+// - product 为 null 时不丢弃关注项
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
@@ -199,5 +200,51 @@ describe('P5-SY12 — getFollowedVariantsBasic 诊断', () => {
     const typesPath = path.resolve(process.cwd(), 'src/features/preferences/types.ts');
     const typesSrc = fs.readFileSync(typesPath, 'utf-8');
     expect(typesSrc).toMatch(/'EMPTY_RESULT'/);
+  });
+});
+
+// ─── product 为 null 时不丢弃关注项（防回归） ─────────────────────────
+
+describe('P5-SY12 — product null 关注项不丢弃', () => {
+  const repoPath = path.resolve(process.cwd(), 'src/features/preferences/repository.ts');
+  const repoSrc = fs.readFileSync(repoPath, 'utf-8');
+
+  it('product 为 null 时不会 continue 跳过，仍返回该关注项', () => {
+    // 回归：旧版 `if (!product) continue;` 会丢弃未匹配的关注项
+    expect(repoSrc).not.toMatch(/if \(!product\) continue/);
+  });
+
+  it('productName 使用 product?.name ?? variant.sku ?? fallback 链', () => {
+    expect(repoSrc).toMatch(/productName\s*=\s*product\?\.name\s*\?\?\s*variant\.sku/);
+  });
+
+  it('productCode 使用 product?.code ?? variant.sku fallback 链', () => {
+    expect(repoSrc).toMatch(/productCode\s*=\s*product\?\.code\s*\?\?\s*variant\.sku/);
+  });
+
+  it('isLowStock 仅 product 存在时按阶段 B 规则判断，未匹配时不误判', () => {
+    expect(repoSrc).toMatch(/isLow\s*=\s*product\s*\?\s*qty\s*<\s*safetyStock\s*:\s*false/);
+  });
+
+  it('FollowedVariantBasic 新增 sku / matchStatus / isUnmatched 字段', () => {
+    const typesPath = path.resolve(process.cwd(), 'src/features/preferences/types.ts');
+    const typesSrc = fs.readFileSync(typesPath, 'utf-8');
+    expect(typesSrc).toMatch(/sku:\s*string/);
+    expect(typesSrc).toMatch(/matchStatus:\s*string/);
+    expect(typesSrc).toMatch(/isUnmatched:\s*boolean/);
+  });
+
+  it('Dashboard 关注区状态列显示"未匹配"（中性灰标签）', () => {
+    const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
+    expect(dashboardSrc).toContain('未匹配');
+    expect(dashboardSrc).toMatch(/isUnmatched \?/);
+  });
+
+  it('variant select 包含 sku / match_status 字段', () => {
+    expect(repoSrc).toMatch(/variant:variant_id!inner\s*\(id,\s*sku,\s*match_status,\s*country/);
+  });
+
+  it('处理后无有效结果时抛出 EMPTY_RESULT 防御错误', () => {
+    expect(repoSrc).toMatch(/处理后无有效结果/);
   });
 });
