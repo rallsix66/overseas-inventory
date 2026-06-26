@@ -312,6 +312,123 @@ export type Database = {
         }
         Relationships: []
       }
+      shipment_external_ref: {
+        Row: {
+          id: string
+          provider: string
+          external_order_no: string
+          waybill_no: string | null
+          country: string
+          warehouse_id: string | null
+          raw_payload: Record<string, unknown>
+          sync_status: string
+          last_synced_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          provider: string
+          external_order_no: string
+          waybill_no?: string | null
+          country: string
+          warehouse_id?: string | null
+          raw_payload?: Record<string, unknown>
+          sync_status?: string
+          last_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          provider?: string
+          external_order_no?: string
+          waybill_no?: string | null
+          country?: string
+          warehouse_id?: string | null
+          raw_payload?: Record<string, unknown>
+          sync_status?: string
+          last_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      shipment_external_item: {
+        Row: {
+          id: string
+          external_ref_id: string
+          external_sku: string
+          external_product_name: string | null
+          quantity: number
+          matched_variant_id: string | null
+          raw_payload: Record<string, unknown>
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          external_ref_id: string
+          external_sku: string
+          external_product_name?: string | null
+          quantity: number
+          matched_variant_id?: string | null
+          raw_payload?: Record<string, unknown>
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          external_ref_id?: string
+          external_sku?: string
+          external_product_name?: string | null
+          quantity?: number
+          matched_variant_id?: string | null
+          raw_payload?: Record<string, unknown>
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tracking_event_external: {
+        Row: {
+          id: string
+          external_ref_id: string
+          provider: string
+          external_event_id: string | null
+          status: string | null
+          description: string | null
+          occurred_at: string | null
+          location: string | null
+          raw_payload: Record<string, unknown>
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          external_ref_id: string
+          provider: string
+          external_event_id?: string | null
+          status?: string | null
+          description?: string | null
+          occurred_at?: string | null
+          location?: string | null
+          raw_payload?: Record<string, unknown>
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          external_ref_id?: string
+          provider?: string
+          external_event_id?: string | null
+          status?: string | null
+          description?: string | null
+          occurred_at?: string | null
+          location?: string | null
+          raw_payload?: Record<string, unknown>
+          created_at?: string
+        }
+        Relationships: []
+      }
       sync_log: {
         Row: {
           id: string

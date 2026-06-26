@@ -6,7 +6,14 @@
 
 ## 状态
 
-**AWAITING IMPLEMENTATION**（2026-06-26，Phase 3 启动）
+**DONE**（2026-06-26）
+
+Migration 00017 已就绪，路径 B 已选定（新建 tracking_event_external）。
+`src/features/in-transit/` 模块已创建（types.ts + schema.ts）。
+database.ts 已同步三表类型。
+所有质量门通过：1263/1263 非并发测试 + 64 静态契约测试 + lint 0 errors + build 通过。
+Migration 待用户在 Supabase SQL Editor 手动执行。
+下一步：P3-S1B 百世 API Client。
 
 ## 背景
 

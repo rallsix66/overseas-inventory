@@ -30,7 +30,7 @@
 
 | Task ID | 任务 | 依赖 | 状态 | 停止条件 |
 |---|---|---|---|---|
-| **P3-S1A** | 百世只读在途同步边界与数据模型 | — | **AWAITING IMPLEMENTATION** | Migration 00017 新建 `shipment_external_ref` / `shipment_external_item` + tracking_event 扩展/外部轨迹表决策 + 类型/Zod/database.ts/静态测试通过。允许：migration、类型、Zod、database.ts、静态测试。禁止：API Client、百世 API 调用、Repository 业务逻辑、Server Action、UI、库存联动。完成后等待 Codex 独立验收，不自动进入 P3-S1B。 |
+| **P3-S1A** | 百世只读在途同步边界与数据模型 | — | **DONE (2026-06-26)** | Migration 00017 新建 `shipment_external_ref` / `shipment_external_item` / `tracking_event_external`（路径 B：新建外部轨迹表）+ 类型/Zod/database.ts 已同步 + 64 静态契约测试通过 + 1263/1263 非并发测试通过 + lint 0 errors + build 通过。Migration 待用户在 Supabase SQL Editor 手动执行。未创建 API Client / Repository / Server Action / UI / 库存联动。下一步：P3-S1B。 |
 | **P3-S1B** | 百世 API Client、签名与 Dry Run 拉取 | P3-S1A | BLOCKED | 百世签名通过 + `queryOrderInfoByOrderNo` / 物流轨迹查询 Dry Run 成功 + 测试不含真实凭证 + 不写 DIS 数据库 |
 | **P3-S1C** | 百世只读数据写入 DIS 外部在途表 | P3-S1B | BLOCKED | Dry Run 结果幂等写入 external ref / item / tracking event + 同 provider+external_order_no 不重复 + 未匹配商品保留未匹配状态 + 不更新 inventory |
 | **P3-S1D** | 外部商品到 ProductVariant 的人工匹配基础 | P3-S1C | BLOCKED | `shipment_external_item.matched_variant_id` 可读写 + Admin/Operator 可匹配/解除匹配 + 不自动匹配 + 不用 SKU 做主键 |
@@ -173,7 +173,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S1A` — 百世只读在途同步边界与数据模型（AWAITING IMPLEMENTATION，2026-06-26）
+**当前任务**：`P3-S1A` — 百世只读在途同步边界与数据模型（DONE，2026-06-26）
 
 `docs/tasks/current-task.md` 包含 P3-S1A 完整任务包。P3-S1A 完成后等待 Codex 独立验收，不自动进入 P3-S1B。
 
