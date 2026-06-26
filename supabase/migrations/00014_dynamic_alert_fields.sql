@@ -277,60 +277,88 @@ BEGIN
     END IF;
 
     -- ─── P5-SY12C: daily_sales 校验 ─────────────────────────────────
-    -- 字段缺失 / null / JSON null → 跳过（写入 NULL）
-    -- 非数字类型 → 报错
-    -- 数字但非有限（NaN/Infinity/-Infinity）→ 报错
-    -- 有效有限数值 → 允许通过
-    IF v_item ? 'daily_sales' AND v_item->'daily_sales' IS NOT NULL THEN
-      IF jsonb_typeof(v_item->'daily_sales') != 'number' THEN
-        RAISE EXCEPTION 'daily_sales 必须为数字类型（拒绝 %）: sku=%, country=%',
-          jsonb_typeof(v_item->'daily_sales'), v_sku, v_country
-          USING ERRCODE = 'P0001';
-      END IF;
+    -- 字段缺失 → 跳过（写入 NULL）
+    -- JSON null → 允许（写入 NULL）
+    -- 字符串 ''、'-'、'—' → 允许（写入 NULL）
+    -- 数字 → 解析为 numeric，拒绝 NaN/Infinity/-Infinity
+    -- 其它类型或非占位字符串 → 报中文错误
+    IF v_item ? 'daily_sales' THEN
+      CASE jsonb_typeof(v_item->'daily_sales')
+        WHEN 'null' THEN
+          -- JSON null → 写入 NULL，无需校验
+          NULL;
+        WHEN 'string' THEN
+          -- 仅允许占位符字符串 ''、'-'、'—' → 写入 NULL
+          IF v_item->>'daily_sales' NOT IN ('', '-', '—') THEN
+            RAISE EXCEPTION 'daily_sales 不能为字符串: sku=%, country=%, 值=%',
+              v_sku, v_country, v_item->>'daily_sales'
+              USING ERRCODE = 'P0001';
+          END IF;
+        WHEN 'number' THEN
+          BEGIN
+            v_daily_sales := (v_item->>'daily_sales')::numeric;
+          EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'daily_sales 无法解析为 numeric: sku=%, country=%, 值=%',
+              v_sku, v_country, v_item->>'daily_sales'
+              USING ERRCODE = 'P0001';
+          END;
 
-      BEGIN
-        v_daily_sales := (v_item->>'daily_sales')::numeric;
-      EXCEPTION WHEN OTHERS THEN
-        RAISE EXCEPTION 'daily_sales 无法解析为 numeric: sku=%, country=%, 值=%',
-          v_sku, v_country, v_item->>'daily_sales'
-          USING ERRCODE = 'P0001';
-      END;
-
-      -- 拒绝非有限值（NaN/Infinity/-Infinity）
-      IF v_daily_sales = 'NaN'::numeric
-         OR v_daily_sales = 'Infinity'::numeric
-         OR v_daily_sales = '-Infinity'::numeric THEN
-        RAISE EXCEPTION 'daily_sales 不能为非有限值（NaN/Infinity）: sku=%, country=%, 值=%',
-          v_sku, v_country, v_daily_sales
-          USING ERRCODE = 'P0001';
-      END IF;
+          -- 拒绝非有限值（NaN/Infinity/-Infinity）
+          IF v_daily_sales = 'NaN'::numeric
+             OR v_daily_sales = 'Infinity'::numeric
+             OR v_daily_sales = '-Infinity'::numeric THEN
+            RAISE EXCEPTION 'daily_sales 不能为非有限值（NaN/Infinity）: sku=%, country=%, 值=%',
+              v_sku, v_country, v_daily_sales
+              USING ERRCODE = 'P0001';
+          END IF;
+        ELSE
+          RAISE EXCEPTION 'daily_sales 类型非法（期望数字/null/空字符串/占位符，拒绝 %）: sku=%, country=%',
+            jsonb_typeof(v_item->'daily_sales'), v_sku, v_country
+            USING ERRCODE = 'P0001';
+      END CASE;
     END IF;
+
+    v_daily_sales := NULL;
 
     -- ─── P5-SY12C: estimated_days 校验 ──────────────────────────────
-    IF v_item ? 'estimated_days' AND v_item->'estimated_days' IS NOT NULL THEN
-      IF jsonb_typeof(v_item->'estimated_days') != 'number' THEN
-        RAISE EXCEPTION 'estimated_days 必须为数字类型（拒绝 %）: sku=%, country=%',
-          jsonb_typeof(v_item->'estimated_days'), v_sku, v_country
-          USING ERRCODE = 'P0001';
-      END IF;
+    -- 规则与 daily_sales 完全一致：缺失/null/''/'-'/'—' → 写入 NULL
+    IF v_item ? 'estimated_days' THEN
+      CASE jsonb_typeof(v_item->'estimated_days')
+        WHEN 'null' THEN
+          -- JSON null → 写入 NULL，无需校验
+          NULL;
+        WHEN 'string' THEN
+          -- 仅允许占位符字符串 ''、'-'、'—' → 写入 NULL
+          IF v_item->>'estimated_days' NOT IN ('', '-', '—') THEN
+            RAISE EXCEPTION 'estimated_days 不能为字符串: sku=%, country=%, 值=%',
+              v_sku, v_country, v_item->>'estimated_days'
+              USING ERRCODE = 'P0001';
+          END IF;
+        WHEN 'number' THEN
+          BEGIN
+            v_estimated_days := (v_item->>'estimated_days')::numeric;
+          EXCEPTION WHEN OTHERS THEN
+            RAISE EXCEPTION 'estimated_days 无法解析为 numeric: sku=%, country=%, 值=%',
+              v_sku, v_country, v_item->>'estimated_days'
+              USING ERRCODE = 'P0001';
+          END;
 
-      BEGIN
-        v_estimated_days := (v_item->>'estimated_days')::numeric;
-      EXCEPTION WHEN OTHERS THEN
-        RAISE EXCEPTION 'estimated_days 无法解析为 numeric: sku=%, country=%, 值=%',
-          v_sku, v_country, v_item->>'estimated_days'
-          USING ERRCODE = 'P0001';
-      END;
-
-      -- 拒绝非有限值
-      IF v_estimated_days = 'NaN'::numeric
-         OR v_estimated_days = 'Infinity'::numeric
-         OR v_estimated_days = '-Infinity'::numeric THEN
-        RAISE EXCEPTION 'estimated_days 不能为非有限值（NaN/Infinity）: sku=%, country=%, 值=%',
-          v_sku, v_country, v_estimated_days
-          USING ERRCODE = 'P0001';
-      END IF;
+          -- 拒绝非有限值（NaN/Infinity/-Infinity）
+          IF v_estimated_days = 'NaN'::numeric
+             OR v_estimated_days = 'Infinity'::numeric
+             OR v_estimated_days = '-Infinity'::numeric THEN
+            RAISE EXCEPTION 'estimated_days 不能为非有限值（NaN/Infinity）: sku=%, country=%, 值=%',
+              v_sku, v_country, v_estimated_days
+              USING ERRCODE = 'P0001';
+          END IF;
+        ELSE
+          RAISE EXCEPTION 'estimated_days 类型非法（期望数字/null/空字符串/占位符，拒绝 %）: sku=%, country=%',
+            jsonb_typeof(v_item->'estimated_days'), v_sku, v_country
+            USING ERRCODE = 'P0001';
+      END CASE;
     END IF;
+
+    v_estimated_days := NULL;
   END LOOP;
 
   -- ============================================
@@ -423,15 +451,15 @@ BEGIN
     v_expected_qty := (v_item->>'quantity')::int;
 
     -- ─── 解析 daily_sales / estimated_days ──────────────────────────
-    -- 字段缺失 / JSON null → NULL
-    -- 已在步骤 5b 完成非有限值拒绝，此处可安全转换
+    -- 字段缺失 / JSON null / '' / '-' / '—' → NULL
+    -- 已在步骤 5b 完成类型校验与非有限值拒绝，此处仅数字类型需 ::numeric
     v_daily_sales := NULL;
-    IF v_item ? 'daily_sales' AND v_item->'daily_sales' IS NOT NULL THEN
+    IF v_item ? 'daily_sales' AND jsonb_typeof(v_item->'daily_sales') = 'number' THEN
       v_daily_sales := (v_item->>'daily_sales')::numeric;
     END IF;
 
     v_estimated_days := NULL;
-    IF v_item ? 'estimated_days' AND v_item->'estimated_days' IS NOT NULL THEN
+    IF v_item ? 'estimated_days' AND jsonb_typeof(v_item->'estimated_days') = 'number' THEN
       v_estimated_days := (v_item->>'estimated_days')::numeric;
     END IF;
 

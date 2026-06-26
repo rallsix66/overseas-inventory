@@ -820,8 +820,8 @@ def _build_rpc_payload(plan: dict, last_sync_at: str) -> tuple:
         """校验 daily_sales / estimated_days 字段。
 
         P5-SY12C 规则：
-        - None / float('nan') / '-' / '' → 返回 None（写入 NULL）
-        - math.isnan / math.isinf → 抛错（禁止非有限值）
+        - None / '' / '-' / '—' → 返回 None（写入 NULL）
+        - NaN / Infinity / -Infinity → 抛错（禁止非有限值）
         - 有效有限 float 或 int → 返回 float 或 int 值
 
         注意：bool 是 int 子类，True/False 会被 type is int 捕获，
@@ -831,7 +831,7 @@ def _build_rpc_payload(plan: dict, last_sync_at: str) -> tuple:
             return None
         if isinstance(raw_value, str):
             stripped = raw_value.strip()
-            if stripped == '' or stripped == '-':
+            if stripped in ('', '-', '—'):
                 return None
             raise RuntimeError(
                 f'{field_name} 不能为字符串: sku={sku}, category={category}, 值={raw_value!r}'

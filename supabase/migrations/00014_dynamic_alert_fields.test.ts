@@ -92,6 +92,47 @@ describe('P5-SY12C — Migration 00014', () => {
     expect(migrationSrc).toMatch(/estimated_days 不能为非有限值/);
   });
 
+  // ─── 5b+: JSON null / '' / '-' / '—' → 写入 NULL 契约 ──────────────
+
+  it('RPC 步骤 5b 允许 JSON null daily_sales（写入 NULL）', () => {
+    // WHEN 'null' 分支不抛出异常，仅 NULL 占位
+    expect(migrationSrc).toMatch(/WHEN 'null'/);
+  });
+
+  it('RPC 步骤 5b 允许空字符串 daily_sales（写入 NULL）', () => {
+    // IN ('', '-', '—') 中允许 '' → 写入 NULL
+    expect(migrationSrc).toMatch(/IN\s*\(\s*''\s*,\s*'-'\s*,\s*'—'\s*\)/);
+  });
+
+  it('RPC 步骤 5b 允许 em-dash — daily_sales（写入 NULL）', () => {
+    // em-dash 占位符允许
+    expect(migrationSrc).toMatch(/'—'/);
+  });
+
+  it('RPC 步骤 5b 拒绝非占位符字符串 daily_sales', () => {
+    // 非空/非 '-' / 非 '—' 的字符串仍报错
+    expect(migrationSrc).toMatch(/daily_sales 不能为字符串/);
+  });
+
+  it('RPC 步骤 5b 拒绝 non-null/number/string 类型（object/array/bool）', () => {
+    // ELSE 分支：类型非法报中文错误
+    expect(migrationSrc).toMatch(/daily_sales 类型非法/);
+  });
+
+  it('RPC 步骤 5b estimated_days 与 daily_sales 规则一致', () => {
+    // estimated_days 同样用 IN ('', '-', '—')
+    expect(migrationSrc).toMatch(/estimated_days[\s\S]*IN\s*\(\s*''\s*,\s*'-'\s*,\s*'—'\s*\)/);
+  });
+
+  it('RPC 步骤 5b 校验后重置 v_daily_sales 为 NULL', () => {
+    // 防止上一循环的值泄漏到下一行
+    expect(migrationSrc).toMatch(/v_daily_sales := NULL\s*;/);
+  });
+
+  it('RPC 步骤 5b 校验后重置 v_estimated_days 为 NULL', () => {
+    expect(migrationSrc).toMatch(/v_estimated_days := NULL\s*;/);
+  });
+
   // ─── 6. RPC 步骤 8 INSERT 写入新字段 ─────────────────────────────────
 
   it('RPC 步骤 8 INSERT 包含 daily_sales, estimated_days 列', () => {
@@ -108,6 +149,17 @@ describe('P5-SY12C — Migration 00014', () => {
 
   it('RPC 步骤 8 UPDATE (quantity 变更) 包含 estimated_days', () => {
     expect(migrationSrc).toMatch(/estimated_days\s*=\s*v_estimated_days/);
+  });
+
+  // ─── 7b. RPC 步骤 8 null/empty 安全解析 ──────────────────────────────
+
+  it('RPC 步骤 8 使用 jsonb_typeof = number 而非 IS NOT NULL 解析 daily_sales', () => {
+    // 避免 IS NOT NULL 把 JSON null 当作有效值
+    expect(migrationSrc).toMatch(/jsonb_typeof\(v_item->'daily_sales'\) = 'number'/);
+  });
+
+  it('RPC 步骤 8 使用 jsonb_typeof = number 解析 estimated_days', () => {
+    expect(migrationSrc).toMatch(/jsonb_typeof\(v_item->'estimated_days'\) = 'number'/);
   });
 
   // ─── 8. 权限收口不变 ─────────────────────────────────────────────────
