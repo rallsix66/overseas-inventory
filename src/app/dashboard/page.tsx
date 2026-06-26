@@ -3,8 +3,9 @@
 import { getCurrentUser } from '@/lib/auth';
 import { inventoryRepository } from '@/features/inventory/repository';
 import { preferencesRepository } from '@/features/preferences/repository';
+import { FollowedProductsSection } from '@/features/preferences/components/followed-products-section';
 import type { FollowedVariantBasic } from '@/features/preferences/types';
-import { Package, Globe, Truck, ArrowRight, AlertTriangle, Star } from 'lucide-react';
+import { Package, Globe, Truck, ArrowRight, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 
@@ -126,138 +127,8 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* P5-SY12C: 关注产品动态 — 阶段 C 动态告警 */}
-      <div className="rounded-lg border p-5 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Star className="h-4 w-4 text-amber-500" />
-          <h2 className="text-sm font-semibold text-gray-900">关注产品动态</h2>
-          {followedVariants && followedVariants.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {followedVariants.length} 个关注
-              {followedVariants.filter((v) => v.alertLevel === 'critical').length > 0 && (
-                <span className="text-red-600 ml-1">
-                  · {followedVariants.filter((v) => v.alertLevel === 'critical').length} 个紧急
-                </span>
-              )}
-              {followedVariants.filter((v) => v.alertLevel === 'warning').length > 0 && (
-                <span className="text-amber-600 ml-1">
-                  · {followedVariants.filter((v) => v.alertLevel === 'warning').length} 个低库存
-                </span>
-              )}
-            </span>
-          )}
-        </div>
-
-        {followedError ? (
-          /* 查询失败状态 */
-          <div className="text-center py-10">
-            <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-            <p className="text-sm text-red-600">关注产品加载失败</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {followedError}
-            </p>
-          </div>
-        ) : !followedVariants || followedVariants.length === 0 ? (
-          /* 空状态 */
-          <div className="text-center py-10">
-            <Star className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">暂无关注产品</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              在海外库存列表中点击星标关注您关心的 SKU
-            </p>
-          </div>
-        ) : (
-          /* 关注列表 — 紧急/低库存行置顶 */
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50 text-left text-xs font-medium text-muted-foreground">
-                  <th className="py-2 px-3">产品/SKU</th>
-                  <th className="py-2 px-3">国家/仓库</th>
-                  <th className="py-2 px-3 text-right">库存</th>
-                  <th className="py-2 px-3 text-right">日销</th>
-                  <th className="py-2 px-3 text-right">可售天数</th>
-                  <th className="py-2 px-3 text-right">补货周期</th>
-                  <th className="py-2 px-3">状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                {followedVariants.map((v) => (
-                  <tr key={`${v.variantId}-${v.warehouseId}`} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="py-2 px-3">
-                      <span className="font-medium text-gray-900">{v.productName}</span>
-                      {v.isUnmatched && (
-                        <span className="text-xs text-muted-foreground ml-1">(未匹配)</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 text-gray-600">
-                      {v.country} / {v.warehouseName}
-                    </td>
-                    <td className={`py-2 px-3 text-right tabular-nums ${v.alertLevel === 'warning' || v.alertLevel === 'critical' ? 'text-red-600 font-semibold' : ''}`}>
-                      {v.quantity}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
-                      {v.dailySales != null ? v.dailySales : '—'}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
-                      {v.estimatedDays != null ? v.estimatedDays : '—'}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
-                      {v.leadTimeDays != null ? v.leadTimeDays : '—'}
-                    </td>
-                    <td className="py-2 px-3">
-                      {v.alertLevel === 'critical' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">
-                          紧急
-                        </span>
-                      ) : v.alertLevel === 'warning' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
-                          低库存
-                        </span>
-                      ) : v.alertLevel === 'unknown' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                          数据不足
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-600">
-                          正常
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {followedVariants && followedVariants.length > 0 && (
-          (() => {
-            const alertItems = followedVariants.filter(
-              (v) => v.alertLevel === 'critical' || v.alertLevel === 'warning'
-            );
-            if (alertItems.length === 0) return null;
-            return (
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground border-t pt-3">
-                {alertItems.slice(0, 3).map((v) => (
-                  <span
-                    key={`alert-${v.variantId}-${v.warehouseId}`}
-                    className={v.alertLevel === 'critical' ? 'text-red-600 font-medium' : 'text-amber-600 font-medium'}
-                  >
-                    <AlertTriangle className="inline h-3 w-3 mr-0.5" />
-                    {v.productName}({v.warehouseName}) {v.alertReason}
-                  </span>
-                ))}
-                {alertItems.length > 3 && (
-                  <span className="text-red-600">
-                    等 {alertItems.length} 项
-                  </span>
-                )}
-              </div>
-            );
-          })()
-        )}
-      </div>
+      {/* P5-SY12D: 关注产品动态 — 运营可用性收口（筛选/跳转/未匹配说明） */}
+      <FollowedProductsSection variants={followedVariants} error={followedError} />
 
       {/* 操作入口 */}
       <div className="rounded-lg border p-5">

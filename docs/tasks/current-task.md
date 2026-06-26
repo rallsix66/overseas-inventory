@@ -2,65 +2,67 @@
 
 ## Task ID
 
-`P5-SY12C-RUNTIME` — 特别关注阶段 C Dashboard 动态告警 — 生产运行时验证
+`P5-SY12D` — Dashboard 关注产品动态运营可用性收口
 
 ## 状态
 
-**DONE + RUNTIME VERIFIED**（2026-06-26 完成 + 生产验证通过）
-
-## P5-SY12C-RUNTIME 生产验证（2026-06-26）
-
-P5-SY12C 阶段 C 动态告警已在生产环境完成运行时验证：
-
-1. ✅ **Migration 00014 手动执行成功**：已于 Supabase SQL Editor 执行 `00014_dynamic_alert_fields.sql`，列 + RPC 均生效。
-2. ✅ **warehouse.lead_time_days 已写入**：5 个海外仓（PH/VN/TH/MY/ID）均设为 30。
-3. ✅ **daily_sales / estimated_days 已写入**：5 个海外仓全部 inventory 行 daily_sales 已按 BigSeller 抓取数据写入；estimated_days 已按 BigSeller 可用数据写入。
-4. ✅ **PH 仓 expired in_progress 已清理**：批量写入中 PH 仓出现过期 `in_progress`，已通过 `cleanup_expired_sync_runs()` 清理，无残留 `in_progress`。
-5. ✅ **Dashboard 动态告警正常运作**：日销/可售天数/补货周期列 + alertLevel badge + 告警摘要。
-6. ✅ **文档收口**：`current-state.md` / `phase-5-sync.md` 全部同步。
-
-## 停止条件
-
-**P5-SY12C-RUNTIME DONE。等待用户确认下一任务。** 不自动进入相邻任务。
-
-## 背景
-
-P5-SY12 阶段 B 已完成：用户可以星标关注 SKU，Dashboard 有基础「关注产品动态」区，但告警只用 `product.safety_stock` 做临时判断。阶段 C 将告警升级为基于 BigSeller 已抓取字段的动态告警：
-- `estimated_days < warehouse.lead_time_days` → 紧急（需补货）
-- `quantity < product.safety_stock` → 低库存（低于安全线）
-- 未匹配 Product 的 SKU 不参与 safety_stock 判断
+**DONE**（2026-06-26）
 
 ## 任务目标
 
-1. ✅ **Migration 00014**：新增 `inventory.daily_sales / estimated_days`、`warehouse.lead_time_days` + `CREATE OR REPLACE sync_warehouse_inventory` 扩展支持写入 daily_sales/estimated_days
-2. ✅ **类型同步**：`database.ts` 更新 inventory/warehouse 类型
-3. ✅ **Python sync 链路**：plan_generator 透传 daily_sales/estimated_days + executor `_build_rpc_payload` 校验（None/'-'/''→omit, NaN/Infinity→reject, valid→include）
-4. ✅ **FollowedVariantBasic 扩展**：dailySales/estimatedDays/leadTimeDays/alertLevel/alertReason
-5. ✅ **getFollowedVariantsBasic() 升级**：动态告警规则 + 多级排序
-6. ✅ **Dashboard UI 更新**：日销/可售天数/补货周期列 + alertLevel 状态 badge + 告警摘要
-7. ✅ **测试**：Migration 00014 静态契约 + Dashboard 源码检查 + Repository 检查 + 非回归
-8. ✅ **质量门**：1006/1006 TS 测试，lint 0 errors，build pass，Python compileall pass
+P5-SY12C 阶段 C 动态告警已上线生产，Dashboard 关注产品动态区已显示日销/可售天数/补货周期/状态 badge。阶段 D 在不改数据模型的前提下增加运营可用性：
+
+1. **状态筛选**：全部 / 紧急 / 低库存 / 正常 / 数据不足（客户端筛选，pills）
+2. **每行跳转入口**：ExternalLink 跳转 `/dashboard/inventory/overseas?search=<SKU>`，复用现有路由
+3. **未匹配说明**：tooltip 提示 "该 SKU 未匹配产品，不参与安全库存判断。仍可通过预计可售天数进行动态告警。"；数据不足 + 未匹配状态 badge 旁显示 `?` 辅助图标
+4. **边界状态**：
+   - 加载失败 → "关注产品加载失败" + 错误消息
+   - 空关注 → "暂无关注产品" + 引导去海外库存列表星标
+   - 筛选无结果 → "当前筛选条件下无匹配的关注产品" + "查看全部" 重置按钮
+5. **不新建复杂页面**，跳转复用现有 `/dashboard/inventory/overseas` 的 `?search=` 参数
+6. **不改 Migration**、不新增数据库表、不改数据模型
+
+## 实现方式
+
+- **新增** `src/features/preferences/components/followed-products-section.tsx` — Client Component
+  - `'use client'` 声明
+  - `useState<AlertFilter>('all')` 管理筛选状态
+  - FILTER_OPTIONS: 全部/紧急/低库存/正常/数据不足（pill 按钮，含各状态计数）
+  - 跳转：`<Link href={/dashboard/inventory/overseas?search=${encodeURIComponent(v.sku)}}>`
+  - 未匹配 tooltip：`title={UNMATCHED_HINT}` 常量
+  - 告警摘要条：前 3 条 critical/warning + "等 N 项"
+- **修改** `src/app/dashboard/page.tsx` — Server Component
+  - 数据获取链路不变（preferencesRepository.getFollowedVariantsBasic）
+  - 渲染替换为 `<FollowedProductsSection variants={followedVariants} error={followedError} />`
+  - 移除已迁移到组件的 import（Star）
+- **更新** `src/features/preferences/p5-sy12-dashboard.test.ts` — 新增 P5-SY12D 测试
+  - Dashboard 数据获取链路（Repository Pattern）
+  - FollowedProductsSection 组件源码检查（use client / 筛选 / 跳转 / 未匹配 / 边界状态）
+  - 阶段 C 动态告警规则保留验证
+  - product null 关注项不丢弃（防回归）
 
 ## 强制架构边界
 
-- ❌ 不新建 `variant_follows` 表。✅
-- ❌ 不修改已执行 Migration 00001~00013。✅（新建 00014）
-- ❌ 不改变 Quantity 语义。✅
-- ❌ 不改 Product → ProductVariant → Inventory 模型。✅
-- ❌ 不让页面或客户端组件直接调用 `supabase.from()`。✅
-- ❌ 不做 P5-SY10 自动 Real Write。✅
+- ✅ 页面和客户端组件不直接调用 `supabase.from()`
+- ✅ 数据获取通过 Repository → Server Component → Client Component props
+- ❌ 不新建表、不改 Migration
+- ❌ 不做 Product 自动生成、不做 SKU 自动匹配
+- ❌ 不启用 P5-SY10 自动 Real Write
+- ❌ 不新建复杂页面（跳转复用现有路由）
 
 ## 质量门
 
 | 门 | 结果 |
 |---|---|
-| `npm.cmd run test` | 1006/1006 pass（35 files） |
-| `npm.cmd run lint` | 0 errors, 24 warnings（all pre-existing） |
-| `npm.cmd run build` | ✓ Compiled successfully |
-| Python compileall | pass |
+| `npm run test` | 1014/1014 pass（35 files） |
+| `npm run lint` | 0 errors, 24 warnings（all pre-existing） |
+| `npm run build` | ✓ Compiled successfully |
 
 ## 依赖
 
-- P5-SY12 DONE — 星标关注 + 阶段 B 关注区基础功能
-- Migration 00013 已在生产数据库执行
-- ✅ Migration 00014 已于 2026-06-26 在 Supabase SQL Editor 手动执行成功
+- P5-SY12C DONE + RUNTIME VERIFIED — 阶段 C 动态告警（Migration 00014 已执行，Dashboard 已显示动态告警）
+- Migration 00013 已在生产数据库执行（preference_type `'favorited'`）
+
+## 停止条件
+
+**P5-SY12D DONE。等待用户确认下一任务。** 不自动进入相邻任务。

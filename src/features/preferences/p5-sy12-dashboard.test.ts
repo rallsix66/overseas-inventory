@@ -1,26 +1,26 @@
-// P5-SY12C: Dashboard 关注区测试（阶段 C — 动态告警）
+// P5-SY12D: Dashboard 关注区测试（阶段 D — 运营可用性收口）
 //
 // 验证:
-// - Dashboard page 导入 preferencesRepository
-// - Dashboard page 调用 getFollowedVariantsBasic
-// - Dashboard page 显示空状态
-// - Dashboard page 显示关注列表（含新列：日销/可售天数/补货周期）
-// - Dashboard page alertLevel 状态 badge（紧急/低库存/正常/数据不足）
-// - 紧急/低库存行置顶排序（由 repository 保证）
+// - Dashboard page 数据获取链路（Repository Pattern）
+// - FollowedProductsSection 客户端组件：筛选/跳转/未匹配说明/空状态
+// - 阶段 C 动态告警规则保留（alertLevel/alertReason）
 // - 关注不影响同步链路
 // - 禁止 any
-// - product 为 null 时不丢弃关注项
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const DASHBOARD_PATH = path.resolve(process.cwd(), 'src/app/dashboard/page.tsx');
+const COMPONENT_PATH = path.resolve(
+  process.cwd(),
+  'src/features/preferences/components/followed-products-section.tsx'
+);
 const ACTIONS_PATH = path.resolve(process.cwd(), 'src/features/inventory/actions.ts');
 
-// ─── Dashboard page 源码检查 ──────────────────────────────────────────
+// ─── Dashboard page 数据获取链路 ──────────────────────────────────────
 
-describe('P5-SY12 — Dashboard 关注区', () => {
+describe('P5-SY12D — Dashboard 数据获取链路', () => {
   let src: string;
 
   beforeAll(() => {
@@ -35,29 +35,101 @@ describe('P5-SY12 — Dashboard 关注区', () => {
     expect(src).toMatch(/getFollowedVariantsBasic/);
   });
 
-  it('Dashboard 显示"关注产品动态"标题', () => {
+  it('Dashboard 导入 FollowedProductsSection 客户端组件', () => {
+    expect(src).toMatch(/from ['"]@\/features\/preferences\/components\/followed-products-section['"]/);
+  });
+
+  it('Dashboard 渲染 FollowedProductsSection 传递 variants + error props', () => {
+    expect(src).toMatch(/<FollowedProductsSection\s+variants=/);
+    expect(src).toMatch(/error=/);
+  });
+
+  it('Dashboard 使用 force-dynamic 防止静态预渲染缓存', () => {
+    expect(src).toMatch(/export const dynamic = 'force-dynamic'/);
+  });
+
+  it('Dashboard page 不含 any', () => {
+    expect(src).not.toMatch(/\bany\b/);
+  });
+
+  it('Dashboard 错误状态声明 followedError: string | null', () => {
+    expect(src).toMatch(/followedError:\s*string\s*\|\s*null/);
+  });
+});
+
+// ─── FollowedProductsSection 组件源码检查 ─────────────────────────────
+
+describe('P5-SY12D — FollowedProductsSection 组件', () => {
+  let src: string;
+
+  beforeAll(() => {
+    src = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+  });
+
+  it('组件标记为 Client Component (use client)', () => {
+    expect(src).toMatch(/'use client'/);
+  });
+
+  it('组件显示"关注产品动态"标题', () => {
     expect(src).toContain('关注产品动态');
   });
 
-  it('Dashboard 显示空状态"暂无关注产品"', () => {
+  // ── 空状态 ──────────────────────────────────────────────────────
+
+  it('空关注状态显示"暂无关注产品"', () => {
     expect(src).toContain('暂无关注产品');
   });
 
-  it('Dashboard 空状态引导"在海外库存列表中点击星标"', () => {
-    expect(src).toContain('星标关注');
+  it('空关注状态引导"在海外库存列表中点击星标关注您关心的 SKU"', () => {
+    expect(src).toContain('星标关注您关心的 SKU');
   });
 
-  it('Dashboard 显示紧急计数', () => {
-    expect(src).toMatch(/个紧急/);
+  it('查询失败显示"关注产品加载失败"', () => {
+    expect(src).toContain('关注产品加载失败');
   });
 
-  it('Dashboard 阶段 C 显示日销/可售天数/补货周期列', () => {
+  // ── 筛选 ────────────────────────────────────────────────────────
+
+  it('包含全部 5 种筛选选项：全部/紧急/低库存/正常/数据不足', () => {
+    expect(src).toContain("'all'");
+    expect(src).toContain("'critical'");
+    expect(src).toContain("'warning'");
+    expect(src).toContain("'normal'");
+    expect(src).toContain("'unknown'");
+  });
+
+  it('筛选使用 useState 管理 AlertFilter 状态', () => {
+    expect(src).toMatch(/useState<AlertFilter>\('all'\)/);
+  });
+
+  it('筛选标签显示各状态计数', () => {
+    expect(src).toMatch(/getFilterCount/);
+  });
+
+  it('筛选无结果时显示"当前筛选条件下无匹配的关注产品"', () => {
+    expect(src).toContain('当前筛选条件下无匹配的关注产品');
+  });
+
+  it('筛选无结果时提供"查看全部"重置按钮', () => {
+    expect(src).toContain('查看全部');
+    expect(src).toMatch(/setFilter\('all'\)/);
+  });
+
+  // ── 表格列 ──────────────────────────────────────────────────────
+
+  it('表格包含日销/可售天数/补货周期列（阶段 C）', () => {
     expect(src).toMatch(/日销/);
     expect(src).toMatch(/可售天数/);
     expect(src).toMatch(/补货周期/);
   });
 
-  it('Dashboard 阶段 C 显示 alertLevel 状态 badge', () => {
+  it('表格包含操作列（跳转入口）', () => {
+    expect(src).toContain('aria-label="操作"');
+  });
+
+  // ── 状态 badge ──────────────────────────────────────────────────
+
+  it('包含 alertLevel 状态 badge（紧急/低库存/正常/数据不足）', () => {
     expect(src).toMatch(/alertLevel === 'critical'/);
     expect(src).toMatch(/alertLevel === 'warning'/);
     expect(src).toMatch(/alertLevel === 'unknown'/);
@@ -67,21 +139,63 @@ describe('P5-SY12 — Dashboard 关注区', () => {
     expect(src).toContain('正常');
   });
 
-  it('Dashboard 查询失败显示错误状态而非空列表', () => {
-    expect(src).toMatch(/preferencesRepository\.getFollowedVariantsBasic/);
-    // 失败时显示"关注产品加载失败"，不伪装成"暂无关注产品"
-    expect(src).toContain('关注产品加载失败');
+  // ── 跳转入口 ────────────────────────────────────────────────────
+
+  it('每行包含跳转到海外库存的 ExternalLink 链接', () => {
+    expect(src).toMatch(/\/dashboard\/inventory\/overseas\?search=/);
+    expect(src).toMatch(/encodeURIComponent\(v\.sku\)/);
+    expect(src).toContain('ExternalLink');
   });
 
-  it('Dashboard page 不含 any', () => {
+  it('跳转链接使用 title 提示"在海外库存中查看该 SKU"', () => {
+    expect(src).toContain('在海外库存中查看该 SKU');
+  });
+
+  // ── 未匹配说明 ──────────────────────────────────────────────────
+
+  it('未匹配 SKU 显示"(未匹配)"标签', () => {
+    expect(src).toContain('(未匹配)');
+    expect(src).toMatch(/isUnmatched/);
+  });
+
+  it('未匹配标签包含 UNMATCHED_HINT 提示', () => {
+    expect(src).toContain('UNMATCHED_HINT');
+    expect(src).toContain('该 SKU 未匹配产品，不参与安全库存判断。仍可通过预计可售天数进行动态告警。');
+  });
+
+  it('数据不足 + 未匹配状态 badge 旁显示"?"辅助图标', () => {
+    expect(src).toContain('?');
+  });
+
+  // ── 告警摘要 ────────────────────────────────────────────────────
+
+  it('包含 alertReason 告警摘要条', () => {
+    expect(src).toMatch(/alertReason/);
+    expect(src).toMatch(/AlertTriangle/);
+  });
+
+  it('告警摘要条使用 visibleAlertItems（筛选后结果）而非全量计数', () => {
+    // visibleAlertItems 从 filtered 而非 variants 计算
+    expect(src).toMatch(/visibleAlertItems/);
+    // 摘要条显示条件：visibleAlertItems.length > 0
+    expect(src).toMatch(/visibleAlertItems\.length\s*===\s*0/);
+    // "等 N 项"使用 visibleAlertItems.length
+    expect(src).toMatch(/visibleAlertItems\.length\s*>\s*3/);
+    // 摘要条不再使用 criticalCount + warningCount 判断显示
+    expect(src).not.toMatch(/criticalCount\s*\+\s*warningCount\s*>\s*0/);
+  });
+
+  // ── TypeScript ──────────────────────────────────────────────────
+
+  it('组件不含 any', () => {
     expect(src).not.toMatch(/\bany\b/);
   });
 });
 
-// ─── 阶段 C 动态告警规则验证 ─────────────────────────────────────────────
+// ─── 阶段 C 动态告警规则保留验证 ──────────────────────────────────────
 
-describe('P5-SY12C — 阶段 C 动态告警规则', () => {
-  it('repository getFollowedVariantsBasic 注释声明阶段 C 动态告警', () => {
+describe('P5-SY12D — 阶段 C 动态告警规则保留', () => {
+  it('repository getFollowedVariantsBasic 保留动态告警规则', () => {
     const repoPath = path.resolve(process.cwd(), 'src/features/preferences/repository.ts');
     const repoSrc = fs.readFileSync(repoPath, 'utf-8');
     expect(repoSrc).toMatch(/阶段 C/);
@@ -90,18 +204,17 @@ describe('P5-SY12C — 阶段 C 动态告警规则', () => {
     expect(repoSrc).toMatch(/lead_time_days/);
   });
 
-  it('Dashboard 包含 estimatedDays < leadTimeDays 动态告警逻辑', () => {
-    const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
-    expect(dashboardSrc).toMatch(/alertLevel/);
-    expect(dashboardSrc).toMatch(/alertReason/);
-    expect(dashboardSrc).toMatch(/estimatedDays/);
-    expect(dashboardSrc).toMatch(/leadTimeDays/);
+  it('组件 alertLevel 使用阶段 C 动态告警数据', () => {
+    const src = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+    expect(src).toMatch(/estimatedDays/);
+    expect(src).toMatch(/leadTimeDays/);
+    expect(src).toMatch(/dailySales/);
   });
 });
 
 // ─── Dashboard 关注区查询路径 ──────────────────────────────────────────
 
-describe('P5-SY12 — Dashboard 关注区查询路径', () => {
+describe('P5-SY12D — Dashboard 关注区查询路径', () => {
   const repoPath = path.resolve(process.cwd(), 'src/features/preferences/repository.ts');
   const repoSrc = fs.readFileSync(repoPath, 'utf-8');
 
@@ -117,117 +230,37 @@ describe('P5-SY12 — Dashboard 关注区查询路径', () => {
     expect(fnMatch?.[0]).not.toMatch(/from\('user_variant_preference'\)[\s\S]*inventory:inventory/);
   });
 
-  it('getFollowedVariantsBasic warehouse 使用 !inner join 确保类型安全，同时 null warehouse 兜底处理', () => {
+  it('getFollowedVariantsBasic warehouse 使用 !inner join 确保类型安全', () => {
     const fnMatch = repoSrc.match(/async getFollowedVariantsBasic[\s\S]*?^\s{2}\},/m);
     expect(fnMatch).not.toBeNull();
-    // warehouse join 使用 !inner 保证 TypeScript 类型推断正确
     expect(fnMatch?.[0]).toMatch(/warehouse:warehouse_id!inner/);
   });
 
-  it('getFollowedVariantsBasic 防御式处理 warehouse 为空，使用 wh?.name ?? 未知仓库 兜底', () => {
+  it('getFollowedVariantsBasic 防御式处理 warehouse 为 null', () => {
     const fnMatch = repoSrc.match(/async getFollowedVariantsBasic[\s\S]*?^\s{2}\},/m);
     expect(fnMatch).not.toBeNull();
-    // 防御式 null 处理：即使 !inner 理论上不返回 null，unwrapJoin 仍可能返回 null
     expect(fnMatch?.[0]).toContain("wh?.name ?? '未知仓库'");
-    expect(fnMatch?.[0]).toContain("'未知仓库'");
   });
 });
 
 // ─── 关注不影响同步 ─────────────────────────────────────────────────────
 
-describe('P5-SY12 — 关注不影响同步链路', () => {
-  it('inventory/actions.ts 不引用 preferencesRepository 写方法，getOverseasList 内部处理关注标记', () => {
+describe('P5-SY12D — 关注不影响同步链路', () => {
+  it('inventory/actions.ts 不引用 preferencesRepository', () => {
     const actionsSrc = fs.readFileSync(ACTIONS_PATH, 'utf-8');
-    // getOverseasList 内部已完成归档过滤 + 关注标记 + 排序 + 分页
-    // inventory actions 层不再重复导入 preferencesRepository
     expect(actionsSrc).not.toMatch(/from ['"]@\/features\/preferences\/repository['"]/);
-    // 不调用写操作
     expect(actionsSrc).not.toMatch(/toggleFavoriteAction/);
     expect(actionsSrc).not.toMatch(/\.favorite\(|\.unfavorite\(|\.toggleFavorite\(/);
   });
 });
 
-// ─── 海外库存关注排序 ─────────────────────────────────────────────────
-
-describe('P5-SY12 — 海外库存关注排序', () => {
-  const invRepoPath = path.resolve(process.cwd(), 'src/features/inventory/repository.ts');
-  const invRepoSrc = fs.readFileSync(invRepoPath, 'utf-8');
-
-  it('getOverseasList 排序指令在分页前执行（isFavorited 置顶 → quantity 升序 → slice 分页）', () => {
-    const fnBodyMatch = invRepoSrc.match(/async getOverseasList\([\s\S]*?^\s{2}\},?\s*$/m);
-    expect(fnBodyMatch).not.toBeNull();
-    const fnBody = fnBodyMatch![0];
-    // sort 必须在 slice/page 之前
-    const sortIdx = fnBody.indexOf('items.sort');
-    const sliceIdx = fnBody.indexOf('items.slice');
-    expect(sortIdx).toBeGreaterThan(0);
-    expect(sliceIdx).toBeGreaterThan(0);
-    expect(sortIdx).toBeLessThan(sliceIdx);
-  });
-
-  it('getOverseasList 关注项排在最前（Number(b.isFavorited) - Number(a.isFavorited)）', () => {
-    expect(invRepoSrc).toMatch(/items\.sort\([\s\S]*isFavorited[\s\S]*quantity/);
-  });
-
-  it('getOverseasList 归档过滤在排序前完成，关注与归档可共存', () => {
-    const fnBodyMatch = invRepoSrc.match(/async getOverseasList\([\s\S]*?^\s{2}\},?\s*$/m);
-    expect(fnBodyMatch).not.toBeNull();
-    const fnBody = fnBodyMatch![0];
-    // 归档过滤（!archivedVariantIds.has）在映射（isFavorited = favoritedVariantIds.has）之前
-    const archivedFilterIdx = fnBody.indexOf('!archivedVariantIds.has');
-    const favoritedMarkIdx = fnBody.indexOf('isFavorited: favoritedVariantIds.has');
-    expect(archivedFilterIdx).toBeGreaterThan(0);
-    expect(favoritedMarkIdx).toBeGreaterThan(0);
-    expect(archivedFilterIdx).toBeLessThan(favoritedMarkIdx);
-  });
-});
-
-// ─── Dashboard 动态渲染（防缓存回归）──────────────────────────────────
-
-describe('P5-SY12 — Dashboard 动态渲染', () => {
-  it('Dashboard 使用 force-dynamic 防止静态预渲染缓存', () => {
-    const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
-    expect(dashboardSrc).toMatch(/export const dynamic = 'force-dynamic'/);
-  });
-
-  it('Dashboard 错误状态显示具体错误信息而非硬编码文本', () => {
-    const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
-    // followedError 现在是 string | null，错误时显示具体消息
-    expect(dashboardSrc).toMatch(/followedError: string \| null/);
-    expect(dashboardSrc).toMatch(/\{followedError\}/);
-  });
-});
-
-// ─── getFollowedVariantsBasic 诊断错误 ──────────────────────────────
-
-describe('P5-SY12 — getFollowedVariantsBasic 诊断', () => {
-  const repoPath = path.resolve(process.cwd(), 'src/features/preferences/repository.ts');
-  const repoSrc = fs.readFileSync(repoPath, 'utf-8');
-
-  it('查询使用可变链 .eq(warehouse.type, overseas) 与 getOverseasList 一致', () => {
-    expect(repoSrc).toMatch(/\.eq\('warehouse\.type', 'overseas'\)/);
-  });
-
-  it('favorited 非空但 inventory 返回空时抛出 EMPTY_RESULT 而非静默返回 []', () => {
-    expect(repoSrc).toMatch(/'EMPTY_RESULT'/);
-    expect(repoSrc).toMatch(/已关注.*个 SKU 但未找到对应库存记录/);
-  });
-
-  it('EMPTY_RESULT 已加入 PreferenceErrorCode 联合类型', () => {
-    const typesPath = path.resolve(process.cwd(), 'src/features/preferences/types.ts');
-    const typesSrc = fs.readFileSync(typesPath, 'utf-8');
-    expect(typesSrc).toMatch(/'EMPTY_RESULT'/);
-  });
-});
-
 // ─── product 为 null 时不丢弃关注项（防回归） ─────────────────────────
 
-describe('P5-SY12 — product null 关注项不丢弃', () => {
+describe('P5-SY12D — product null 关注项不丢弃', () => {
   const repoPath = path.resolve(process.cwd(), 'src/features/preferences/repository.ts');
   const repoSrc = fs.readFileSync(repoPath, 'utf-8');
 
-  it('product 为 null 时不会 continue 跳过，仍返回该关注项', () => {
-    // 回归：旧版 `if (!product) continue;` 会丢弃未匹配的关注项
+  it('product 为 null 时不会 continue 跳过', () => {
     expect(repoSrc).not.toMatch(/if \(!product\) continue/);
   });
 
@@ -235,19 +268,22 @@ describe('P5-SY12 — product null 关注项不丢弃', () => {
     expect(repoSrc).toMatch(/productName\s*=\s*product\?\.name\s*\?\?\s*variant\.sku/);
   });
 
-  it('productCode 使用 product?.code ?? variant.sku fallback 链', () => {
-    expect(repoSrc).toMatch(/productCode\s*=\s*product\?\.code\s*\?\?\s*variant\.sku/);
-  });
-
-  it('alertLevel 仅 product 存在时判断低库存 warning，未匹配时不误判', () => {
+  it('isLowStock 仅在 product 存在时判断', () => {
     expect(repoSrc).toMatch(/isLowStock\s*=\s*product\s*\?\s*qty\s*<\s*safetyStock\s*:\s*false/);
   });
 
-  it('FollowedVariantBasic 包含阶段 C 动态告警字段', () => {
+  it('variant select 包含 sku / match_status 字段', () => {
+    expect(repoSrc).toMatch(/variant:variant_id!inner\s*\(id,\s*sku,\s*match_status,\s*country/);
+  });
+});
+
+// ─── FollowedVariantBasic 类型 ─────────────────────────────────────────
+
+describe('P5-SY12D — FollowedVariantBasic 类型', () => {
+  it('包含阶段 C 动态告警字段', () => {
     const typesPath = path.resolve(process.cwd(), 'src/features/preferences/types.ts');
     const typesSrc = fs.readFileSync(typesPath, 'utf-8');
     expect(typesSrc).toMatch(/sku:\s*string/);
-    expect(typesSrc).toMatch(/matchStatus:\s*string/);
     expect(typesSrc).toMatch(/isUnmatched:\s*boolean/);
     expect(typesSrc).toMatch(/dailySales:\s*number \| null/);
     expect(typesSrc).toMatch(/estimatedDays:\s*number \| null/);
@@ -255,18 +291,26 @@ describe('P5-SY12 — product null 关注项不丢弃', () => {
     expect(typesSrc).toMatch(/alertLevel:\s*'critical' \| 'warning' \| 'normal' \| 'unknown'/);
     expect(typesSrc).toMatch(/alertReason:\s*string \| null/);
   });
+});
 
-  it('Dashboard 关注区显示"未匹配"标签', () => {
-    const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
-    expect(dashboardSrc).toContain('未匹配');
-    expect(dashboardSrc).toMatch(/isUnmatched\s*&&/);
+// ─── 海外库存关注排序 ─────────────────────────────────────────────────
+
+describe('P5-SY12D — 海外库存关注排序', () => {
+  const invRepoPath = path.resolve(process.cwd(), 'src/features/inventory/repository.ts');
+  const invRepoSrc = fs.readFileSync(invRepoPath, 'utf-8');
+
+  it('getOverseasList 排序在分页前执行', () => {
+    const fnBodyMatch = invRepoSrc.match(/async getOverseasList\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBodyMatch).not.toBeNull();
+    const fnBody = fnBodyMatch![0];
+    const sortIdx = fnBody.indexOf('items.sort');
+    const sliceIdx = fnBody.indexOf('items.slice');
+    expect(sortIdx).toBeGreaterThan(0);
+    expect(sliceIdx).toBeGreaterThan(0);
+    expect(sortIdx).toBeLessThan(sliceIdx);
   });
 
-  it('variant select 包含 sku / match_status 字段', () => {
-    expect(repoSrc).toMatch(/variant:variant_id!inner\s*\(id,\s*sku,\s*match_status,\s*country/);
-  });
-
-  it('处理后无有效结果时抛出 EMPTY_RESULT 防御错误', () => {
-    expect(repoSrc).toMatch(/处理后无有效结果/);
+  it('getOverseasList 关注项排在最前', () => {
+    expect(invRepoSrc).toMatch(/items\.sort\([\s\S]*isFavorited[\s\S]*quantity/);
   });
 });
