@@ -16,6 +16,7 @@
 // - 用户无关注 → 返回空数组
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
+import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
 import { PreferenceError, type PreferenceResult, type FollowedVariantBasic } from './types';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -223,6 +224,9 @@ export const preferencesRepository = {
       );
     }
 
+    // P5-SY13A: 获取已分配仓库 ID 集合
+    const accessibleWhIds = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+
     const ALERT_ORDER: Record<string, number> = {
       critical: 0,
       warning: 1,
@@ -237,6 +241,10 @@ export const preferencesRepository = {
       if (!variant) continue;
       const product = unwrapJoin<{ id: string; name: string; code: string; safety_stock: number } | null>(variant.product);
       const wh = unwrapJoin<{ id: string; name: string; country: string; type: string; lead_time_days: number | null }>(r.warehouse);
+
+      // P5-SY13A: 仅返回当前用户可访问仓库的关注项（空分配→无结果）
+      const whId = wh?.id ?? (r.warehouse_id as string | undefined);
+      if (whId && !accessibleWhIds.has(whId)) continue;
 
       const productName = product?.name ?? variant.sku ?? '未匹配产品';
       const productCode = product?.code ?? variant.sku ?? '';

@@ -771,13 +771,20 @@ export async function establishBigSellerSession(): Promise<{
 export async function getOverseasWarehouseSyncStatus(): Promise<
   Record<string, WarehouseSyncStatus>
 > {
-  await requireActiveAuth();
+  const user = await requireActiveAuth();
   const repository = await createSupabaseRepo();
   const runs = await repository.getSyncRuns({ limit: 100 });
+
+  // P5-SY13A: 获取已分配仓库 ID，operator 仅看到已分配仓库的同步状态
+  const { warehouseAccessRepository } = await import('@/features/warehouse-access/repository');
+  const accessibleWhIds = await warehouseAccessRepository.getAccessibleWarehouseIds(user.id);
 
   const statusMap: Record<string, WarehouseSyncStatus> = {};
 
   for (const run of runs) {
+    // P5-SY13A: 跳过不可访问仓库的运行（空分配→无结果）
+    if (!accessibleWhIds.has(run.warehouse_id)) continue;
+
     const existing = statusMap[run.warehouse_id];
     const runTime = run.finished_at ?? run.started_at ?? run.created_at;
     const existingTime = existing?.lastSyncAt;
@@ -813,14 +820,23 @@ export async function getOverseasWarehouseSyncStatus(): Promise<
 
 /** 获取 sync_log 记录（通过 sync_run_id 关联）。
  *  使用 serviceClient 直接查询 public.sync_log，仅供详情 Sheet 展示。
- *  Admin 和 Operator 均可查看。 */
+ *  P5-SY13A: 应用层补强仓库权限校验 — operator 仅可查看已分配仓库的 sync_log。
+ *  serviceClient 绕过 RLS，必须在返回前通过 warehouseAccessRepository 校验权限。 */
 export async function getSyncLogDetail(
   runId: string,
 ): Promise<SyncLogRecord | null> {
-  await requireActiveAuth();
+  const user = await requireActiveAuth();
   const repository = await createSupabaseRepo();
   const parsed = getSyncLogDetailSchema.parse({ runId });
-  return repository.getSyncLog(parsed.runId);
+  const log = await repository.getSyncLog(parsed.runId);
+  if (!log) return null;
+
+  // P5-SY13A: 校验 operator 是否可访问该仓库的 sync_log
+  const { warehouseAccessRepository } = await import('@/features/warehouse-access/repository');
+  const canAccess = await warehouseAccessRepository.canAccessWarehouse(user.id, log.warehouseId);
+  if (!canAccess) return null;
+
+  return log;
 }
 
 // ─── BigSeller 会话健康检查 (P5-SY9B) ──────────────────────────

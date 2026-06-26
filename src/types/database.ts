@@ -441,9 +441,28 @@ export type Database = {
         }
         Relationships: []
       }
+      user_warehouses: {
+        Row: {
+          user_id: string
+          warehouse_id: string
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          warehouse_id: string
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          warehouse_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {}
     Functions: {
+      get_assigned_warehouse_ids: { Args: Record<string, never>; Returns: string[] }
       get_user_role: { Args: Record<string, never>; Returns: string }
       batch_match_variants: {
         Args: { p_variant_ids: string[]; p_product_id: string }

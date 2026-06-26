@@ -6,6 +6,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireActiveAuth } from '@/lib/auth';
 import { preferencesRepository } from './repository';
+import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
 import { toggleFavoriteSchema } from './schema';
 import { preferenceErrorMessage } from './types';
 import type { ActionResult } from '@/types/common';
@@ -30,10 +31,16 @@ export async function toggleFavoriteAction(variantId: string): Promise<ToggleFav
       return { success: false, error: '无效的 SKU ID' };
     }
 
-    // 2. 阶段 B 不做仓库权限校验
+    // 2. P5-SY13A: 仓库权限校验 — operator 不可关注不可访问仓库的 SKU
+    const canAccess = await warehouseAccessRepository.canAccessVariant(user.id, parsed.data.variantId);
+    if (!canAccess) {
+      return { success: false, error: '无权操作该仓库 SKU' };
+    }
+
+    // 3. 执行关注切换
     const result = await preferencesRepository.toggleFavorite(user.id, parsed.data.variantId);
 
-    // 3. 操作失败 → 返回中文错误，不刷新页面
+    // 4. 操作失败 → 返回中文错误，不刷新页面
     if (!result.success) {
       return {
         success: false,
@@ -41,7 +48,7 @@ export async function toggleFavoriteAction(variantId: string): Promise<ToggleFav
       };
     }
 
-    // 4. 只有真实成功后刷新相关页面
+    // 5. 只有真实成功后刷新相关页面
     revalidatePath('/dashboard');
     revalidatePath('/dashboard/inventory/overseas');
 
