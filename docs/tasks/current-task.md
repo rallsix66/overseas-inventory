@@ -6,7 +6,16 @@
 
 ## 状态
 
-**REWORK DONE**（2026-06-26，等待 Codex 复验）
+**DONE**（2026-06-26，production migration verified）
+
+## 生产 Migration 执行
+
+Migration 00015 已由用户在 Supabase SQL Editor 执行成功。只读验收：
+
+- `user_warehouses` 表已创建
+- `get_assigned_warehouse_ids()` 已 GRANT EXECUTE TO authenticated
+- 22 条 RLS 策略已生效（user_warehouses 3 条 + warehouse/inventory/product_variant/shipment/shipment_item/tracking_event/sync_log 收紧各 1~3 条）
+- `user_warehouse_assignments = 0`：当前系统仅用户一人使用，当前阶段无需 operator 仓库分配，assignments=0 可接受。不补 seed，不新增手工分配数据。
 
 ## 返工修复（3 项阻塞）
 
@@ -69,8 +78,9 @@ Codex 独立验收发现 3 项阻塞问题，已全部修复：
 
 - P5-SY12D DONE — Dashboard 关注产品动态运营可用性收口
 - Migration 00001~00014 已在生产数据库执行
+- Migration 00015 已在生产数据库执行（2026-06-26）
 - P5-SY13B 为后续：Admin 仓库分配 UI
 
 ## 停止条件
 
-**P5-SY13A REWORK DONE。等待 Codex 复验。** 不自动进入 P5-SY13B。
+**P5-SY13A DONE。production migration verified。** 下一步为 P5-SY13B 仓库分配管理 UI。
