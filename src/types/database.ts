@@ -464,6 +464,10 @@ export type Database = {
     Functions: {
       get_assigned_warehouse_ids: { Args: Record<string, never>; Returns: string[] }
       get_user_role: { Args: Record<string, never>; Returns: string }
+      update_user_warehouses: {
+        Args: { p_user_id: string; p_warehouse_ids: string[] | null }
+        Returns: { success: boolean; error?: string }
+      }
       batch_match_variants: {
         Args: { p_variant_ids: string[]; p_product_id: string }
         Returns: number

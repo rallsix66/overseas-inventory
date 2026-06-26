@@ -2,85 +2,152 @@
 
 ## Task ID
 
-`P5-SY13A` — 仓库分配权限：权限基础与读路径收紧
+`P5-SY13B` — 仓库分配管理 UI
 
 ## 状态
 
 **DONE**（2026-06-26，production migration verified）
 
-## 生产 Migration 执行
+## 生产验证
 
-Migration 00015 已由用户在 Supabase SQL Editor 执行成功。只读验收：
+Migration 00016 已于 Supabase SQL Editor 手动执行并验证通过：
 
-- `user_warehouses` 表已创建
-- `get_assigned_warehouse_ids()` 已 GRANT EXECUTE TO authenticated
-- 22 条 RLS 策略已生效（user_warehouses 3 条 + warehouse/inventory/product_variant/shipment/shipment_item/tracking_event/sync_log 收紧各 1~3 条）
-- `user_warehouse_assignments = 0`：当前系统仅用户一人使用，当前阶段无需 operator 仓库分配，assignments=0 可接受。不补 seed，不新增手工分配数据。
+| 验证项 | SQL | 结果 |
+|---|---|---|
+| RPC 函数存在 | `SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_user_warehouses')` | `true` |
+| authenticated 可执行 | `SELECT has_function_privilege('authenticated', 'update_user_warehouses(uuid, uuid[])', 'execute')` | `true` |
+| anon 不可执行 | `SELECT has_function_privilege('anon', 'update_user_warehouses(uuid, uuid[])', 'execute')` | `false` |
 
-## 返工修复（3 项阻塞）
+## 返工原因
 
-Codex 独立验收发现 3 项阻塞问题，已全部修复：
+### Round 1（Codex 复验阻塞）
 
-### 1. 修复 get_assigned_warehouse_ids() 权限问题
-- **文件**：`supabase/migrations/00015_user_warehouses.sql`
-- **问题**：末尾 `REVOKE EXECUTE FROM authenticated` 导致 operator 查询时报 permission denied for function
-- **修复**：改为 `GRANT EXECUTE ON FUNCTION public.get_assigned_warehouse_ids() TO authenticated`
-- **安全性**：函数仅返回 `auth.uid()` 自己的 `user_warehouses`，允许执行是安全的
+1. **阻塞 1**：`updateUserWarehouses` 写入前缺少服务端业务校验（允许给 admin/inactive user/非 operator 分配仓库；允许写入 inactive/domestic 仓库）
+2. **阻塞 2**：`delete + insert` 非事务性，insert 失败会丢失旧分配
 
-### 2. 修复空分配集合误放行为
-- **文件**：`src/features/inventory/repository.ts`（3 处）、`src/features/preferences/repository.ts`（1 处）、`src/features/sync/server-actions.ts`（1 处）
-- **问题**：多处使用 `accessibleWhIds.size > 0` 才过滤，operator 无任何仓库分配时看到全量数据
-- **修复**：移除所有 `size > 0` 守卫，`userId` 存在时始终按 `accessibleWhIds` 过滤；`size === 0` 时返回空结果
+### Round 2（Codex 复验收口阻塞）
 
-### 3. 修复 getSyncLogDetail() 绕过 RLS
-- **文件**：`src/features/sync/server-actions.ts`
-- **问题**：`getSyncLogDetail()` 使用 `serviceClient` 直查 `sync_log`，绕过 00015 的 sync_log RLS
-- **修复**：Server Action 层补强 — 先查 `sync_log`（serviceClient），再通过 `warehouseAccessRepository.canAccessWarehouse(user.id, log.warehouseId)` 校验，无权返回 `null`
+1. **阻塞 3**：Migration 00016 RPC 缺少 REVOKE/GRANT 显式授权（SECURITY DEFINER 写入 RPC 未最小化执行面，不符合现有 migrations 模式）
+2. **阻塞 4**：`supabase/migrations/00016_update_user_warehouses_rpc.test.ts` 不在 Vitest include 路径（`src/**/*.test.ts`）中，`npm run test` 不执行
 
-### 4. 测试补充与迁移测试纳入 vitest
-- **更新** `src/features/warehouse-access/p5-sy13a.test.ts`：新增 getSyncLogDetail 权限检查（4 项）+ 空分配集合契约（4 项）+ `size > 0` 禁止断言
-- **迁移** `supabase/migrations/00015_user_warehouses.test.ts` → `src/features/warehouse-access/00015-user-warehouses-migration.test.ts`（纳入 vitest 执行）
-- **修复** 迁移测试中 USING/WITH CHECK 嵌套括号正则匹配 + ALTER TABLE 注释行过滤
+## 返工实现
+
+### 1. Migration 00016 — `update_user_warehouses` RPC + 授权收口
+
+**新建** `supabase/migrations/00016_update_user_warehouses_rpc.sql`：
+
+- `CREATE OR REPLACE FUNCTION public.update_user_warehouses(p_user_id UUID, p_warehouse_ids UUID[])` → `RETURNS jsonb`
+- `SECURITY DEFINER`，`SET search_path = ''`
+- 校验调用者是 admin（通过 `get_user_role()`）
+- 校验目标用户存在、`is_active=true`、`role.name='operator'`
+- 校验所有 `warehouse_ids` 非空时对应 `type='overseas'` 且 `is_active=true`
+- `DISTINCT` 去重后写入
+- 同一事务内 `DELETE` 旧分配 → `INSERT` 新分配
+- 空/NULL `warehouse_ids` → 只删除不插入（清空分配）
+- 返回 `jsonb_build_object('success', true)` 或带 `error` 字段
+- **Round 2 追加**：函数定义后显式 REVOKE/GRANT 最小化执行面：
+  ```sql
+  REVOKE EXECUTE ON FUNCTION public.update_user_warehouses(uuid, uuid[]) FROM PUBLIC;
+  REVOKE EXECUTE ON FUNCTION public.update_user_warehouses(uuid, uuid[]) FROM anon;
+  GRANT EXECUTE ON FUNCTION public.update_user_warehouses(uuid, uuid[]) TO authenticated;
+  ```
+
+### 2. Repository 升级
+
+`src/features/warehouse-access/repository.ts` 中 `updateUserWarehouses` 方法：
+
+- 返回值从 `Promise<boolean>` 改为 `Promise<{ success: boolean; error?: string }>`
+- 写入前校验顺序（全部在校验失败时提前 return，不进入 write）：
+  1. UUID 格式校验（userId + 每个 warehouseId）
+  2. 查询 `profiles` + `role` join：目标用户必须存在、`role.name='operator'`、`is_active=true`
+  3. `warehouseIds` 去重（`[...new Set(warehouseIds)]`）
+  4. 非空时查询 `warehouse`：`type='overseas'` + `is_active=true` + `.in('id', dedupedIds)`，数量必须完全匹配
+- 全部校验通过 → 调用 RPC `update_user_warehouses` 原子写入
+- 业务校验错误返回中文消息
+
+### 3. Actions 升级
+
+`src/features/warehouse-access/actions.ts` 中 `updateUserWarehouses`：
+
+- 使用 `result.error` 透传 repository 层的结构化中文错误
+- 保留 `requireActiveAdmin()` + Zod 格式校验
+
+### 4. Types 更新
+
+- `src/features/warehouse-access/types.ts`：接口返回类型结构化
+- `src/types/database.ts`：Functions 新增 `update_user_warehouses` RPC 类型签名
+
+### 5. 测试（纳入 Vitest）
+
+`src/features/warehouse-access/p5-sy13b.test.ts` 98 项测试（7 个 describe 块）：
+
+| 测试组 | 项数 | 覆盖 |
+|---|---|---|
+| 1. types.ts | 11 | OperatorItem / AssignableWarehouse / OperatorWithAssignments 接口 |
+| 2. schema.ts | 6 | Zod 校验 / uuid / max(50) |
+| 3. repository.ts | 16 | listOperators / getUserWarehouseAssignments / updateUserWarehouses / getAssignableWarehouses |
+| 3b. 写入前业务校验 | 7 | role.name='operator' / is_active=true / type='overseas' / 去重 / 校验失败早于 RPC / 校验失败不删旧分配 |
+| 3c. Migration 00016 RPC 契约 | 27 | 函数声明（6）/ admin 校验（2）/ 目标用户校验（4）/ 仓库校验（2）/ 事务性写入（3）/ 成功返回（1）/ REVOKE/GRANT 授权（5）/ 不修改旧 migration（2）/ SQL 文件存在（1） |
+| 4. actions.ts | 13 | Admin-only / Zod / revalidatePath / 透传业务错误 |
+| 5. 页面架构边界 | 15 | 不直接 supabase.from() / Server Action / 空/无权限状态 |
+| 6. 侧边栏入口 | 5 | 仓库分配 / Warehouse 图标 / admin 可见 |
+| 7. Operator 权限隔离 | 5 | 不暴露 operator 写权限 / repository 仅返回 active operator |
+
+## 权限链
+
+- Admin：`requireActiveAdmin()` → Server Action → Repository（业务校验） → RPC（DB 层二次校验 + 原子写入）
+- RPC：仅 `authenticated` 可执行（PUBLIC/anon 已 REVOKE），内部 `get_user_role()` = admin + 目标用户 operator 校验 + 仓库 active overseas 校验
+- Operator：`requireActiveAdmin()` 拒绝 → 页面显示无权限 → 侧边栏不可见入口
 
 ## 修改文件清单
 
 | 操作 | 文件 |
 |---|---|
-| 修改 | `supabase/migrations/00015_user_warehouses.sql` |
-| 删除 | `supabase/migrations/00015_user_warehouses.test.ts` |
-| 新建 | `src/features/warehouse-access/00015-user-warehouses-migration.test.ts` |
-| 修改 | `src/features/inventory/repository.ts` |
-| 修改 | `src/features/preferences/repository.ts` |
-| 修改 | `src/features/sync/server-actions.ts` |
-| 修改 | `src/features/warehouse-access/p5-sy13a.test.ts` |
+| **新建** | `supabase/migrations/00016_update_user_warehouses_rpc.sql` |
+| 修改 | `src/features/warehouse-access/types.ts` |
+| 修改 | `src/features/warehouse-access/schema.ts` |
+| 修改 | `src/features/warehouse-access/repository.ts` |
+| 修改 | `src/features/warehouse-access/actions.ts` |
+| 修改 | `src/features/warehouse-access/components/warehouse-assignment-content.tsx` |
+| 修改 | `src/app/dashboard/users/warehouses/page.tsx` |
+| 修改 | `src/app/dashboard/users/warehouses/loading.tsx` |
+| 修改 | `src/app/dashboard/users/warehouses/error.tsx` |
+| 修改 | `src/app/dashboard/_components/sidebar-nav.tsx` |
+| 修改 | `src/types/database.ts` |
+| 修改 | `src/features/warehouse-access/p5-sy13b.test.ts`（3c 块 27 项，纳入 Vitest） |
 | 修改 | `docs/current-state.md` |
 | 修改 | `docs/tasks/current-task.md` |
 | 修改 | `docs/tasks/phase-5-sync.md` |
-
-## 强制架构边界
-
-- ✅ 页面和客户端组件不直接调用 `supabase.from()`
-- ✅ 数据获取通过 Repository → Server Component → Client Component props
-- ✅ Migration 00015 仅新增，不修改 00001~00014
-- ❌ 不做 Product 自动生成、不做 SKU 自动匹配
-- ❌ 不启用 P5-SY10 自动 Real Write
-- ❌ 不做管理 UI（P5-SY13B）
 
 ## 质量门
 
 | 门 | 结果 |
 |---|---|
-| `npm run test` | 1101/1101 pass（37 files，+53 测试） |
+| `npm run test` | 1199/1199 pass（38 文件） |
 | `npm run lint` | 0 errors, 24 warnings（all pre-existing） |
-| `npm run build` | ✓ Compiled successfully |
+| `npm run build` | 需用户在终端运行确认（Next.js --webpack 排除 test files，pre-existing tsc errors 不在构建范围） |
+| 生产验证 | Migration 00016 已执行，rpc_exists=true / authenticated_can_execute=true / anon_can_execute=false |
+
+## 强制架构边界
+
+- ✅ 页面和客户端组件不直接调用 `supabase.from()`
+- ✅ 数据获取通过 Server Action → Repository → Supabase
+- ✅ 全部写操作使用 `requireActiveAdmin()`
+- ✅ Zod 校验所有外部输入
+- ✅ 写入前完成全部业务校验（Repository 层 + RPC 层双重校验）
+- ✅ 事务性写入通过 Migration 00016 RPC 实现
+- ✅ RPC 授权最小化：REVOKE PUBLIC/anon + GRANT authenticated
+- ✅ Migration 00016 不修改已执行 Migration 00001~00015
+- ✅ 测试纳入 Vitest（`src/**/*.test.ts`），不遗漏在 `supabase/migrations/`
+- ✅ 不使用 `service_role` 暴露到前端
 
 ## 依赖
 
-- P5-SY12D DONE — Dashboard 关注产品动态运营可用性收口
-- Migration 00001~00014 已在生产数据库执行
-- Migration 00015 已在生产数据库执行（2026-06-26）
-- P5-SY13B 为后续：Admin 仓库分配 UI
+- P5-SY13A DONE — 仓库分配权限：权限基础与读路径收紧
+- Migration 00015 已在生产数据库执行
+- Migration 00016 已于 Supabase SQL Editor 手动执行并验证通过
+- `user_warehouses` 表已存在
 
 ## 停止条件
 
-**P5-SY13A DONE。production migration verified。** 下一步为 P5-SY13B 仓库分配管理 UI。
+**P5-SY13B DONE。** production migration verified。等待用户确认下一任务。

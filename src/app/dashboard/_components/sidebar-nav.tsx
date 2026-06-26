@@ -17,6 +17,7 @@ import {
   Users,
   ChevronDown,
   RefreshCw,
+  Warehouse,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -79,6 +80,14 @@ const USERS_ITEM: NavItem = {
   label: '团队账号',
   icon: Users,
   phase: '4',
+};
+
+// 仓库分配 — 仅管理员可见（P5-SY13B）
+const WAREHOUSE_ASSIGN_ITEM: NavItem = {
+  href: '/dashboard/users/warehouses',
+  label: '仓库分配',
+  icon: Warehouse,
+  phase: '0',
 };
 
 export function SidebarNav({ roleName }: { roleName: string }) {
@@ -191,9 +200,12 @@ export function SidebarNav({ roleName }: { roleName: string }) {
           );
         })}
 
-        {/* 团队账号 — 仅管理员 */}
+        {/* 管理区域 — 仅管理员 */}
         {isAdmin && (
-          <div className="mt-0.5">{renderItem({ ...USERS_ITEM, phase: '4' })}</div>
+          <div className="mt-0.5 space-y-0.5">
+            {renderItem({ ...USERS_ITEM, phase: '4' })}
+            {renderItem(WAREHOUSE_ASSIGN_ITEM)}
+          </div>
         )}
       </nav>
 
