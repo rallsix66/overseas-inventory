@@ -95,16 +95,28 @@ describe('P5-SY12 — repository 源码检查', () => {
     }
   });
 
-  it('repository getFollowedVariantsBasic 低库存行置顶排序', () => {
+  it('repository getFollowedVariantsBasic 动态告警排序（alertLevel → estimatedDays → quantity）', () => {
     const fnBody = repoSrc.match(/async getFollowedVariantsBasic\([\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBody).not.toBeNull();
     if (fnBody) {
-      expect(fnBody[0]).toContain('isLowStock');
+      expect(fnBody[0]).toContain('alertLevel');
+      expect(fnBody[0]).toContain('ALERT_ORDER');
+      expect(fnBody[0]).toMatch(/estimated_days/);
     }
   });
 
-  it('repository 注释声明阶段 B 临时告警', () => {
-    expect(repoSrc).toMatch(/阶段 B 临时/);
+  it('repository select 包含 daily_sales / estimated_days / lead_time_days', () => {
+    const fnBody = repoSrc.match(/async getFollowedVariantsBasic\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBody).not.toBeNull();
+    if (fnBody) {
+      expect(fnBody[0]).toContain('daily_sales');
+      expect(fnBody[0]).toContain('estimated_days');
+      expect(fnBody[0]).toContain('lead_time_days');
+    }
+  });
+
+  it('repository 注释声明阶段 C 动态告警', () => {
+    expect(repoSrc).toMatch(/阶段 C/);
   });
 
   it('repository 注释声明关注不影响同步/库存/他人视图', () => {
@@ -142,22 +154,31 @@ describe('P5-SY12 — preferences types', () => {
     expect(preferenceErrorMessage('DB_ERROR')).toBe('数据库错误，请稍后重试');
   });
 
-  it('FollowedVariantBasic 类型结构完整', async () => {
+  it('FollowedVariantBasic 类型结构完整（阶段 C）', async () => {
     const VALID_UUID = '11111111-1111-4111-1111-111111111111';
     const item = {
       variantId: VALID_UUID,
       productName: 'Test Product',
       productCode: 'TP001',
+      sku: 'SKU001',
+      matchStatus: 'matched',
+      isUnmatched: false,
       country: 'TH',
       warehouseId: VALID_UUID,
       warehouseName: 'Test Warehouse',
       quantity: 100,
       safetyStock: 50,
-      isLowStock: false,
-      alertReason: null,
+      dailySales: 5.5 as number | null,
+      estimatedDays: 10 as number | null,
+      leadTimeDays: 14 as number | null,
+      alertLevel: 'normal' as const,
+      alertReason: null as string | null,
     };
     expect(item.variantId).toBe(VALID_UUID);
-    expect(item.isLowStock).toBe(false);
+    expect(item.alertLevel).toBe('normal');
+    expect(item.dailySales).toBe(5.5);
+    expect(item.estimatedDays).toBe(10);
+    expect(item.leadTimeDays).toBe(14);
   });
 });
 

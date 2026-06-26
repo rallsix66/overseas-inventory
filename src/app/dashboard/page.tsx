@@ -126,7 +126,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* P5-SY12: 关注产品动态 — 阶段 B 告警临时用 safety_stock */}
+      {/* P5-SY12C: 关注产品动态 — 阶段 C 动态告警 */}
       <div className="rounded-lg border p-5 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Star className="h-4 w-4 text-amber-500" />
@@ -134,9 +134,14 @@ export default async function DashboardPage() {
           {followedVariants && followedVariants.length > 0 && (
             <span className="text-xs text-muted-foreground">
               {followedVariants.length} 个关注
-              {followedVariants.filter((v) => v.isLowStock).length > 0 && (
+              {followedVariants.filter((v) => v.alertLevel === 'critical').length > 0 && (
                 <span className="text-red-600 ml-1">
-                  · {followedVariants.filter((v) => v.isLowStock).length} 个需关注
+                  · {followedVariants.filter((v) => v.alertLevel === 'critical').length} 个紧急
+                </span>
+              )}
+              {followedVariants.filter((v) => v.alertLevel === 'warning').length > 0 && (
+                <span className="text-amber-600 ml-1">
+                  · {followedVariants.filter((v) => v.alertLevel === 'warning').length} 个低库存
                 </span>
               )}
             </span>
@@ -162,15 +167,17 @@ export default async function DashboardPage() {
             </p>
           </div>
         ) : (
-          /* 关注列表 — 低库存行置顶 */
+          /* 关注列表 — 紧急/低库存行置顶 */
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-xs font-medium text-muted-foreground">
-                  <th className="py-2 px-3">产品名称</th>
-                  <th className="py-2 px-3">仓库</th>
+                  <th className="py-2 px-3">产品/SKU</th>
+                  <th className="py-2 px-3">国家/仓库</th>
                   <th className="py-2 px-3 text-right">库存</th>
-                  <th className="py-2 px-3 text-right">安全线</th>
+                  <th className="py-2 px-3 text-right">日销</th>
+                  <th className="py-2 px-3 text-right">可售天数</th>
+                  <th className="py-2 px-3 text-right">补货周期</th>
                   <th className="py-2 px-3">状态</th>
                 </tr>
               </thead>
@@ -179,23 +186,37 @@ export default async function DashboardPage() {
                   <tr key={`${v.variantId}-${v.warehouseId}`} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="py-2 px-3">
                       <span className="font-medium text-gray-900">{v.productName}</span>
-                      <span className="text-xs text-muted-foreground ml-1">({v.country})</span>
+                      {v.isUnmatched && (
+                        <span className="text-xs text-muted-foreground ml-1">(未匹配)</span>
+                      )}
                     </td>
-                    <td className="py-2 px-3 text-gray-600">{v.warehouseName}</td>
-                    <td className={`py-2 px-3 text-right tabular-nums ${v.isLowStock ? 'text-red-600 font-semibold' : ''}`}>
+                    <td className="py-2 px-3 text-gray-600">
+                      {v.country} / {v.warehouseName}
+                    </td>
+                    <td className={`py-2 px-3 text-right tabular-nums ${v.alertLevel === 'warning' || v.alertLevel === 'critical' ? 'text-red-600 font-semibold' : ''}`}>
                       {v.quantity}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
-                      {v.safetyStock > 0 ? v.safetyStock : '—'}
+                      {v.dailySales != null ? v.dailySales : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+                      {v.estimatedDays != null ? v.estimatedDays : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+                      {v.leadTimeDays != null ? v.leadTimeDays : '—'}
                     </td>
                     <td className="py-2 px-3">
-                      {v.isUnmatched ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                          未匹配
-                        </span>
-                      ) : v.isLowStock ? (
+                      {v.alertLevel === 'critical' ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">
+                          紧急
+                        </span>
+                      ) : v.alertLevel === 'warning' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
                           低库存
+                        </span>
+                      ) : v.alertLevel === 'unknown' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                          数据不足
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-600">
@@ -210,23 +231,31 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {followedVariants && followedVariants.length > 0 && (followedVariants.filter((v) => v.isLowStock).length > 0) && (
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground border-t pt-3">
-            {followedVariants
-              .filter((v) => v.isLowStock)
-              .slice(0, 3)
-              .map((v) => (
-                <span key={`alert-${v.variantId}-${v.warehouseId}`} className="text-red-600 font-medium">
-                  <AlertTriangle className="inline h-3 w-3 mr-0.5" />
-                  {v.productName}({v.warehouseName}) {v.alertReason}
-                </span>
-              ))}
-            {followedVariants.filter((v) => v.isLowStock).length > 3 && (
-              <span className="text-red-600">
-                等 {followedVariants.filter((v) => v.isLowStock).length} 项
-              </span>
-            )}
-          </div>
+        {followedVariants && followedVariants.length > 0 && (
+          (() => {
+            const alertItems = followedVariants.filter(
+              (v) => v.alertLevel === 'critical' || v.alertLevel === 'warning'
+            );
+            if (alertItems.length === 0) return null;
+            return (
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground border-t pt-3">
+                {alertItems.slice(0, 3).map((v) => (
+                  <span
+                    key={`alert-${v.variantId}-${v.warehouseId}`}
+                    className={v.alertLevel === 'critical' ? 'text-red-600 font-medium' : 'text-amber-600 font-medium'}
+                  >
+                    <AlertTriangle className="inline h-3 w-3 mr-0.5" />
+                    {v.productName}({v.warehouseName}) {v.alertReason}
+                  </span>
+                ))}
+                {alertItems.length > 3 && (
+                  <span className="text-red-600">
+                    等 {alertItems.length} 项
+                  </span>
+                )}
+              </div>
+            );
+          })()
         )}
       </div>
 

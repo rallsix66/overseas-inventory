@@ -70,6 +70,8 @@ def generate_plan(input_rows: list, db_snapshot: dict) -> dict:
         sku = (row.get('sku') or '').strip()
         product_name = (row.get('product_name') or '').strip()
         available_qty = int(row.get('available_quantity', 0))
+        daily_sales = row.get('daily_sales')  # float or None
+        estimated_days = row.get('estimated_days')  # float or None
 
         if not sku:
             rejected_rows.append({
@@ -96,6 +98,8 @@ def generate_plan(input_rows: list, db_snapshot: dict) -> dict:
                 'warehouse_id': wh_id,
                 'warehouse_name': TARGET_WAREHOUSE_NAME,
                 'new_quantity': available_qty,
+                'daily_sales': daily_sales,
+                'estimated_days': estimated_days,
                 'depends_on': 'variant_creation',
                 'note': f'P5-SY3B: 先创建 variant({sku}) 获取 variant_id，再 INSERT inventory',
             })
@@ -115,6 +119,8 @@ def generate_plan(input_rows: list, db_snapshot: dict) -> dict:
                 'new_quantity': available_qty,
                 'old_quantity': 0,
                 'delta': available_qty,
+                'daily_sales': daily_sales,
+                'estimated_days': estimated_days,
             })
         else:
             old_qty = existing_inv.get('quantity', 0)
@@ -127,6 +133,8 @@ def generate_plan(input_rows: list, db_snapshot: dict) -> dict:
                     'sku': sku,
                     'product_name': product_name,
                     'quantity': available_qty,
+                    'daily_sales': daily_sales,
+                    'estimated_days': estimated_days,
                 })
             else:
                 inventory_updates.append({
@@ -139,6 +147,8 @@ def generate_plan(input_rows: list, db_snapshot: dict) -> dict:
                     'old_quantity': old_qty,
                     'new_quantity': available_qty,
                     'delta': available_qty - old_qty,
+                    'daily_sales': daily_sales,
+                    'estimated_days': estimated_days,
                 })
 
     return {

@@ -1,11 +1,12 @@
-// P5-SY12: Dashboard 关注区测试
+// P5-SY12C: Dashboard 关注区测试（阶段 C — 动态告警）
 //
 // 验证:
 // - Dashboard page 导入 preferencesRepository
 // - Dashboard page 调用 getFollowedVariantsBasic
 // - Dashboard page 显示空状态
-// - Dashboard page 显示关注列表
-// - Dashboard page 低库存列置顶（由 repository 排序保证）
+// - Dashboard page 显示关注列表（含新列：日销/可售天数/补货周期）
+// - Dashboard page alertLevel 状态 badge（紧急/低库存/正常/数据不足）
+// - 紧急/低库存行置顶排序（由 repository 保证）
 // - 关注不影响同步链路
 // - 禁止 any
 // - product 为 null 时不丢弃关注项
@@ -46,12 +47,24 @@ describe('P5-SY12 — Dashboard 关注区', () => {
     expect(src).toContain('星标关注');
   });
 
-  it('Dashboard 显示低库存计数', () => {
-    expect(src).toMatch(/需关注/);
+  it('Dashboard 显示紧急计数', () => {
+    expect(src).toMatch(/个紧急/);
   });
 
-  it('Dashboard 阶段 B 不显示日销/可售/补货周期列', () => {
-    expect(src).not.toMatch(/daily_sales|est_days|lead_time_days|日销|可售|补货周期/);
+  it('Dashboard 阶段 C 显示日销/可售天数/补货周期列', () => {
+    expect(src).toMatch(/日销/);
+    expect(src).toMatch(/可售天数/);
+    expect(src).toMatch(/补货周期/);
+  });
+
+  it('Dashboard 阶段 C 显示 alertLevel 状态 badge', () => {
+    expect(src).toMatch(/alertLevel === 'critical'/);
+    expect(src).toMatch(/alertLevel === 'warning'/);
+    expect(src).toMatch(/alertLevel === 'unknown'/);
+    expect(src).toContain('紧急');
+    expect(src).toContain('低库存');
+    expect(src).toContain('数据不足');
+    expect(src).toContain('正常');
   });
 
   it('Dashboard 查询失败显示错误状态而非空列表', () => {
@@ -65,20 +78,24 @@ describe('P5-SY12 — Dashboard 关注区', () => {
   });
 });
 
-// ─── 阶段 B 告警规则验证 ───────────────────────────────────────────────
+// ─── 阶段 C 动态告警规则验证 ─────────────────────────────────────────────
 
-describe('P5-SY12 — 阶段 B 告警规则', () => {
-  it('repository getFollowedVariantsBasic 注释声明阶段 B 临时告警', () => {
+describe('P5-SY12C — 阶段 C 动态告警规则', () => {
+  it('repository getFollowedVariantsBasic 注释声明阶段 C 动态告警', () => {
     const repoPath = path.resolve(process.cwd(), 'src/features/preferences/repository.ts');
     const repoSrc = fs.readFileSync(repoPath, 'utf-8');
-    expect(repoSrc).toMatch(/阶段 B 临时/);
-    expect(repoSrc).toMatch(/safety_stock/);
+    expect(repoSrc).toMatch(/阶段 C/);
+    expect(repoSrc).toMatch(/daily_sales/);
+    expect(repoSrc).toMatch(/estimated_days/);
+    expect(repoSrc).toMatch(/lead_time_days/);
   });
 
-  it('Dashboard 不包含 est_days < lead_time_days 逻辑', () => {
+  it('Dashboard 包含 estimatedDays < leadTimeDays 动态告警逻辑', () => {
     const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
-    expect(dashboardSrc).not.toMatch(/est_days\s*<\s*lead_time_days/);
-    expect(dashboardSrc).not.toMatch(/estDays|leadTimeDays/);
+    expect(dashboardSrc).toMatch(/alertLevel/);
+    expect(dashboardSrc).toMatch(/alertReason/);
+    expect(dashboardSrc).toMatch(/estimatedDays/);
+    expect(dashboardSrc).toMatch(/leadTimeDays/);
   });
 });
 
@@ -222,22 +239,27 @@ describe('P5-SY12 — product null 关注项不丢弃', () => {
     expect(repoSrc).toMatch(/productCode\s*=\s*product\?\.code\s*\?\?\s*variant\.sku/);
   });
 
-  it('isLowStock 仅 product 存在时按阶段 B 规则判断，未匹配时不误判', () => {
-    expect(repoSrc).toMatch(/isLow\s*=\s*product\s*\?\s*qty\s*<\s*safetyStock\s*:\s*false/);
+  it('alertLevel 仅 product 存在时判断低库存 warning，未匹配时不误判', () => {
+    expect(repoSrc).toMatch(/isLowStock\s*=\s*product\s*\?\s*qty\s*<\s*safetyStock\s*:\s*false/);
   });
 
-  it('FollowedVariantBasic 新增 sku / matchStatus / isUnmatched 字段', () => {
+  it('FollowedVariantBasic 包含阶段 C 动态告警字段', () => {
     const typesPath = path.resolve(process.cwd(), 'src/features/preferences/types.ts');
     const typesSrc = fs.readFileSync(typesPath, 'utf-8');
     expect(typesSrc).toMatch(/sku:\s*string/);
     expect(typesSrc).toMatch(/matchStatus:\s*string/);
     expect(typesSrc).toMatch(/isUnmatched:\s*boolean/);
+    expect(typesSrc).toMatch(/dailySales:\s*number \| null/);
+    expect(typesSrc).toMatch(/estimatedDays:\s*number \| null/);
+    expect(typesSrc).toMatch(/leadTimeDays:\s*number \| null/);
+    expect(typesSrc).toMatch(/alertLevel:\s*'critical' \| 'warning' \| 'normal' \| 'unknown'/);
+    expect(typesSrc).toMatch(/alertReason:\s*string \| null/);
   });
 
-  it('Dashboard 关注区状态列显示"未匹配"（中性灰标签）', () => {
+  it('Dashboard 关注区显示"未匹配"标签', () => {
     const dashboardSrc = fs.readFileSync(DASHBOARD_PATH, 'utf-8');
     expect(dashboardSrc).toContain('未匹配');
-    expect(dashboardSrc).toMatch(/isUnmatched \?/);
+    expect(dashboardSrc).toMatch(/isUnmatched\s*&&/);
   });
 
   it('variant select 包含 sku / match_status 字段', () => {

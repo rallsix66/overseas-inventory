@@ -42,11 +42,16 @@ export function preferenceErrorMessage(code: PreferenceErrorCode): string {
 // ─── Dashboard 关注区类型 ──────────────────────────────────────────────
 
 /**
- * Dashboard 关注产品动态行（阶段 B）
+ * Dashboard 关注产品动态行（阶段 C — 动态告警）
  *
- * 阶段 B 临时告警：quantity < product.safety_stock（非动态告警）。
- * 阶段 C 升级为动态告警（est_days < lead_time_days）。
- * 阶段 B 不新增 daily_sales / est_days / lead_time_days 字段。
+ * 阶段 C 动态告警规则：
+ *   critical: estimatedDays < leadTimeDays（可售天数低于补货周期）
+ *   warning: quantity < safetyStock（低于安全线，仅已匹配 Product 判定）
+ *   两者同时满足 → critical 优先
+ *   unknown: 未匹配 Product 且 dailySales 或 estimatedDays 缺失
+ *   其余 → normal
+ *
+ * P5-SY12C: 新增 dailySales / estimatedDays / leadTimeDays / alertLevel / alertReason
  */
 export interface FollowedVariantBasic {
   variantId: string;
@@ -60,6 +65,9 @@ export interface FollowedVariantBasic {
   warehouseName: string;
   quantity: number;
   safetyStock: number;         // product?.safety_stock ?? 0（无 product 时为 0）
-  isLowStock: boolean;         // 仅 product 存在且 quantity < safetyStock 时为 true
-  alertReason: string | null;  // "低于安全线 X"（无 product 时为 null）
+  dailySales: number | null;   // BigSeller 预测日销量（inventory.daily_sales）
+  estimatedDays: number | null;// BigSeller 预计可售天数（inventory.estimated_days）
+  leadTimeDays: number | null; // 仓库补货周期天（warehouse.lead_time_days）
+  alertLevel: 'critical' | 'warning' | 'normal' | 'unknown';
+  alertReason: string | null;  // 中文告警原因，normal 时为 null
 }

@@ -144,6 +144,7 @@ export type Database = {
           is_active: boolean
           sync_url: string | null
           last_sync_at: string | null
+          lead_time_days: number | null
           created_at: string
         }
         Insert: {
@@ -154,6 +155,7 @@ export type Database = {
           is_active?: boolean
           sync_url: string | null
           last_sync_at: string | null
+          lead_time_days?: number | null
           created_at?: string
         }
         Update: {
@@ -164,6 +166,7 @@ export type Database = {
           is_active?: boolean
           sync_url?: string | null
           last_sync_at?: string | null
+          lead_time_days?: number | null
           created_at?: string
         }
         Relationships: []
@@ -174,6 +177,8 @@ export type Database = {
           variant_id: string
           warehouse_id: string
           quantity: number
+          daily_sales: number | null
+          estimated_days: number | null
           last_sync_at: string | null
           created_at: string
           updated_at: string
@@ -183,6 +188,8 @@ export type Database = {
           variant_id: string
           warehouse_id: string
           quantity?: number
+          daily_sales?: number | null
+          estimated_days?: number | null
           last_sync_at: string | null
           created_at?: string
           updated_at?: string
@@ -192,6 +199,8 @@ export type Database = {
           variant_id?: string
           warehouse_id?: string
           quantity?: number
+          daily_sales?: number | null
+          estimated_days?: number | null
           last_sync_at?: string | null
           created_at?: string
           updated_at?: string

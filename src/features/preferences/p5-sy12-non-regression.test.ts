@@ -7,8 +7,7 @@
 // - 关注不影响别人视图（多用户隔离）
 // - variant_follows 表不存在
 // - user_variant_preference CHECK 约束已扩展
-// - inventory.daily_sales / est_days 不存在
-// - warehouse.lead_time_days 不存在
+// - Migration 00014 新增 inventory.daily_sales / estimated_days / warehouse.lead_time_days
 // - 不修改已执行 Migration 00012
 // - 不读取或输出真实密钥
 
@@ -86,38 +85,42 @@ describe('P5-SY12 — 不改同步链路', () => {
   });
 });
 
-// ─── 不新增 inventory/warehouse 字段 ─────────────────────────────────────
+// ─── P5-SY12C: Migration 00014 新增动态告警字段 ────────────────────────────
 
-describe('P5-SY12 — 不新增动态告警字段', () => {
-  const inventoryTypes = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/inventory/types.ts'),
-    'utf-8'
-  );
-  const repoSrc = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/preferences/repository.ts'),
-    'utf-8'
-  );
-
-  it('InventoryItem 不含 dailySales', () => {
-    expect(inventoryTypes).not.toMatch(/dailySales/);
+describe('P5-SY12C — Migration 00014 动态告警字段', () => {
+  it('Migration 00014 ADD COLUMN daily_sales on inventory', () => {
+    const m14Path = path.resolve(
+      process.cwd(),
+      'supabase/migrations/00014_dynamic_alert_fields.sql'
+    );
+    const src = fs.readFileSync(m14Path, 'utf-8');
+    expect(src).toMatch(/ALTER TABLE.*inventory[\s\S]*ADD COLUMN[\s\S]*daily_sales/i);
   });
 
-  it('InventoryItem 不含 estDays', () => {
-    expect(inventoryTypes).not.toMatch(/estDays/);
+  it('Migration 00014 ADD COLUMN estimated_days on inventory', () => {
+    const m14Path = path.resolve(
+      process.cwd(),
+      'supabase/migrations/00014_dynamic_alert_fields.sql'
+    );
+    const src = fs.readFileSync(m14Path, 'utf-8');
+    expect(src).toMatch(/ALTER TABLE.*inventory[\s\S]*ADD COLUMN[\s\S]*estimated_days/i);
   });
 
-  it('followed variant 不包含 lead_time_days（注释除外）', () => {
-    // 注释中可能提及 lead_time_days 作为"不做的事"说明，检查代码中不实际引用该字段
-    const codeWithoutComments = repoSrc.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-    expect(codeWithoutComments).not.toContain('lead_time_days');
+  it('Migration 00014 ADD COLUMN lead_time_days on warehouse', () => {
+    const m14Path = path.resolve(
+      process.cwd(),
+      'supabase/migrations/00014_dynamic_alert_fields.sql'
+    );
+    const src = fs.readFileSync(m14Path, 'utf-8');
+    expect(src).toMatch(/ALTER TABLE.*warehouse[\s\S]*ADD COLUMN[\s\S]*lead_time_days/i);
   });
 
-  it('迁移不含 ALTER TABLE inventory', () => {
+  it('Migration 00013 不含 ALTER TABLE inventory（阶段 B 不新增字段）', () => {
     const src = fs.readFileSync(MIGRATION_0013_PATH, 'utf-8');
     expect(src).not.toMatch(/ALTER TABLE inventory/i);
   });
 
-  it('迁移不含 ALTER TABLE warehouse', () => {
+  it('Migration 00013 不含 ALTER TABLE warehouse（阶段 B 不新增字段）', () => {
     const src = fs.readFileSync(MIGRATION_0013_PATH, 'utf-8');
     expect(src).not.toMatch(/ALTER TABLE warehouse/i);
   });

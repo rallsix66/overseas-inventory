@@ -8,7 +8,7 @@ Phase 5 — 海外仓库存同步生产化
 
 ## Current Task
 
-`P5-SY12` — 特别关注阶段 B 最小闭环（DONE，2026-06-25）
+`P5-SY12C` — Dashboard 关注产品动态告警升级（DONE，2026-06-26）
 
 ## Completed Tasks
 
@@ -68,6 +68,7 @@ Phase 5 — 海外仓库存同步生产化
 - `P5-SY11-REWORK` (P5-SY11G A~F) — 语义返工：用户级 Variant 归档偏好（2026-06-25 DONE。全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建 user_variant_preference 表 + RLS + 移除 operator_select_variant 的 is_archived 全局过滤。variantRepository archive/restore/list/getUnmatched 全部改用 user_variant_preference，每人独立归档。Server Actions 改为 requireActiveAuth，Admin/Operator 均可操作。Inventory 层按当前用户归档偏好过滤。UI 所有登录用户可归档/恢复。P5-SY11G 返工（2026-06-25）：修复 4 项阻塞问题 — 1) inventory repository getOverseasList/getLowStock 从 v.id 改为 row.variant_id 判断归档；2) list() 归档过滤从 JS 后置改为 DB 层 notIn/in 在分页前完成；3) archive/restore 返回实际变更数；4) list() active tab 改用 query.notIn() 替代 query.not('id','in',...)，.not() 期望 PostgREST 原始括号语法而 JS 数组无括号导致过滤失效。质量门：896/896 TS 测试，30 文件，lint 0 errors，build pass。Python：315 passed + 5 collection errors。）
 - `P5-SY11G-RUNTIME` — 运行时修复与生产验证（2026-06-25 DONE。两项修复：1) Migration 00012 由用户在 Supabase Dashboard 手动执行（Pooler 不识别 tenant，自动连接不可用），验证 user_variant_preference 表 + 4 条 RLS 策略存在，PostgREST schema cache 已刷新；2) getSyncRuns limit 契约修正：Zod schema max(500).default(200) → max(100).default(100)，server-actions.ts limit:500→100，与 DB RPC get_sync_runs p_limit > 100 强制拒绝一致。人工验收通过：/dashboard/inventory/overseas 正常加载（不再报 schema cache 错误），/dashboard/sync 正常加载，/dashboard/variants 归档/恢复正常，A 归档后 B 视图不受影响，归档是个人偏好非全局。质量门：896/896 TS 测试，lint 0 errors，build pass。）
 - `P5-SY12` — 特别关注阶段 B 最小闭环（2026-06-25 DONE + 2026-06-25 返工修复。Migration 00013 扩展 `user_variant_preference.preference_type` CHECK 约束支持 `'favorited'`（不新建表，需用户手动执行）。新增 `src/features/preferences/` 模块：types（PreferenceError / PreferenceResult / FollowedVariantBasic）+ schema（toggleFavoriteSchema）+ repository（getFavoritedVariantIds / isFavorited / favorite / unfavorite / toggleFavorite / getFollowedVariantsBasic）+ actions（toggleFavoriteAction — requireActiveAuth）。海外库存列表每行新增星标按钮（乐观更新 + 失败 toast 回滚 + 成功 router.refresh）。Dashboard 首页新增「关注产品动态」区（空状态 / 表格 + 低库存置顶 + 告警摘要条 / 加载失败错误状态）。阶段 B 告警临时用 `product.safety_stock`。归档与关注可共存（UNIQUE 按 user_id+variant_id+preference_type）。不新增 variant_follows 表、不新增 daily_sales/est_days/lead_time_days、不改 sync RPC / Python。2026-06-25 返工修复：1) 星标按钮失败回滚 + toast；2) 关注查询失败不再静默空列表；3) 清理未使用 imports/warnings。979/979 tests、lint 0 errors / 25 warnings、build pass。）
+- `P5-SY12C` — Dashboard 关注产品动态告警升级（2026-06-26 DONE。Migration 00014：`inventory.daily_sales NUMERIC NULL` + `inventory.estimated_days NUMERIC NULL` + `warehouse.lead_time_days INTEGER NULL` + `CREATE OR REPLACE sync_warehouse_inventory` 扩展支持写入 daily_sales/estimated_days（NaN/Infinity 拒绝，缺失/null/'—'/空→NULL，INSERT/UPDATE/UNCHANGED 三路径均写入，签名不变）。Python sync 链路：plan_generator 透传 daily_sales/estimated_days 到所有 plan entry + executor `_build_rpc_payload` 校验（None/'-'/''→omit，NaN/Infinity→reject，有效有限值→包含）。TypeScript：`FollowedVariantBasic` 新增 dailySales/estimatedDays/leadTimeDays/alertLevel/alertReason；`getFollowedVariantsBasic()` 升级动态告警规则（estimatedDays < leadTimeDays→critical「可售天数低于补货周期」优先，quantity < safetyStock→warning「低于安全线」，未匹配+数据缺失→unknown「数据不足」，其余→normal）；排序 critical→warning→normal/unknown，同级 estimatedDays asc（null 最后）→quantity asc。Dashboard 表格新增日销/可售天数/补货周期三列 + 状态 badge（critical 红/ warning 琥珀/ normal 绿/ unknown 灰）。告警摘要按 alertReason 展示。1006/1006 TS 测试（35 文件），lint 0 errors / 24 warnings（all pre-existing），build pass，Python compileall pass。）
 
 ## Awaiting Review — P5-SY12 等待 Codex 独立复核
 
@@ -111,6 +112,7 @@ P5-SY11G-RUNTIME 修复内容（2026-06-25）：
 | Supabase 项目 | `hzlhqyditalumhnxbaim.supabase.co`（Singapore） |
 | 数据表 | 13 张（role, profiles, warehouse, product, product_variant, inventory, shipment, shipment_item, tracking_event, sync_log, sync_run, sync_warehouse_lock, user_variant_preference） |
 | RLS | 46 条策略，全部启用 |
+| 新字段（00014 未执行） | inventory.daily_sales / inventory.estimated_days / warehouse.lead_time_days + RPC sync_warehouse_inventory 扩展（需手动执行） |
 | 函数 | `get_user_role` / `handle_new_user` / `update_updated_at_column` / `create_shipment_transactional` / `batch_match_variants` / `sync_warehouse_inventory` / `claim_sync_run` / `claim_sync_run_system` / `release_sync_run` / `heartbeat_sync_run` / `cleanup_expired_sync_runs` / `get_sync_runs` / `get_sync_run_detail` / `trg_sync_warehouse_lock_insert` |
 | 触发器 | 5 个 updated_at + 1 个 on_auth_user_created |
 | Seed 数据 | 2 角色（admin/operator）+ 6 仓库（CN/TH/ID/MY/PH/VN） |
@@ -194,6 +196,7 @@ P5-SY11G-RUNTIME 修复内容（2026-06-25）：
 
 | 日期 | 变更 |
 |---|---|
+| 2026-06-26 | **P5-SY12C DONE。Dashboard 关注产品动态从阶段 B 临时 safety_stock 告警升级为阶段 C 动态告警。** Migration 00014：inventory 新增 daily_sales/estimated_days + warehouse 新增 lead_time_days + RPC sync_warehouse_inventory 扩展写入。Python plan_generator/executor 透传校验。FollowedVariantBasic 新增 5 字段，getFollowedVariantsBasic 动态告警规则 + 多级排序。Dashboard 表格新增日销/可售天数/补货周期三列 + alertLevel 状态 badge。1006/1006 TS 测试，lint 0 errors，build pass，Python compileall pass。Migration 00014 需用户在 Supabase SQL Editor 手动执行。|
 | 2026-06-25 | **P5-SY11G 返工 DONE。4 项阻塞修复：(1) inventory repo getOverseasList/getLowStock 过滤改用 row.variant_id（variant join select 不含 id，v.id 始终 undefined 导致所有行被过滤）；(2) variants repo list() 归档过滤从 JS 后置改为 DB 层 notIn/in 在分页前完成，total 准确；(3) archive/restore 先查询已有偏好再操作，返回实际新增/恢复数；(4) list() active tab 改用 query.notIn() 替代 query.not('id','in',...)，not() 期望 PostgREST 原始语法 `(id1,id2)` 而 JS 数组直接字符串化无括号导致过滤失效。补 5 项行为测试（含 notIn URL 生成 not.in.(...) 括号语法 vs .not() 无括号对比）。质量门：896/896 TS（30 文件），lint 0 errors/24 warnings（pre-existing），build pass。Python：315 passed + 5 collection errors（pre-existing）。WEBSYNC_REAL_WRITE_ENABLED=false。** |
 | 2026-06-25 | **P5-SY11-REWORK DONE。语义返工完成：归档从全局 product_variant.is_archived 迁移为用户级 user_variant_preference。Migration 00012 新建表 + RLS；operator_select_variant 移除 is_archived 全局过滤。variantRepository 全部改用 user_variant_preference；archiveVariants/restoreVariants 改为 requireActiveAuth；Inventory 层按当前用户偏好过滤；UI 所有用户可归档/恢复。869/869 TS 测试 pass，lint 0 errors，build pass。is_archived 列保留为遗留列。** |
 | 2026-06-24 | **P5-SY9J 生产启用受控验证通过。P5-SY9 全子任务（A~J）DONE。** WEBSYNC_REAL_WRITE_ENABLED=true 已在 .env.local 启用。受控验证：PH 仓 Web Dry Run（104 行 → 6 新 + 80 更新 + 18 未变）→ 审核通过 → Real Write 成功（sync_log status=success，new_variants_count=6，库存验证通过）。修复 web_bridge.py execute_plan_v2 签名不匹配。已知小问题：RPC summary 返回全零（仅显示，sync_log 正确）。 |

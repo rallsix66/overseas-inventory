@@ -18,6 +18,7 @@ P5-SY4C (execute_plan_v2):
   - P5-SY3B 写 sync_log（仅 P5-SY4C 写入）
 """
 import json
+import math
 import os
 import urllib.request
 import urllib.error
@@ -815,8 +816,48 @@ def _build_rpc_payload(plan: dict, last_sync_at: str) -> tuple:
             )
         return raw_qty
 
-    def _add_inventory_item(sku: str, country: str, qty: int):
-        """添加一条 Inventory 条目，含重复业务键检测。"""
+    def _validate_alert_field(raw_value, field_name: str, sku: str, category: str):
+        """校验 daily_sales / estimated_days 字段。
+
+        P5-SY12C 规则：
+        - None / float('nan') / '-' / '' → 返回 None（写入 NULL）
+        - math.isnan / math.isinf → 抛错（禁止非有限值）
+        - 有效有限 float 或 int → 返回 float 或 int 值
+
+        注意：bool 是 int 子类，True/False 会被 type is int 捕获，
+        但 here raw_value 来自 scraper 的 float_or_none，不会是 bool。
+        """
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, str):
+            stripped = raw_value.strip()
+            if stripped == '' or stripped == '-':
+                return None
+            raise RuntimeError(
+                f'{field_name} 不能为字符串: sku={sku}, category={category}, 值={raw_value!r}'
+            )
+        if isinstance(raw_value, float):
+            if math.isnan(raw_value):
+                raise RuntimeError(
+                    f'{field_name} 不能为 NaN: sku={sku}, category={category}'
+                )
+            if math.isinf(raw_value):
+                raise RuntimeError(
+                    f'{field_name} 不能为 Infinity: sku={sku}, category={category}, 值={raw_value}'
+                )
+            return raw_value
+        if isinstance(raw_value, int):
+            return float(raw_value)
+        raise RuntimeError(
+            f'{field_name} 类型非法（期望 float/int/None/str）: '
+            f'sku={sku}, category={category}, type={type(raw_value).__name__}, 值={raw_value!r}'
+        )
+
+    def _add_inventory_item(sku: str, country: str, qty: int,
+                            daily_sales=None, estimated_days=None):
+        """添加一条 Inventory 条目，含重复业务键检测。
+        daily_sales/estimated_days 可选：有效有限值或 None（不发送或 JSON null）。
+        """
         nonlocal p_inventory, seen_inv_keys
         key = (sku, country)
         if key in seen_inv_keys:
@@ -825,12 +866,17 @@ def _build_rpc_payload(plan: dict, last_sync_at: str) -> tuple:
                 f'sku={sku}, country={country}'
             )
         seen_inv_keys.add(key)
-        p_inventory.append({
+        entry = {
             'sku': sku,
             'country': country,
             'quantity': qty,
             'last_sync_at': last_sync_at,
-        })
+        }
+        if daily_sales is not None:
+            entry['daily_sales'] = daily_sales
+        if estimated_days is not None:
+            entry['estimated_days'] = estimated_days
+        p_inventory.append(entry)
 
     # 处理 updates / inserts / after_create（使用 new_quantity 字段）
     for cat_name, cat_items in [
@@ -855,7 +901,16 @@ def _build_rpc_payload(plan: dict, last_sync_at: str) -> tuple:
             country = country.strip()
             raw_qty = item.get('new_quantity')
             qty = _validate_quantity(raw_qty, sku, cat_name)
-            _add_inventory_item(sku, country, qty)
+
+            # P5-SY12C: 校验并透传 daily_sales / estimated_days
+            ds = _validate_alert_field(
+                item.get('daily_sales'), 'daily_sales', sku, cat_name
+            )
+            ed = _validate_alert_field(
+                item.get('estimated_days'), 'estimated_days', sku, cat_name
+            )
+
+            _add_inventory_item(sku, country, qty, ds, ed)
 
     # 处理 unchanged（使用 quantity 字段）
     for item in unchanged:
@@ -873,7 +928,16 @@ def _build_rpc_payload(plan: dict, last_sync_at: str) -> tuple:
         country = country.strip()
         raw_qty = item.get('quantity')
         qty = _validate_quantity(raw_qty, sku, 'inventory_unchanged')
-        _add_inventory_item(sku, country, qty)
+
+        # P5-SY12C: 校验并透传 daily_sales / estimated_days
+        ds = _validate_alert_field(
+            item.get('daily_sales'), 'daily_sales', sku, 'inventory_unchanged'
+        )
+        ed = _validate_alert_field(
+            item.get('estimated_days'), 'estimated_days', sku, 'inventory_unchanged'
+        )
+
+        _add_inventory_item(sku, country, qty, ds, ed)
 
     if not p_inventory:
         raise RuntimeError(

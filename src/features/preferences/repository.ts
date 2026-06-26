@@ -173,16 +173,19 @@ export const preferencesRepository = {
   // ─── Dashboard 查询 ─────────────────────────────────────────────────
 
   /**
-   * 获取当前用户关注 Variant 的基础库存视图（阶段 B）。
+   * 获取当前用户关注 Variant 的库存视图（阶段 C — 动态告警）。
    *
-   * 阶段 B 临时告警：quantity < product.safety_stock（非动态告警）。
-   * 阶段 C 升级为动态告警（est_days < lead_time_days）。
+   * 阶段 C 动态告警规则：
+   *   critical: estimatedDays != null && leadTimeDays != null && estimatedDays < leadTimeDays
+   *   warning:  isUnmatched === false && quantity < safetyStock
+   *   两者同时满足 → critical 优先
+   *   unknown:  isUnmatched && (dailySales == null || estimatedDays == null)
+   *   其余 → normal
+   *
+   * 排序：critical → warning → normal/unknown，同级内 estimatedDays asc（null 最后），quantity asc
    *
    * 查询失败时抛出 PreferenceError（不静默返回 []）。
    * 仅当用户确实没有关注任何 Variant 时才返回 []。
-   *
-   * 注意：关注区显示所有 favorited 的 variant（不排除同时 archived 的），
-   * 因为关注是用户主动选择的高亮视图，归档只是列表视图偏好。
    */
   async getFollowedVariantsBasic(userId: string): Promise<FollowedVariantBasic[]> {
     if (!validateUUID(userId)) return [];
@@ -194,15 +197,13 @@ export const preferencesRepository = {
     if (favoritedVariantIds.size === 0) return [];
 
     // 步骤 2：从 inventory 正向查询这些 variant 的库存行（join variant/product/warehouse）
-    // 使用与 getOverseasList 一致的查询模式：mutable chain + eq + order
-    // 关注区显示所有 favorited variant（不排除同时 archived 的）
-    // warehouse.type = 'overseas' 过滤与 getOverseasList 保持一致
+    // P5-SY12C: 新增 daily_sales, estimated_days, lead_time_days
     const query = supabase
       .from('inventory')
       .select(
-        `id, variant_id, warehouse_id, quantity, last_sync_at,
+        `id, variant_id, warehouse_id, quantity, daily_sales, estimated_days, last_sync_at,
          variant:variant_id!inner (id, sku, match_status, country, product:product_id (id, name, code, safety_stock)),
-         warehouse:warehouse_id!inner (id, name, country, type)`
+         warehouse:warehouse_id!inner (id, name, country, type, lead_time_days)`
       )
       .in('variant_id', [...favoritedVariantIds])
       .eq('warehouse.type', 'overseas')
@@ -214,7 +215,7 @@ export const preferencesRepository = {
       throw new PreferenceError('DB_ERROR', `查询关注列表失败: ${error.message}`);
     }
 
-    // 用户有 favorited 但 inventory 查询返回空 → 诊断错误（不静默伪装成"暂无关注产品"）
+    // 用户有 favorited 但 inventory 查询返回空 → 诊断错误
     if (!data || data.length === 0) {
       throw new PreferenceError(
         'EMPTY_RESULT',
@@ -222,21 +223,55 @@ export const preferencesRepository = {
       );
     }
 
+    const ALERT_ORDER: Record<string, number> = {
+      critical: 0,
+      warning: 1,
+      unknown: 2,
+      normal: 2,
+    };
+
     const results: FollowedVariantBasic[] = [];
     for (const row of data as unknown[]) {
       const r = row as Record<string, unknown>;
       const variant = unwrapJoin<{ id: string; sku: string; match_status: string; country: string; product: unknown }>(r.variant);
       if (!variant) continue;
       const product = unwrapJoin<{ id: string; name: string; code: string; safety_stock: number } | null>(variant.product);
-      const wh = unwrapJoin<{ id: string; name: string; country: string; type: string }>(r.warehouse);
+      const wh = unwrapJoin<{ id: string; name: string; country: string; type: string; lead_time_days: number | null }>(r.warehouse);
 
-      // product 为空时使用 variant.sku fallback，不丢弃关注项
       const productName = product?.name ?? variant.sku ?? '未匹配产品';
       const productCode = product?.code ?? variant.sku ?? '';
       const safetyStock = product?.safety_stock ?? 0;
       const qty = (r.quantity as number) ?? 0;
-      // 仅 product 存在时才按阶段 B 规则判断低库存；未匹配 SKU 不误判为低库存
-      const isLow = product ? qty < safetyStock : false;
+      const dailySales = (r.daily_sales as number | null) ?? null;
+      const estimatedDays = (r.estimated_days as number | null) ?? null;
+      const leadTimeDays = wh?.lead_time_days ?? null;
+
+      // ─── 阶段 C 动态告警计算 ──────────────────────────────────────
+      let alertLevel: FollowedVariantBasic['alertLevel'] = 'normal';
+      let alertReason: string | null = null;
+
+      const isCritical =
+        estimatedDays != null &&
+        leadTimeDays != null &&
+        estimatedDays < leadTimeDays;
+      const isLowStock = product ? qty < safetyStock : false;
+      const isDataInsufficient =
+        !product &&
+        (dailySales == null || estimatedDays == null);
+
+      if (isCritical) {
+        alertLevel = 'critical';
+        alertReason = `可售天数(${estimatedDays})低于补货周期(${leadTimeDays}天)`;
+      } else if (isLowStock) {
+        alertLevel = 'warning';
+        alertReason = `低于安全线 ${safetyStock}`;
+      } else if (isDataInsufficient) {
+        alertLevel = 'unknown';
+        alertReason = '数据不足';
+      } else {
+        alertLevel = 'normal';
+        alertReason = null;
+      }
 
       results.push({
         variantId: variant.id,
@@ -250,12 +285,15 @@ export const preferencesRepository = {
         warehouseName: wh?.name ?? '未知仓库',
         quantity: qty,
         safetyStock,
-        isLowStock: isLow,
-        alertReason: isLow ? `低于安全线 ${safetyStock}` : null,
+        dailySales,
+        estimatedDays,
+        leadTimeDays,
+        alertLevel,
+        alertReason,
       });
     }
 
-    // 防御：inventory 返回了行但全部被跳过（理论上不应发生，但保留诊断）
+    // 防御：inventory 返回了行但全部被跳过
     if (results.length === 0) {
       throw new PreferenceError(
         'EMPTY_RESULT',
@@ -263,8 +301,22 @@ export const preferencesRepository = {
       );
     }
 
-    // 低库存行置顶
-    results.sort((a, b) => Number(b.isLowStock) - Number(a.isLowStock));
+    // 排序：critical → warning → normal/unknown，同级 estimatedDays asc（null 最后），quantity asc
+    results.sort((a, b) => {
+      const orderA = ALERT_ORDER[a.alertLevel];
+      const orderB = ALERT_ORDER[b.alertLevel];
+      if (orderA !== orderB) return orderA - orderB;
+
+      // 同级内 estimatedDays 升序，null 排最后
+      const edA = a.estimatedDays;
+      const edB = b.estimatedDays;
+      if (edA == null && edB == null) return a.quantity - b.quantity;
+      if (edA == null) return 1;
+      if (edB == null) return -1;
+      if (edA !== edB) return edA - edB;
+
+      return a.quantity - b.quantity;
+    });
     return results;
   },
 
