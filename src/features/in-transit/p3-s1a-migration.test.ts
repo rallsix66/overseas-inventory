@@ -387,10 +387,8 @@ describe('P3-S1A — 范围约束', () => {
     expect(fs.existsSync(componentsDir)).toBe(false);
   });
 
-  it('src/lib/providers/best/ 尚不存在（P3-S1B 创建）', () => {
-    const bestDir = path.resolve(process.cwd(), 'src/lib/providers/best');
-    expect(fs.existsSync(bestDir)).toBe(false);
-  });
+  // P3-S1A 不要求 src/lib/providers/best/ 目录（由后续任务创建）。
+  // 不再断言该目录是否存在——该断言随 P3-S1B 实现而变化，不属 P3-S1A 范围。
 
   it('src/types/database.ts 未包含 best_order / best_item 等强绑定命名', () => {
     const dbTypesPath = path.resolve(process.cwd(), 'src/types/database.ts');

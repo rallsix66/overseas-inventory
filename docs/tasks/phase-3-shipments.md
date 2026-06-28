@@ -30,8 +30,8 @@
 
 | Task ID | 任务 | 依赖 | 状态 | 停止条件 |
 |---|---|---|---|---|
-| **P3-S1A** | 百世只读在途同步边界与数据模型 | — | **DONE (2026-06-26)** | Migration 00017 新建 `shipment_external_ref` / `shipment_external_item` / `tracking_event_external`（路径 B：新建外部轨迹表）+ 类型/Zod/database.ts 已同步 + 64 静态契约测试通过 + 1263/1263 非并发测试通过 + lint 0 errors + build 通过。Migration 待用户在 Supabase SQL Editor 手动执行。未创建 API Client / Repository / Server Action / UI / 库存联动。下一步：P3-S1B。 |
-| **P3-S1B** | 百世 API Client、签名与 Dry Run 拉取 | P3-S1A | BLOCKED | 百世签名通过 + `queryOrderInfoByOrderNo` / 物流轨迹查询 Dry Run 成功 + 测试不含真实凭证 + 不写 DIS 数据库 |
+| **P3-S1A** | 百世只读在途同步边界与数据模型 | — | **DONE (2026-06-26)** | Migration 00017 新建 `shipment_external_ref` / `shipment_external_item` / `tracking_event_external`（路径 B：新建外部轨迹表）+ 类型/Zod/database.ts 已同步 + 64 静态契约测试通过 + 1263/1263 非并发测试通过 + lint 0 errors + build 通过。2026-06-28 用户确认 Migration 00017 已在 Supabase SQL Editor 成功执行。未创建 API Client / Repository / Server Action / UI / 库存联动。 |
+| **P3-S1B** | 百世 API Client、签名与 Dry Run 拉取 | P3-S1A | **REWORK (2026-06-28)** | `src/lib/providers/best/` 模块已完成（types.ts / signature.ts / schema.ts / parse-response.ts / client.ts / dry-run.ts / index.ts + 3 测试文件 74 项测试）。独立验收未通过，7 项返工已修复：Zod 校验 + 超时 finally + 错误传播 + 签名固定断言 + 测试维护。API 协议标记 SPECULATIVE。1336/1336 测试通过，lint 0 errors，build 通过。真实 Dry Run 待用户提供百世官方 API 文档和 BEST_OPEN_* 凭证。 |
 | **P3-S1C** | 百世只读数据写入 DIS 外部在途表 | P3-S1B | BLOCKED | Dry Run 结果幂等写入 external ref / item / tracking event + 同 provider+external_order_no 不重复 + 未匹配商品保留未匹配状态 + 不更新 inventory |
 | **P3-S1D** | 外部商品到 ProductVariant 的人工匹配基础 | P3-S1C | BLOCKED | `shipment_external_item.matched_variant_id` 可读写 + Admin/Operator 可匹配/解除匹配 + 不自动匹配 + 不用 SKU 做主键 |
 | **P3-S2** | 在途列表与详情只读页面 | P3-S1D | BLOCKED | 列表展示国家/仓库/外部单号/商品数量/匹配状态/物流状态/最后同步时间 + 详情含商品明细/未匹配提示/轨迹时间线 + 不做新建/状态推进/入仓 |
@@ -173,9 +173,9 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S1A` — 百世只读在途同步边界与数据模型（DONE，2026-06-26）
+**当前任务**：`P3-S1B` — 百世 API Client、签名与 Dry Run 拉取（REWORK，2026-06-28）
 
-`docs/tasks/current-task.md` 包含 P3-S1A 完整任务包。P3-S1A 完成后等待 Codex 独立验收，不自动进入 P3-S1B。
+`docs/tasks/current-task.md` 包含 P3-S1B 完整任务包。P3-S1B 独立验收未通过，修复后等待重新验收，不自动进入 P3-S1C。API 协议标记 SPECULATIVE，真实 Dry Run 待百世官方文档和凭证确认。
 
 ## 与现有代码的关系
 
