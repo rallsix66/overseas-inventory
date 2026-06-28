@@ -70,3 +70,19 @@ export interface CreateShipmentData {
   note?: string;
   items: { variantId: string; quantity: number }[];
 }
+
+/** P3-S3: Variant 选择器条目 */
+export interface VariantSelectorItem {
+  id: string;
+  sku: string;
+  name: string;
+  productName: string | null;
+  country: string;
+}
+
+/** P3-S3: 仓库选择器条目 */
+export interface WarehouseSelectorItem {
+  id: string;
+  name: string;
+  country: string;
+}

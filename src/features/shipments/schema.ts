@@ -1,6 +1,15 @@
 // 物流模块 Zod 校验 schema
 import { z } from 'zod';
 
+const YMD_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+function isValidDate(ymd: string): boolean {
+  if (!YMD_RE.test(ymd)) return false;
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /** 新建在途主单 */
 export const createShipmentSchema = z.object({
   vesselName: z.string().max(200).optional(),
@@ -10,8 +19,13 @@ export const createShipmentSchema = z.object({
   country: z.enum(['TH', 'ID', 'MY', 'PH', 'VN', 'CN'], {
     error: '请选择目的国',
   }),
-  warehouseId: z.string().uuid().optional(),
-  estimatedArrival: z.string().optional(),
+  warehouseId: z.string().uuid('无效的仓库 ID').optional(),
+  estimatedArrival: z
+    .string()
+    .optional()
+    .refine((val) => !val || isValidDate(val), {
+      message: '预计到仓日期不合法',
+    }),
   note: z.string().max(500).optional(),
   items: z
     .array(
@@ -20,10 +34,26 @@ export const createShipmentSchema = z.object({
         quantity: z.number().int('数量必须为整数').min(1, '数量最少为 1'),
       })
     )
-    .min(1, '至少添加一个产品'),
+    .min(1, '至少添加一个产品')
+    .max(50, '最多添加 50 个产品')
+    .refine(
+      (items) => {
+        const ids = items.map((i) => i.variantId);
+        return new Set(ids).size === ids.length;
+      },
+      { message: '产品明细中存在重复 SKU' },
+    ),
 });
 
 export type CreateShipmentValues = z.infer<typeof createShipmentSchema>;
+
+/** Variant 搜索参数 */
+export const searchVariantsSchema = z.object({
+  country: z.enum(['TH', 'ID', 'MY', 'PH', 'VN', 'CN'], {
+    error: '请选择目的国',
+  }),
+  search: z.string().trim().max(100).optional(),
+});
 
 /** 物流状态推进 */
 export const advanceStatusSchema = z.object({

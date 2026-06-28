@@ -31,11 +31,11 @@
 | Task ID | 任务 | 依赖 | 状态 | 停止条件 |
 |---|---|---|---|---|
 | **P3-S1A** | 百世只读在途同步边界与数据模型 | — | **DONE (2026-06-26)** | Migration 00017 新建 `shipment_external_ref` / `shipment_external_item` / `tracking_event_external`（路径 B：新建外部轨迹表）+ 类型/Zod/database.ts 已同步 + 64 静态契约测试通过 + 1263/1263 非并发测试通过 + lint 0 errors + build 通过。2026-06-28 用户确认 Migration 00017 已在 Supabase SQL Editor 成功执行。未创建 API Client / Repository / Server Action / UI / 库存联动。 |
-| **P3-S1B** | 百世 API Client、签名与 Dry Run 拉取 | P3-S1A | **REWORK (2026-06-28)** | `src/lib/providers/best/` 模块已完成（types.ts / signature.ts / schema.ts / parse-response.ts / client.ts / dry-run.ts / index.ts + 3 测试文件 74 项测试）。独立验收未通过，7 项返工已修复：Zod 校验 + 超时 finally + 错误传播 + 签名固定断言 + 测试维护。API 协议标记 SPECULATIVE。1336/1336 测试通过，lint 0 errors，build 通过。真实 Dry Run 待用户提供百世官方 API 文档和 BEST_OPEN_* 凭证。 |
+| **P3-S1B** | 百世 API Client、签名与 Dry Run 拉取 | P3-S1A | **CODE COMPLETE / BLOCKED_EXTERNAL (2026-06-28)** | `src/lib/providers/best/` 模块完成（types.ts / signature.ts / schema.ts / parse-response.ts / client.ts / dry-run.ts / index.ts + 3 测试文件）。MD5 签名、API Client、queryOrderInfoByOrderNo / 物流轨迹查询、Dry Run 入口全部就绪。本地测试（fake credentials + mock fetch）全部通过。真实 Dry Run 返回"未授权"：当前 partnerId 尚未获得 queryOrderInfoByOrderNo / trackingQuery 接口权限。代码和测试已保留。恢复条件：百世确认 partnerId 已授权两个只读接口后，重新执行 `npm run test:best-live`。不进入 P3-S1C。 |
 | **P3-S1C** | 百世只读数据写入 DIS 外部在途表 | P3-S1B | BLOCKED | Dry Run 结果幂等写入 external ref / item / tracking event + 同 provider+external_order_no 不重复 + 未匹配商品保留未匹配状态 + 不更新 inventory |
 | **P3-S1D** | 外部商品到 ProductVariant 的人工匹配基础 | P3-S1C | BLOCKED | `shipment_external_item.matched_variant_id` 可读写 + Admin/Operator 可匹配/解除匹配 + 不自动匹配 + 不用 SKU 做主键 |
 | **P3-S2** | 在途列表与详情只读页面 | P3-S1D | BLOCKED | 列表展示国家/仓库/外部单号/商品数量/匹配状态/物流状态/最后同步时间 + 详情含商品明细/未匹配提示/轨迹时间线 + 不做新建/状态推进/入仓 |
-| **P3-S3** | 手动创建/补录在途记录 | P3-S1A | BLOCKED | 手动创建 shipment + shipment_item（无 API 数据源或人工补录）+ 与百世同步分开 + 不与 P3-S2 合并 |
+| **P3-S3** | 手动创建/补录在途记录 | P3-S1A | **DONE (2026-06-28)** | Codex 独立验收通过。目标测试 96/96，全量 1439/1439（44 文件），lint 0 errors / 26 warnings，build pass。`/dashboard/shipments/new` 表单就绪 + `requireActiveAuth()` + 仓库数据一致性校验 + `warehouseAccessRepository.canAccessWarehouse()` + Variant 服务端校验 + `create_shipment_transactional` RPC（Migration 00005）+ 服务端 Variant 搜索（所有查询 error 检查 + notIn 在 limit 前 + LIKE 转义 \\/%/\_ + ilike 真实参数断言 + 真实 Server Action 链路）。未实现列表/详情/状态推进/入仓/库存联动。 |
 | **P3-S4** | 状态推进与物流轨迹映射 | P3-S2、P3-S3 | BLOCKED | DIS 六态可推进 + 百世状态保守映射 + 未识别状态只记录 tracking_event 不自动推进 shipment.status + 每次推进产生 tracking_event |
 | **P3-S5** | 入仓事务与库存联动 | P3-S4 | BLOCKED | 仅在用户确认入仓时更新 inventory + shipment_item.warehoused_quantity 与 inventory.quantity 事务化 + 百世同步不自动改库存 |
 | **P3-S6** | 在途模块权限、RLS 与端到端验收 | P3-S5 | BLOCKED | Admin/Operator 权限完整 + 已分配仓库隔离 + Server Action/Repository/RLS 链路一致 + 空状态/无权限/错误/加载状态验收 |
@@ -129,12 +129,16 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 ### P3-S3 — 手动创建/补录在途记录
 
 **范围**：
-- 复用现有 `shipment` / `shipment_item` / `tracking_event` 表（Migration 00001/00002）。
-- 手动创建在途记录表单：船名/航次/国家/仓库/产品明细。
-- 与百世只读同步分开（不同数据源，不同 UI 入口）。
+- 复用现有 `shipment` / `shipment_item` / `tracking_event` 表（Migration 00001，既有内部 shipment 基线）。
+- 手动创建在途记录表单：船名/航次/起运港/目的港/国家/仓库/产品明细。
+- `warehouse_id` 非 null 时仓库数据一致性校验（Admin 与 Operator 均需通过）：仓库存在且启用 + `type = 'overseas'` + `warehouse.country` 等于 `shipment.country`。校验失败返回中文错误且不调用创建 RPC。
+- Operator 通过 `warehouseAccessRepository.canAccessWarehouse(user.id, warehouseId)` 校验仓库分配权限；Admin 无分配限制但必须通过仓库数据一致性校验。
+- Server Action 不直接调用 Supabase 或 `get_assigned_warehouse_ids()`，通过 Repository 方法封装。
+- RLS（Migration 00015）作为数据库兜底。
+- 与百世只读同步分开（不同数据表，不同 UI 入口）。
 - 不与 P3-S2 合并（P3-S2 是只读展示，P3-S3 是写入）。
 
-**停止条件**：手动创建在途表单就绪 + 事务性写入（复用 `create_shipment_transactional` RPC）+ 权限校验 + 与百世同步 UI 入口分离。
+**停止条件**：手动创建在途表单就绪 + 事务性写入（复用 `create_shipment_transactional` RPC Migration 00005，9 参数、SECURITY INVOKER、auth.uid()）+ Admin/Operator 权限校验（Operator 仅已分配仓库）+ 仓库数据一致性校验（存在/启用/类型/国家一致）+ 与百世同步 UI 入口分离。
 
 ### P3-S4 — 状态推进与物流轨迹映射
 
@@ -173,9 +177,13 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S1B` — 百世 API Client、签名与 Dry Run 拉取（REWORK，2026-06-28）
+**当前任务**：`P3-S3` — 手动创建/补录在途记录（**DONE**，2026-06-28，Codex 独立验收通过）
 
-`docs/tasks/current-task.md` 包含 P3-S1B 完整任务包。P3-S1B 独立验收未通过，修复后等待重新验收，不自动进入 P3-S1C。API 协议标记 SPECULATIVE，真实 Dry Run 待百世官方文档和凭证确认。
+**P3-S1B 状态**：CODE COMPLETE / BLOCKED_EXTERNAL（2026-06-28）。百世 API Client、签名与 Dry Run 代码全部就绪，本地测试通过。阻塞原因：百世账号 API 权限尚未开通（真实 Dry Run 返回"未授权"）。恢复条件：百世确认 partnerId 已授权 queryOrderInfoByOrderNo / trackingQuery 两个只读接口后，重新执行 `npm run test:best-live`。代码和测试已保留，不删除，不进入 P3-S1C。
+
+**P3-S3 最终验收通过**：目标测试 96/96，全量 1439/1439（44 文件），lint 0 errors / 26 warnings，build pass，git diff --check pass。Repository 错误传播、LIKE 实际参数、真实 Server Action 链路均已验证。
+
+**下一步**：Phase 3 等待百世 API 授权，或等待用户明确批准调整 P3-S2 依赖/拆分内部手动在途只读页面。P3-S2（依赖 P3-S1D，BLOCKED）/ P3-S4（依赖 P3-S2 + P3-S3，BLOCKED）不得直接开始。
 
 ## 与现有代码的关系
 
