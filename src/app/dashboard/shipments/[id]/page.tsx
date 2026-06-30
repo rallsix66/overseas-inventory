@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { ShipmentEditForm } from '@/features/shipments/components/shipment-edit-form';
 import { ShipmentStatusChange } from '@/features/shipments/components/shipment-status-change';
+import { WarehouseShipmentButton } from '@/features/shipments/components/warehouse-shipment-button';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 
@@ -114,7 +115,7 @@ export default async function ShipmentDetailPage({
         </span>
       </div>
 
-      {/* 操作区 — P3-S2E: 仅 Admin */}
+      {/* 操作区 — P3-S2E/P3-S5A: 仅 Admin */}
       {user && isAdmin && !isWarehoused && (
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <ShipmentEditForm
@@ -126,6 +127,25 @@ export default async function ShipmentDetailPage({
             shipmentId={shipment.id}
             currentStatus={shipment.status}
           />
+          {shipment.status === 'customs' && shipment.warehouse_id && (
+            <WarehouseShipmentButton shipmentId={shipment.id} />
+          )}
+        </div>
+      )}
+
+      {/* P3-S5A: 非 customs 状态但 Admin → 提示不可入仓原因 */}
+      {user && isAdmin && !isWarehoused && shipment.status !== 'customs' && (
+        <div className="mb-5 text-sm text-muted-foreground flex items-center gap-2">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-muted">
+            确认入仓
+          </span>
+          <span>
+            {!shipment.warehouse_id
+              ? '该在途记录未指定仓库，无法入仓'
+              : shipment.status === 'customs'
+                ? ''
+                : `当前状态为「${statusLabel}」，清关后方可确认入仓`}
+          </span>
         </div>
       )}
 

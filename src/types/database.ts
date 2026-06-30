@@ -619,6 +619,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      warehouse_shipment_transactional: {
+        Args: {
+          p_shipment_id: string
+          p_description: string | null
+        }
+        Returns: boolean
+      }
       claim_sync_run: {
         Args: {
           p_warehouse_id: string

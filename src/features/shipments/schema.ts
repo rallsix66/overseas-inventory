@@ -143,3 +143,11 @@ export const inTransitDetailsSchema = z.object({
   variantId: z.string().uuid('无效的 SKU ID'),
   warehouseId: z.string().uuid('无效的仓库 ID'),
 });
+
+/** P3-S5A: 确认入仓 — 仅 Admin + customs 状态可用 */
+export const warehouseShipmentSchema = z.object({
+  shipmentId: z.string().uuid('无效的在途记录 ID'),
+  description: z.string().max(500, '备注最长 500 个字符').optional(),
+});
+
+export type WarehouseShipmentValues = z.infer<typeof warehouseShipmentSchema>;

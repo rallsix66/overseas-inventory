@@ -837,6 +837,35 @@ export const shipmentRepository = {
     }
   },
 
+  /** P3-S5A: 确认入仓 — 事务性完成：
+   *  1. shipment.status → 'warehoused'
+   *  2. shipment_item.warehoused_quantity → quantity
+   *  3. inventory.quantity 增加对应数量
+   *  4. tracking_event 插入 warehoused 轨迹
+   *  调用 warehouse_shipment_transactional RPC（Migration 00023）
+   *  仅 Admin 可调用；仅 customs 状态允许入仓；禁止重复入仓；
+   *  必须有 warehouse_id；并发安全（FOR UPDATE 行锁） */
+  async warehouseShipment(
+    shipmentId: string,
+    _userId: string,
+    description?: string,
+  ): Promise<boolean> {
+    const supabase = await createClient();
+
+    const { error } = await supabase.rpc('warehouse_shipment_transactional', {
+      p_shipment_id: shipmentId,
+      p_description: description ?? null,
+    });
+
+    if (error) {
+      throw new ShipmentError(
+        error.message || '确认入仓失败',
+        'DB_ERROR',
+      );
+    }
+    return true;
+  },
+
   /** 批量验证 variant 对 shipment 的合法性：存在（RLS 可见）、国家一致
    *  不读取 product_variant.is_archived；归档是用户个人偏好，不阻止创建 */
   async validateVariantsForShipment(

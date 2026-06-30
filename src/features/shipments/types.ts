@@ -151,6 +151,12 @@ export interface WarehouseSelectorItem {
   country: string;
 }
 
+/** P3-S5A: 确认入仓参数 */
+export interface WarehouseShipmentData {
+  shipmentId: string;
+  description?: string;
+}
+
 /** P3-S2E: 海外库存行展开 — 内部在途明细项 */
 export interface InTransitDetailItem {
   shipmentId: string;
