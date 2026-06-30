@@ -36,7 +36,7 @@
 | **P3-S1D** | 外部商品到 ProductVariant 的人工匹配基础 | P3-S1C | BLOCKED | `shipment_external_item.matched_variant_id` 可读写 + Admin/Operator 可匹配/解除匹配 + 不自动匹配 + 不用 SKU 做主键 |
 | **P3-S2C** | 库存视图接入内部手动在途只读聚合 | P3-S2B | **DONE (2026-06-30)** | `shipmentRepository.getInTransitByVariant()` 按 variant_id 聚合在途数量（`quantity - warehoused_quantity`），排除 warehoused，Admin/Operator 仓库隔离。海外库存页新增"在途"/"库存+在途"列 + 在途统计卡片。Dashboard 关注产品动态新增"在途"列。Dashboard 在途库存卡片从占位替换为真实数据。14 项 repository 行为测试。1541/1541 测试（46 文件），lint 0/26，build pass。不新增 Migration。 |
 | **P3-S2D** | 在途库存聚合精确到仓库 | P3-S2C | **DONE (2026-06-30)** | `shipmentRepository.getInTransitByVariantAndWarehouse()` 按 (variant_id, warehouse_id) 聚合在途数量。海外库存页每行 inTransitQuantity 精确匹配 variantId + warehouseId（防串仓）。Dashboard 保持 variant 总在途。16 项 repository 行为测试含跨仓隔离验证。1558/1558 测试（47 文件），lint 0 errors / 27 warnings，build pass。不新增 Migration。 |
-| **P3-S2E** | 在途入口收口 + 采购单号 + 海外库存轻量展开 | P3-S2D、P3-S3 | **DONE (2026-06-30)** | Migration 00020（`purchase_order_no` + `create_shipment_transactional` 11 参数 admin-only + `RETURNING id`）+ Migration 00021（`change_shipment_status_transactional` admin-only 覆盖）。采购单号全链路：types → Zod → Repository → Actions → UI。海外库存行展开：`InTransitDetailRow` 按 (variantId, warehouseId) 查询在途明细，不串仓。入口收口：侧边栏移除"在途库存"，`/dashboard/inventory/in-transit` → redirect。权限收紧：Server Action + RPC 双层 Admin-only。44 项 P3-S2E 测试（17 repository 行为 + 27 action/Zod/源码/Migration）。全量 1603/1604 测试（49 文件），lint 0 errors / 26 warnings，build pass。 |
+| **P3-S2E** | 在途入口收口 + 采购单号 + 海外库存轻量展开 | P3-S2D、P3-S3 | **DONE (2026-06-30)** | Migration 00020（`purchase_order_no` + `create_shipment_transactional` 11 参数 admin-only + `RETURNING id`）+ Migration 00021（`change_shipment_status_transactional` admin-only 覆盖）。采购单号全链路：types → Zod → Repository → Actions → UI。海外库存行展开：`InTransitDetailRow` 按 (variantId, warehouseId) 查询在途明细，不串仓。入口收口：侧边栏移除"在途库存"，`/dashboard/inventory/in-transit` → redirect。权限收紧：Server Action + RPC 双层 Admin-only。Supabase 生产库已验证 `purchase_order_no` 字段存在，两个 RPC 均为 Admin-only。44 项 P3-S2E 测试（17 repository 行为 + 27 action/Zod/源码/Migration）。全量 1603/1603 测试（49 文件），lint 0 errors / 26 warnings，build pass。 |
 | **P3-S2B** | 内部手动在途维护收口（P3-S2A 扩展） | P3-S2A | **DONE → 返工完成 (2026-06-29)** | `/dashboard/shipments` 列表 + `/dashboard/shipments/[id]` 详情 + 编辑基本信息 + 手动状态变更。Migration 00018 新增 `shipment_no` UNIQUE NOT NULL + RPC 10 参数。Migration 00019 新增 `change_shipment_status_transactional` RPC（原子化状态更新 + tracking_event 插入，GET DIAGNOSTICS 行确认）。`update()` 使用 `.select('id').single()` 确认命中 1 行。`changeStatus()` 调用 RPC 替代两阶段分离写入。列表页单号 + 品名聚合列为主标识（移除目的国）。详情页可编辑基本信息和手动推进状态（booking→loading→departed→arrived→customs，禁用 warehoused）。创建表单新增单号必填。Admin/Operator 仓库隔离 + 编辑权限。1526/1527 测试（47 文件），lint 0/26，build pass。不做库存联动。 |
 | **P3-S2A** | 内部手动在途只读页面（P3-S2 子任务） | P3-S3 | **DONE (2026-06-29)** (被 P3-S2B 扩展) | `/dashboard/shipments` 列表 + `/dashboard/shipments/[id]` 详情。仅读内部 `shipment` / `shipment_item` / `tracking_event`，不读外部在途三表。国家/状态筛选、分页、仓库隔离、loading/error/not-found 全覆盖。Range: 不做状态推进/入仓/库存联动。 |
 | **P3-S2** | 在途列表与详情只读页面 | P3-S1D | BLOCKED | 列表展示国家/仓库/外部单号/商品数量/匹配状态/物流状态/最后同步时间 + 详情含商品明细/未匹配提示/轨迹时间线 + 不做新建/状态推进/入仓 |
@@ -183,13 +183,15 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S2D` — 在途库存聚合精确到仓库（**DONE**，2026-06-30）
+**当前任务**：`P3-S2E` — 在途入口收口 + 采购单号 + 海外库存轻量展开（**DONE**，2026-06-30）
 
 **P3-S3 状态**：DONE（2026-06-28，Codex 独立验收通过）
 
 **P3-S1B 状态**：CODE COMPLETE / BLOCKED_EXTERNAL（2026-06-28）。
 
-**P3-S2D 完成**（2026-06-30）：`shipmentRepository.getInTransitByVariantAndWarehouse()` 按 (variant_id, warehouse_id) 聚合在途数量。海外库存页每行 inTransitQuantity 精确匹配 variantId + warehouseId（防串仓）。Dashboard 保持 variant 总在途。16 项测试含跨仓隔离验证。1558/1559 测试（49 文件），lint 0 errors / 27 warnings，build pass。不新增 Migration。
+**P3-S2E 完成**（2026-06-30）：在途入口收口 + 采购单号 + 海外库存轻量展开已完成。Migration 00020 新增 `shipment.purchase_order_no` 并升级 `create_shipment_transactional` 为 11 参数 Admin-only（含 `RETURNING id INTO v_shipment_id`）；Migration 00021 覆盖 `change_shipment_status_transactional` 为 Admin-only。Supabase 生产库已验证 `purchase_order_no` 字段存在，`create_shipment_transactional` / `change_shipment_status_transactional` 均为 Admin-only。海外库存行展开按 (variantId, warehouseId) 查询内部在途明细（单号/采购单号/在途数量/预计到货/详情链接），不串仓。44 项 P3-S2E 测试通过；全量 1603/1603（49 文件），lint 0 errors / 26 warnings，build pass。
+
+**P3-S2D 完成**（2026-06-30）：`shipmentRepository.getInTransitByVariantAndWarehouse()` 按 (variant_id, warehouse_id) 聚合在途数量。海外库存页每行 inTransitQuantity 精确匹配 variantId + warehouseId（防串仓）。Dashboard 保持 variant 总在途。16 项测试含跨仓隔离验证。1558/1558 测试（47 文件），lint 0 errors / 27 warnings，build pass。不新增 Migration。
 
 **P3-S2C 完成**（2026-06-30）：`shipmentRepository.getInTransitByVariant()` 按 variant_id 聚合在途数量（`quantity - warehoused_quantity`），排除 warehoused，Admin/Operator 仓库隔离。海外库存页新增"在途"/"库存+在途"列 + 在途统计卡片。Dashboard 关注产品动态新增"在途"列。Dashboard 在途库存卡片从占位替换为真实数据。14 项测试。1541/1541（46 文件），lint 0/26，build pass。不新增 Migration。
 
