@@ -1,7 +1,7 @@
 'use server';
 
 // 物流模块 Server Actions
-// 运营和管理员都可创建和推进在途记录
+// 管理员维护在途记录；运营只读查看已分配仓库数据
 import { revalidatePath } from 'next/cache';
 import { requireActiveAuth } from '@/lib/auth';
 import { shipmentRepository } from './repository';

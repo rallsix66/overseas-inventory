@@ -43,9 +43,9 @@
 | **P3-S3** | 手动创建/补录在途记录 | P3-S1A | **DONE (2026-06-28)** | Codex 独立验收通过。目标测试 96/96，全量 1439/1439（44 文件），lint 0 errors / 26 warnings，build pass。`/dashboard/shipments/new` 表单就绪 + `requireActiveAuth()` + 仓库数据一致性校验 + `warehouseAccessRepository.canAccessWarehouse()` + Variant 服务端校验 + `create_shipment_transactional` RPC（Migration 00005）+ 服务端 Variant 搜索（所有查询 error 检查 + notIn 在 limit 前 + LIKE 转义 \\/%/\_ + ilike 真实参数断言 + 真实 Server Action 链路）。未实现列表/详情/状态推进/入仓/库存联动。 |
 | **P3-S4A** | 内部手动在途状态轨迹收口（含返工） | P3-S2E、P3-S3 | **DONE (2026-06-30)** | Migration 00022：RPC SELECT 当前状态 → 校验流转规则（booking→loading→departed→arrived→customs，禁止倒退/跳步/warehoused）→ UPDATE + INSERT。`SHIPMENT_STATUS_FLOW` + `isValidStatusTransition()` + `getNextValidStatus()` 纯函数。Repository `changeStatus()` 预读 status 校验 + `advanceStatus()` 委托 `changeStatus()` → RPC（不再直接 `from('shipment').update` + `from('tracking_event').insert`）+ `getById()` tracking_event join profiles 升序 + `TrackingEventDetail` 含 creatorName。Actions `advanceShipmentStatus()` Admin-only + 使用 `parsed.data.*`。`ShipmentStatusChange` 仅展示下一合法状态。详情页轨迹升序时间线 + 创建人 + 首个节点蓝色高亮。79 项 P3-S4A 源码检查 + 7 项追加行为测试。1688/1688 测试（50 文件），lint 0/25，build pass。Migration 00022 已手动执行并验证。不做百世映射/入仓联动。 |
 | **P3-S4** | 状态推进与物流轨迹映射（百世路径） | P3-S2、P3-S3 | BLOCKED | 百世状态保守映射 + 未识别状态只记录 tracking_event 不自动推进 shipment.status（P3-S4A 已将内部状态流转收口；百世映射待 P3-S1B 解除阻塞后实施） |
-| **P3-S5A** | 手动确认入仓事务与库存联动（含返工） | P3-S4A | **DONE (2026-06-30)** + **返工完成 (2026-06-30)** | Migration 00023 新增 `warehouse_shipment_transactional` RPC。返工修复：v_shipment record + IF NOT FOUND + `INSERT ... ON CONFLICT DO UPDATE` 原子 UPSERT（替代 select-then-insert）。详情页 `canWarehouseShipment` / `warehouseBlockReason` 统一判断。104 项测试。1793/1793 测试（51 文件），lint 0/25，build pass。Migration 00023 待手动执行。不做百世映射/批量入仓/部分入仓。 |
+| **P3-S5A** | 手动确认入仓事务与库存联动（含返工） | P3-S4A | **DONE (2026-06-30)** + **返工完成 (2026-06-30)** + **Migration 00023 已执行并验证 (2026-06-30)** | Migration 00023 新增 `warehouse_shipment_transactional` RPC。返工修复：v_shipment record + IF NOT FOUND + `INSERT ... ON CONFLICT DO UPDATE` 原子 UPSERT（替代 select-then-insert）。详情页 `canWarehouseShipment` / `warehouseBlockReason` 统一判断。104 项测试。1793/1793 测试（51 文件），lint 0/25，build pass。Migration 00023 已在 Supabase SQL Editor 手动执行并验证通过（no_duplicate_into / has_not_found_check / has_atomic_upsert / checks_warehouse_id / checks_customs_only / admin_only 全部 true）。不做百世映射/批量入仓/部分入仓。 |
 | **P3-S5** | 入仓事务与库存联动 | P3-S4 | 阶段 A 完成，阶段 B 待定 | P3-S5A 完成 Admin 手动确认入仓（仅 customs、仅全部入仓）。后续可补充：部分入仓、批量入仓、Operator 确认入仓等（按需拆分） |
-| **P3-S6** | 在途模块权限、RLS 与端到端验收 | P3-S5 | BLOCKED | Admin/Operator 权限完整 + 已分配仓库隔离 + Server Action/Repository/RLS 链路一致 + 空状态/无权限/错误/加载状态验收 |
+| **P3-S6** | 在途模块权限、RLS 与端到端验收 | P3-S5A | **DONE (2026-06-30)** | 权限链路矩阵：9 Action 全 requireActiveAuth+Zod+中文错误，5 写 Admin-only，4 读 Admin/Operator 均可。Repository 13 方法 RLS session + ShipmentError。RLS 46 策略覆盖 shipment/shipment_item/tracking_event/inventory。页面/组件无直接 supabase。边界状态全覆盖。161 项新测试。1955/1955 测试（52 文件），lint 0/25，build pass。不做新功能/Migration/重构。 |
 
 ---
 
@@ -141,6 +141,8 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ### P3-S3 — 手动创建/补录在途记录
 
+> **注意**：P3-S3 最初设计时允许 Admin 与 Operator 均可创建在途记录（Operator 仅已分配仓库）。**P3-S2E（2026-06-30）已将创建/编辑/状态推进全部收紧为 Admin-only**。P3-S6 权限审计确认当前 Action 层全部写操作拒绝 Operator。Repository 内 Operator 仓库校验分支保留为防御性代码，不做功能依赖。
+
 **范围**：
 - 复用现有 `shipment` / `shipment_item` / `tracking_event` 表（Migration 00001，既有内部 shipment 基线）。
 - 手动创建在途记录表单：船名/航次/起运港/目的港/国家/仓库/产品明细。
@@ -193,9 +195,11 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S4A` — 内部手动在途状态轨迹收口（**DONE**，2026-06-30）
+**当前任务**：`P3-S6` — 在途模块权限、RLS 与端到端验收（**DONE**，2026-06-30）
 
-**P3-S3 状态**：DONE（2026-06-28，Codex 独立验收通过）
+**P3-S5A 已执行**：Migration 00023 已在 Supabase SQL Editor 手动执行并验证通过（2026-06-30）。入仓事务 RPC 全部 6 项验证指标通过（no_duplicate_into / has_not_found_check / has_atomic_upsert / checks_warehouse_id / checks_customs_only / admin_only）。
+
+**P3-S4A 状态**：DONE（2026-06-30，Migration 00022 已执行并验证）。
 
 **P3-S1B 状态**：CODE COMPLETE / BLOCKED_EXTERNAL（2026-06-28）。
 
@@ -209,7 +213,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 **P3-S2A 完成**（被 P3-S2B 扩展）：`/dashboard/shipments` 列表页 + `/dashboard/shipments/[id]` 详情页就绪。仅读内部三表，不读外部在途三表。1491/1491 测试通过（45 文件，含 51 项 P3-S2A 行为测试），lint 0/26，build 通过。
 
-**下一步**：P3-S4A DONE（内部状态轨迹收口）。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S5（入仓联动）依赖 P3-S4。P3-S6（权限与验收）依赖 P3-S5。
+**下一步**：P3-S6 DONE（在途模块权限、RLS 与端到端验收完成）。Phase 3 内部路径（S2A~S6）全部 DONE。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S5B 待后续拆分。下一步可选：P3-S5B（部分入仓/批量入仓/Operator 确认入仓）、P3-S1B 恢复（百世 API 授权后）、Phase 4（用户管理）、Phase 6（国内库存）。
 
 ## 与现有代码的关系
 
