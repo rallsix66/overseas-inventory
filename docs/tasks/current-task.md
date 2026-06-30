@@ -209,5 +209,9 @@ P3-S6 对已完成链路做权限、RLS 与端到端全链路复核，确保 Adm
 
 ## 下一步
 
-- P3-S5B（部分入仓/批量入仓/Operator 确认入仓）或 P3-S1B 恢复（百世 API 授权后）
+- P3-S5B（Admin 部分入仓 / Admin 批量入仓，按需拆分）或 P3-S1B 恢复（百世 API 授权后）
 - Phase 4（用户管理）或 Phase 6（国内库存）
+
+## 当前业务口径
+
+Admin 维护在途和入仓，Operator 只读查看已分配仓库数据。除非用户后续明确重新开放 Operator 写权限，否则不将 Operator 写操作作为默认选项。
