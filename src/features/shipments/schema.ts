@@ -19,6 +19,7 @@ export const createShipmentSchema = z.object({
     .refine((val) => /^[A-Za-z0-9\-_]+$/.test(val), {
       message: '单号只允许字母、数字、连字符和下划线',
     }),
+  purchaseOrderNo: z.string().max(100).optional(),
   vesselName: z.string().max(200).optional(),
   voyageNumber: z.string().max(100).optional(),
   originPort: z.string().max(100).optional(),
@@ -64,6 +65,7 @@ export const updateShipmentSchema = z.object({
     .refine((val) => /^[A-Za-z0-9\-_]+$/.test(val), {
       message: '单号只允许字母、数字、连字符和下划线',
     }),
+  purchaseOrderNo: z.string().max(100).optional(),
   vesselName: z.string().max(200).optional(),
   voyageNumber: z.string().max(100).optional(),
   originPort: z.string().max(100).optional(),
@@ -127,3 +129,9 @@ export const advanceStatusSchema = z.object({
 });
 
 export type AdvanceStatusValues = z.infer<typeof advanceStatusSchema>;
+
+/** P3-S2E: 海外库存行展开 — 查询在某仓库内某 variant 的在途明细 */
+export const inTransitDetailsSchema = z.object({
+  variantId: z.string().uuid('无效的 SKU ID'),
+  warehouseId: z.string().uuid('无效的仓库 ID'),
+});

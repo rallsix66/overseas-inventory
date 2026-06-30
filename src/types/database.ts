@@ -211,6 +211,7 @@ export type Database = {
         Row: {
           id: string
           shipment_no: string
+          purchase_order_no: string | null
           vessel_name: string | null
           voyage_number: string | null
           origin_port: string | null
@@ -227,22 +228,24 @@ export type Database = {
         Insert: {
           id?: string
           shipment_no: string
-          vessel_name: string | null
-          voyage_number: string | null
-          origin_port: string | null
-          destination_port: string | null
+          purchase_order_no?: string | null
+          vessel_name?: string | null
+          voyage_number?: string | null
+          origin_port?: string | null
+          destination_port?: string | null
           country: string
-          warehouse_id: string | null
+          warehouse_id?: string | null
           status?: string
-          estimated_arrival: string | null
+          estimated_arrival?: string | null
           created_by: string
-          note: string | null
+          note?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
           shipment_no?: string
+          purchase_order_no?: string | null
           vessel_name?: string | null
           voyage_number?: string | null
           origin_port?: string | null
@@ -603,6 +606,7 @@ export type Database = {
           p_warehouse_id: string | null
           p_estimated_arrival: string | null
           p_note: string | null
+          p_purchase_order_no: string | null
           p_items: Array<{ variant_id: string; quantity: number }>
         }
         Returns: string

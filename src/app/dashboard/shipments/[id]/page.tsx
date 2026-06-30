@@ -114,8 +114,8 @@ export default async function ShipmentDetailPage({
         </span>
       </div>
 
-      {/* 操作区 */}
-      {user && !isWarehoused && (
+      {/* 操作区 — P3-S2E: 仅 Admin */}
+      {user && isAdmin && !isWarehoused && (
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <ShipmentEditForm
             shipment={shipment}
@@ -136,6 +136,7 @@ export default async function ShipmentDetailPage({
         </div>
         <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
           <InfoItem icon={Hash} label="单号" value={shipment.shipment_no} />
+          <InfoItem label="采购单号" value={shipment.purchase_order_no} />
           <InfoItem icon={Anchor} label="船名" value={shipment.vessel_name} />
           <InfoItem icon={Anchor} label="航次" value={shipment.voyage_number} />
           <InfoItem icon={MapPin} label="起运港" value={shipment.origin_port} />

@@ -55,6 +55,7 @@ export function ShipmentCreateForm({ user, warehouses }: Props) {
 
   // 主单字段
   const [shipmentNo, setShipmentNo] = useState('');
+  const [purchaseOrderNo, setPurchaseOrderNo] = useState('');
   const [vesselName, setVesselName] = useState('');
   const [voyageNumber, setVoyageNumber] = useState('');
   const [originPort, setOriginPort] = useState('');
@@ -190,6 +191,7 @@ export function ShipmentCreateForm({ user, warehouses }: Props) {
     try {
       const result = await createShipment({
         shipmentNo: shipmentNo.trim(),
+        purchaseOrderNo: purchaseOrderNo.trim() || undefined,
         vesselName: vesselName.trim() || undefined,
         voyageNumber: voyageNumber.trim() || undefined,
         originPort: originPort.trim() || undefined,
@@ -233,6 +235,17 @@ export function ShipmentCreateForm({ user, warehouses }: Props) {
               placeholder="例：SN-20260629-0001"
               maxLength={50}
               aria-label="单号"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="purchaseOrderNo">采购单号</Label>
+            <Input
+              id="purchaseOrderNo"
+              value={purchaseOrderNo}
+              onChange={(e) => setPurchaseOrderNo(e.target.value)}
+              placeholder="例：PO-2026-00123"
+              maxLength={100}
+              aria-label="采购单号"
             />
           </div>
         </div>

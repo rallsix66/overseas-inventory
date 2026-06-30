@@ -19,6 +19,15 @@ export default async function NewShipmentPage() {
     );
   }
 
+  // P3-S2E: 仅 Admin 可访问新建页面
+  if (user.roleName !== 'admin') {
+    return (
+      <div className="px-6 py-12 text-center text-muted-foreground">
+        仅管理员可创建在途记录
+      </div>
+    );
+  }
+
   const warehouses = await shipmentRepository.getWarehousesForSelector(user.id);
 
   return (

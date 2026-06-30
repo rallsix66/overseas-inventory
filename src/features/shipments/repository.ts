@@ -11,6 +11,7 @@ import type {
   UpdateShipmentData,
   VariantSelectorItem,
   WarehouseSelectorItem,
+  InTransitDetailItem,
 } from './types';
 import type { PaginatedResult } from '@/types/common';
 
@@ -59,7 +60,7 @@ export const shipmentRepository = {
     let query = supabase
       .from('shipment')
       .select(
-        `id, shipment_no, vessel_name, voyage_number, country, warehouse_id, status,
+        `id, shipment_no, purchase_order_no, vessel_name, voyage_number, country, warehouse_id, status,
          estimated_arrival, created_by, created_at,
          warehouse:warehouse_id(name),
          items:shipment_item (
@@ -101,6 +102,7 @@ export const shipmentRepository = {
     const rows = data as unknown as Array<{
       id: string;
       shipment_no: string;
+      purchase_order_no: string | null;
       vessel_name: string | null;
       voyage_number: string | null;
       country: string;
@@ -135,6 +137,7 @@ export const shipmentRepository = {
         return {
           id: row.id,
           shipmentNo: row.shipment_no,
+          purchaseOrderNo: row.purchase_order_no,
           vesselName: row.vessel_name,
           voyageNumber: row.voyage_number,
           country: row.country,
@@ -284,6 +287,92 @@ export const shipmentRepository = {
     return map;
   },
 
+  /** P3-S2E: 按 (variant_id, warehouse_id) 查询内部在途明细（只读，不写 inventory）
+   *  返回指定 variant + warehouse 的每条在途明细：
+   *    - shipment_no / purchase_order_no
+   *    - 数量（quantity - warehoused_quantity）
+   *    - 预计到货时间 estimated_arrival
+   *    - shipment_id 供跳转详情
+   *  排除 shipment.status = 'warehoused'
+   *  Operator 仅查看已分配仓库；Admin 全部可见
+   *  不读 external 三表，不接 Best，不做入库联动 */
+  async getInTransitDetailsByVariantAndWarehouse(
+    variantId: string,
+    warehouseId: string,
+    userId?: string,
+  ): Promise<InTransitDetailItem[]> {
+    const supabase = await createClient();
+
+    // Warehouse isolation for operator
+    if (userId) {
+      const role = await getUserRole(userId);
+      if (role === 'operator') {
+        const ids = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+        if (!ids.has(warehouseId)) return [];
+      }
+      // Admin: no warehouse filter (RLS allows all)
+    }
+
+    // Step 1: Get non-warehoused shipments for this warehouse
+    const { data: shipments, error: shipErr } = await supabase
+      .from('shipment')
+      .select('id, shipment_no, purchase_order_no, estimated_arrival')
+      .eq('warehouse_id', warehouseId)
+      .neq('status', 'warehoused');
+
+    if (shipErr) {
+      throw new ShipmentError('查询在途明细失败', 'DB_ERROR');
+    }
+    if (!shipments || shipments.length === 0) return [];
+
+    const shipmentIds = shipments.map((s) => s.id);
+
+    // Step 2: Get shipment_items for this variant
+    const { data: items, error: itemsErr } = await supabase
+      .from('shipment_item')
+      .select('shipment_id, quantity, warehoused_quantity')
+      .in('shipment_id', shipmentIds)
+      .eq('variant_id', variantId);
+
+    if (itemsErr) {
+      throw new ShipmentError('查询在途明细失败', 'DB_ERROR');
+    }
+    if (!items || items.length === 0) return [];
+
+    // Build shipment lookup map
+    const shipMap = new Map<string, (typeof shipments)[number]>();
+    for (const s of shipments) {
+      shipMap.set(s.id, s);
+    }
+
+    const results: InTransitDetailItem[] = [];
+    for (const item of items) {
+      const ship = shipMap.get(item.shipment_id);
+      if (!ship) continue;
+      const inTransit = item.quantity - item.warehoused_quantity;
+      if (inTransit <= 0) continue;
+
+      results.push({
+        shipmentId: ship.id,
+        shipmentNo: ship.shipment_no,
+        purchaseOrderNo: ship.purchase_order_no,
+        quantity: inTransit,
+        estimatedArrival: ship.estimated_arrival,
+      });
+    }
+
+    // Sort by estimated_arrival (nulls last), then by shipment_no
+    results.sort((a, b) => {
+      if (!a.estimatedArrival && !b.estimatedArrival) return a.shipmentNo.localeCompare(b.shipmentNo);
+      if (!a.estimatedArrival) return 1;
+      if (!b.estimatedArrival) return -1;
+      const cmp = a.estimatedArrival.localeCompare(b.estimatedArrival);
+      return cmp !== 0 ? cmp : a.shipmentNo.localeCompare(b.shipmentNo);
+    });
+
+    return results;
+  },
+
   /** P3-S2A: 物流单详情，含仓库隔离 */
   async getById(id: string, userId?: string): Promise<ShipmentDetail | null> {
     const supabase = await createClient();
@@ -396,6 +485,7 @@ export const shipmentRepository = {
       p_warehouse_id: data.warehouseId ?? null,
       p_estimated_arrival: data.estimatedArrival ?? null,
       p_note: data.note ?? null,
+      p_purchase_order_no: data.purchaseOrderNo ?? null,
       p_items: itemsJson,
     });
 
@@ -443,6 +533,7 @@ export const shipmentRepository = {
       .from('shipment')
       .update({
         shipment_no: data.shipmentNo,
+        purchase_order_no: data.purchaseOrderNo?.trim() || null,
         vessel_name: data.vesselName ?? null,
         voyage_number: data.voyageNumber ?? null,
         origin_port: data.originPort ?? null,

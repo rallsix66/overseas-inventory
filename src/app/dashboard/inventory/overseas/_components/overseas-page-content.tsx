@@ -3,9 +3,9 @@
 // 海外库存页 — 客户端交互层
 // 处理筛选、表格渲染和分页导航
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
-import { useOptimistic, startTransition } from 'react';
+import { useOptimistic, startTransition, useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck } from 'lucide-react';
+import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { toggleFavoriteAction } from '@/features/preferences/actions';
+import { InTransitDetailRow } from '@/features/shipments/components/in-transit-detail-row';
 import type { InventoryItem, OverseasStats, WarehouseOption } from '@/features/inventory/types';
 import type { WarehouseSyncStatus } from '@/features/sync/types';
 
@@ -194,6 +195,14 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
   const router = useRouter();
   const { data, total, page, pageSize } = result;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // P3-S2E: 行展开状态 — 记录展开的 (variantId, warehouseId)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  function toggleExpand(item: InventoryItem) {
+    const key = `${item.variantId}:${item.warehouseId}`;
+    setExpandedKey((prev) => (prev === key ? null : key));
+  }
 
   function buildUrl(overrides: Partial<Filters> & { page?: number }) {
     const next = { ...filters, page: 1, ...overrides };
@@ -429,6 +438,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
+                  <TableHead className="w-[28px]" />
                   <TableHead className="w-[36px]">关注</TableHead>
                   <TableHead>国家</TableHead>
                   <TableHead>仓库</TableHead>
@@ -445,9 +455,22 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
               <TableBody>
                 {data.map((item) => {
                   const whSync = syncStatus[item.warehouseId];
+                  const expandKey = `${item.variantId}:${item.warehouseId}`;
+                  const isExpanded = expandedKey === expandKey;
                   return (
-                  <TableRow key={item.id}>
+                  <Fragment key={item.id}>
+                  <TableRow
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => toggleExpand(item)}
+                  >
                     <TableCell>
+                      {isExpanded ? (
+                        <ChevronDown className="size-3.5 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="size-3.5 text-muted-foreground" />
+                      )}
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <FavoriteStar
                         variantId={item.variantId}
                         initialFavorited={item.isFavorited}
@@ -489,9 +512,9 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                     <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                       {item.matchStatus === 'matched' ? item.safetyStock : '—'}
                     </TableCell>
-                    <TableCell>{getStatusBadge(item)}</TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>{getStatusBadge(item)}</TableCell>
                     {/* P5-SY9H: 同步状态（含最近同步时间和失败原因） */}
-                    <TableCell className="text-xs">
+                    <TableCell className="text-xs" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-col gap-0.5">
                         <SyncStatusBadge
                           status={whSync?.lastSyncStatus ?? 'never'}
@@ -503,6 +526,19 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                       </div>
                     </TableCell>
                   </TableRow>
+                  {/* P3-S2E: 展开行 — 在途明细 */}
+                  {isExpanded && (
+                    <TableRow key={`${item.id}-expand`} className="hover:bg-transparent">
+                      <TableCell colSpan={13} className="p-0 border-t-0">
+                        <InTransitDetailRow
+                          variantId={item.variantId}
+                          warehouseId={item.warehouseId}
+                          open={isExpanded}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </Fragment>
                 );
                 })}
               </TableBody>

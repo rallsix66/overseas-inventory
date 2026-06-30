@@ -457,32 +457,22 @@ describe('P3-S3 — createShipment action', () => {
   });
 
   // ── operator ──────────────────────────────────────────────────
+  // P3-S2E: Operator 不再允许创建在途记录，仅 Admin 可创建
 
-  it('operator 未选仓库拒绝', async () => {
+  it('operator 被拒绝创建（P3-S2E: 仅管理员）', async () => {
     mockRequireActiveAuth.mockResolvedValue(operatorUser);
     const result = await createShipment(validInput);
     expect(result.success).toBe(false);
-    expect(result.error).toBe('请选择仓库');
+    expect(result.error).toBe('仅管理员可创建在途记录');
   });
 
-  it('operator 无仓库权限拒绝', async () => {
-    mockRequireActiveAuth.mockResolvedValue(operatorUser);
-    mockCanAccessWarehouse.mockResolvedValue(false);
-    const result = await createShipment({ ...validInput, warehouseId: WID1 });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('您没有该仓库的操作权限');
-    expect(mockValidateWarehouseForShipment).not.toHaveBeenCalled();
-  });
-
-  it('operator 有权限且仓库校验通过 → 创建成功', async () => {
+  it('operator 带 warehouse 也被拒绝创建', async () => {
     mockRequireActiveAuth.mockResolvedValue(operatorUser);
     mockCanAccessWarehouse.mockResolvedValue(true);
-    mockCreate.mockResolvedValue('shipment-1');
     const result = await createShipment({ ...validInput, warehouseId: WID1 });
-    expect(result.success).toBe(true);
-    expect(mockValidateWarehouseForShipment).toHaveBeenCalledWith(WID1, 'TH');
-    expect(mockValidateVariantsForShipment).toHaveBeenCalledWith([VID1], 'TH');
-    expect(mockCreate).toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('仅管理员可创建在途记录');
+    expect(mockCanAccessWarehouse).not.toHaveBeenCalled();
   });
 
   // ── warehouse validation ──────────────────────────────────────

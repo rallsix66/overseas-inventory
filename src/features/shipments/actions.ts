@@ -5,7 +5,6 @@
 import { revalidatePath } from 'next/cache';
 import { requireActiveAuth } from '@/lib/auth';
 import { shipmentRepository } from './repository';
-import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
 import {
   createShipmentSchema,
   updateShipmentSchema,
@@ -14,6 +13,7 @@ import {
   searchVariantsSchema,
   shipmentFiltersSchema,
   shipmentDetailParamsSchema,
+  inTransitDetailsSchema,
 } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { PaginatedResult } from '@/types/common';
@@ -24,6 +24,7 @@ import type {
   ShipmentListItem,
   ShipmentDetail,
   ShipmentListFilters,
+  InTransitDetailItem,
 } from './types';
 
 export async function createShipment(
@@ -32,6 +33,11 @@ export async function createShipment(
   try {
     const user = await requireActiveAuth();
 
+    // P3-S2E: 仅 Admin 可创建在途记录
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可创建在途记录' };
+    }
+
     const parsed = createShipmentSchema.safeParse(formData);
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues[0]?.message ?? '表单校验失败' };
@@ -39,18 +45,7 @@ export async function createShipment(
 
     const { shipmentNo, country, warehouseId, items } = parsed.data;
 
-    // Operator 权限校验（先于仓库业务校验）
-    if (user.roleName === 'operator') {
-      if (!warehouseId) {
-        return { success: false, error: '请选择仓库' };
-      }
-      const canAccess = await warehouseAccessRepository.canAccessWarehouse(user.id, warehouseId);
-      if (!canAccess) {
-        return { success: false, error: '您没有该仓库的操作权限' };
-      }
-    }
-
-    // 仓库数据一致性校验（warehouseId 非空时 Admin 与 Operator 均需通过）
+    // 仓库数据一致性校验（warehouseId 非空时需通过）
     if (warehouseId) {
       await shipmentRepository.validateWarehouseForShipment(warehouseId, country);
     }
@@ -71,27 +66,21 @@ export async function createShipment(
   }
 }
 
-/** P3-S2B: 编辑在途基本信息 */
+/** P3-S2B: 编辑在途基本信息（P3-S2E: 仅 Admin） */
 export async function updateShipment(
   formData: UpdateShipmentData,
 ): Promise<ActionResult> {
   try {
     const user = await requireActiveAuth();
 
+    // P3-S2E: 仅 Admin 可编辑
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可编辑在途记录' };
+    }
+
     const parsed = updateShipmentSchema.safeParse(formData);
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues[0]?.message ?? '表单校验失败' };
-    }
-
-    // Operator: verify warehouse assignment via canAccessWarehouse
-    if (user.roleName === 'operator') {
-      if (!parsed.data.warehouseId) {
-        return { success: false, error: '运营必须指定仓库' };
-      }
-      const canAccess = await warehouseAccessRepository.canAccessWarehouse(user.id, parsed.data.warehouseId);
-      if (!canAccess) {
-        return { success: false, error: '您没有该仓库的操作权限' };
-      }
     }
 
     // Warehouse consistency validation
@@ -112,7 +101,7 @@ export async function updateShipment(
   }
 }
 
-/** P3-S2B: 手动变更物流状态（禁用 warehoused，不触发库存联动） */
+/** P3-S2B: 手动变更物流状态（P3-S2E: 仅 Admin，禁用 warehoused，不触发库存联动） */
 export async function changeShipmentStatus(
   shipmentId: string,
   status: string,
@@ -120,6 +109,11 @@ export async function changeShipmentStatus(
 ): Promise<ActionResult> {
   try {
     const user = await requireActiveAuth();
+
+    // P3-S2E: 仅 Admin 可变更状态
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可变更物流状态' };
+    }
 
     const parsed = changeStatusSchema.safeParse({ shipmentId, status, description });
     if (!parsed.success) {
@@ -250,5 +244,37 @@ export async function getShipmentDetail(
       return { success: false, error: error.message };
     }
     return { success: false, error: '查询在途详情失败，请稍后重试' };
+  }
+}
+
+// ─── P3-S2E: 海外库存行展开 — 在途明细查询 ────────────────────────────────
+
+/** P3-S2E: 查询某 SKU 在某仓库的内部在途明细（只读，不接 Best）
+ *  返回轻量字段：单号、采购单号、在途数量、预计到货时间、shipment_id
+ *  Admin 全部可见，Operator 仅已分配仓库 */
+export async function getInTransitDetails(
+  variantId: string,
+  warehouseId: string,
+): Promise<ActionResult<InTransitDetailItem[]>> {
+  try {
+    const user = await requireActiveAuth();
+
+    const parsed = inTransitDetailsSchema.safeParse({ variantId, warehouseId });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '参数无效' };
+    }
+
+    const details = await shipmentRepository.getInTransitDetailsByVariantAndWarehouse(
+      parsed.data.variantId,
+      parsed.data.warehouseId,
+      user.id,
+    );
+
+    return { success: true, data: details };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '查询在途明细失败，请稍后重试' };
   }
 }

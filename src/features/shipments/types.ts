@@ -15,6 +15,7 @@ export type TrackingEventRow = Database['public']['Tables']['tracking_event']['R
 export interface ShipmentListItem {
   id: string;
   shipmentNo: string;
+  purchaseOrderNo: string | null;
   vesselName: string | null;
   voyageNumber: string | null;
   country: string;
@@ -74,6 +75,7 @@ export interface ShipmentFilters extends PaginationParams {
 /** 新建在途表单 */
 export interface CreateShipmentData {
   shipmentNo: string;
+  purchaseOrderNo?: string;
   vesselName?: string;
   voyageNumber?: string;
   originPort?: string;
@@ -89,6 +91,7 @@ export interface CreateShipmentData {
 export interface UpdateShipmentData {
   id: string;
   shipmentNo: string;
+  purchaseOrderNo?: string;
   vesselName?: string;
   voyageNumber?: string;
   originPort?: string;
@@ -120,4 +123,15 @@ export interface WarehouseSelectorItem {
   id: string;
   name: string;
   country: string;
+}
+
+/** P3-S2E: 海外库存行展开 — 内部在途明细项 */
+export interface InTransitDetailItem {
+  shipmentId: string;
+  shipmentNo: string;
+  purchaseOrderNo: string | null;
+  /** 在途数量 = quantity - warehoused_quantity */
+  quantity: number;
+  /** 预计到货时间 */
+  estimatedArrival: string | null;
 }

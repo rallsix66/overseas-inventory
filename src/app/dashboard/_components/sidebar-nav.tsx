@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Package,
   Globe,
-  Truck,
   Tag,
   List,
   Barcode,
@@ -43,7 +42,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard/inventory/domestic', label: '国内库存', icon: Globe, phase: '2' },
       { href: '/dashboard/inventory/overseas', label: '海外库存', icon: Globe, phase: '0' },
-      { href: '/dashboard/inventory/in-transit', label: '在途库存', icon: Truck, phase: '2' },
     ],
   },
   {

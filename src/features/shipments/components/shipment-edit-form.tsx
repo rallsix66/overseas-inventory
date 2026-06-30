@@ -38,6 +38,7 @@ export function ShipmentEditForm({ shipment, warehouses, isAdmin }: Props) {
   const [submitting, setSubmitting] = useState(false);
 
   const [shipmentNo, setShipmentNo] = useState(shipment.shipment_no ?? '');
+  const [purchaseOrderNo, setPurchaseOrderNo] = useState(shipment.purchase_order_no ?? '');
   const [vesselName, setVesselName] = useState(shipment.vessel_name ?? '');
   const [voyageNumber, setVoyageNumber] = useState(shipment.voyage_number ?? '');
   const [originPort, setOriginPort] = useState(shipment.origin_port ?? '');
@@ -49,6 +50,7 @@ export function ShipmentEditForm({ shipment, warehouses, isAdmin }: Props) {
 
   const handleCancel = () => {
     setShipmentNo(shipment.shipment_no ?? '');
+    setPurchaseOrderNo(shipment.purchase_order_no ?? '');
     setVesselName(shipment.vessel_name ?? '');
     setVoyageNumber(shipment.voyage_number ?? '');
     setOriginPort(shipment.origin_port ?? '');
@@ -69,6 +71,7 @@ export function ShipmentEditForm({ shipment, warehouses, isAdmin }: Props) {
       const result = await updateShipment({
         id: shipment.id,
         shipmentNo: shipmentNo.trim(),
+        purchaseOrderNo: purchaseOrderNo.trim() || undefined,
         vesselName: vesselName.trim() || undefined,
         voyageNumber: voyageNumber.trim() || undefined,
         originPort: originPort.trim() || undefined,
@@ -136,6 +139,20 @@ export function ShipmentEditForm({ shipment, warehouses, isAdmin }: Props) {
             aria-label="单号"
           />
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="edit-purchaseOrderNo" className="text-xs">采购单号</Label>
+          <Input
+            id="edit-purchaseOrderNo"
+            value={purchaseOrderNo}
+            onChange={(e) => setPurchaseOrderNo(e.target.value)}
+            maxLength={100}
+            className="h-8 text-sm"
+            aria-label="采购单号"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="edit-country" className="text-xs">
             目的国 <span className="text-destructive">*</span>

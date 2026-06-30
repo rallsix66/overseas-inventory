@@ -17,7 +17,14 @@ export const shipmentColumns: ColumnDef<ShipmentListItem>[] = [
     key: 'shipmentNo',
     header: '单号',
     render: (item) => (
-      <span className="font-medium text-sm tabular-nums">{item.shipmentNo}</span>
+      <div>
+        <span className="font-medium text-sm tabular-nums">{item.shipmentNo}</span>
+        {item.purchaseOrderNo && (
+          <span className="block text-xs text-muted-foreground mt-0.5">
+            采购: {item.purchaseOrderNo}
+          </span>
+        )}
+      </div>
     ),
   },
   {

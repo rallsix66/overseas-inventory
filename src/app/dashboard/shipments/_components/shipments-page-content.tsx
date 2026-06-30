@@ -52,9 +52,10 @@ interface Props {
   page: number;
   pageSize: number;
   filters: Filters;
+  isAdmin: boolean;
 }
 
-export function ShipmentsPageContent({ data, total, page, pageSize, filters }: Props) {
+export function ShipmentsPageContent({ data, total, page, pageSize, filters, isAdmin }: Props) {
   const router = useRouter();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -78,10 +79,12 @@ export function ShipmentsPageContent({ data, total, page, pageSize, filters }: P
             手动创建和跟踪在途物流记录
           </p>
         </div>
-        <Button size="sm" onClick={() => router.push('/dashboard/shipments/new')}>
-          <Plus className="w-4 h-4 mr-1.5" />
-          新建在途
-        </Button>
+        {isAdmin && (
+          <Button size="sm" onClick={() => router.push('/dashboard/shipments/new')}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            新建在途
+          </Button>
+        )}
       </div>
 
       {/* 筛选栏 */}
