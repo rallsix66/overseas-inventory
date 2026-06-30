@@ -155,6 +155,57 @@ describe('P3-S5A: Migration 00023 — 权限与结构', () => {
   });
 });
 
+describe('P3-S5A: Migration 00023 — 变量绑定修复', () => {
+  it('使用 v_shipment record（不含重复 INTO 目标）', () => {
+    expect(MIGRATION_00023).toMatch(/v_shipment\s+record/);
+  });
+
+  it('SELECT INTO v_shipment（单个 record 变量）', () => {
+    expect(MIGRATION_00023).toMatch(/INTO\s+v_shipment/);
+  });
+
+  it('不含重复 INTO 目标（如 v_shipment_wh_id, v_shipment_wh_id）', () => {
+    // No two consecutive INTO targets with the same variable name
+    expect(MIGRATION_00023).not.toMatch(/INTO\s+\w+,\s*\1/);
+  });
+
+  it('使用 IF NOT FOUND 检测不存在的 shipment', () => {
+    expect(MIGRATION_00023).toMatch(/IF NOT FOUND THEN/);
+  });
+
+  it('v_shipment.status 引用（record 字段访问）', () => {
+    expect(MIGRATION_00023).toMatch(/v_shipment\.status/);
+  });
+
+  it('v_shipment.warehouse_id 引用（独立字段，不与 id 混淆）', () => {
+    expect(MIGRATION_00023).toMatch(/v_shipment\.warehouse_id/);
+  });
+});
+
+describe('P3-S5A: Migration 00023 — 原子 UPSERT', () => {
+  it('inventory 使用 INSERT ... ON CONFLICT (variant_id, warehouse_id)', () => {
+    expect(MIGRATION_00023).toMatch(/ON CONFLICT\s*\(\s*variant_id\s*,\s*warehouse_id\s*\)/);
+  });
+
+  it('DO UPDATE SET quantity = inventory.quantity + EXCLUDED.quantity', () => {
+    expect(MIGRATION_00023).toMatch(/quantity\s*=\s*public\.inventory\.quantity\s*\+\s*EXCLUDED\.quantity/);
+  });
+
+  it('DO UPDATE 同时更新 updated_at 和 last_sync_at', () => {
+    // Both must appear after DO UPDATE SET (not just in INSERT VALUES)
+    expect(MIGRATION_00023).toMatch(/DO UPDATE[\s\S]{0,500}last_sync_at\s*=\s*now\(\)/);
+  });
+
+  it('不含 SELECT ... FROM inventory FOR UPDATE（select-then-insert 已移除）', () => {
+    // The old pattern: SELECT id, quantity INTO v_existing_inv FROM inventory ... FOR UPDATE
+    expect(MIGRATION_00023).not.toMatch(/FROM public\.inventory[\s\S]*?FOR UPDATE/);
+  });
+
+  it('不含 v_existing_inv 变量（select-then-insert 残留已清理）', () => {
+    expect(MIGRATION_00023).not.toMatch(/v_existing_inv/);
+  });
+});
+
 describe('P3-S5A: Migration 00023 — 入仓业务规则', () => {
   it('FOR UPDATE 锁定 shipment', () => {
     expect(MIGRATION_00023).toMatch(/FROM public\.shipment[\s\S]*?FOR UPDATE/);
@@ -162,10 +213,6 @@ describe('P3-S5A: Migration 00023 — 入仓业务规则', () => {
 
   it('FOR UPDATE 锁定 shipment_item', () => {
     expect(MIGRATION_00023).toMatch(/FROM public\.shipment_item[\s\S]*?FOR UPDATE/);
-  });
-
-  it('FOR UPDATE 锁定 inventory', () => {
-    expect(MIGRATION_00023).toMatch(/FROM public\.inventory[\s\S]*?FOR UPDATE/);
   });
 
   it('禁止重复入仓: warehoused 检测', () => {
@@ -185,7 +232,6 @@ describe('P3-S5A: Migration 00023 — 入仓业务规则', () => {
   });
 
   it('检查 remaining > 0（超量保护）', () => {
-    // remaining = quantity - warehoused_quantity (uses v_item. prefix in PL/pgSQL)
     expect(MIGRATION_00023).toMatch(/remaining/);
   });
 
@@ -199,12 +245,13 @@ describe('P3-S5A: Migration 00023 — 入仓业务规则', () => {
 });
 
 describe('P3-S5A: Migration 00023 — 入库操作', () => {
-  it('UPDATE inventory.quantity = quantity + remaining', () => {
-    expect(MIGRATION_00023).toMatch(/quantity\s*=\s*quantity\s*\+\s*v_remaining/);
+  it('原子 UPSERT inventory（INSERT ... ON CONFLICT DO UPDATE）', () => {
+    expect(MIGRATION_00023).toMatch(/INSERT INTO public\.inventory/);
+    expect(MIGRATION_00023).toMatch(/ON CONFLICT/);
   });
 
-  it('库存不存在时 INSERT（UPSERT 路径）', () => {
-    expect(MIGRATION_00023).toMatch(/INSERT INTO public\.inventory/);
+  it('DO UPDATE 增加数量而非覆盖', () => {
+    expect(MIGRATION_00023).toMatch(/EXCLUDED\.quantity/);
   });
 
   it('更新 shipment_item.warehoused_quantity → quantity（全部入仓）', () => {
@@ -244,27 +291,46 @@ const DETAIL_PAGE = readFileSync(
   'utf-8',
 );
 
-describe('P3-S5A: 详情页 — 确认入仓按钮可见性', () => {
+describe('P3-S5A: 详情页 — canWarehouseShipment / warehouseBlockReason', () => {
+  it('定义 canWarehouseShipment 变量', () => {
+    expect(DETAIL_PAGE).toMatch(/canWarehouseShipment/);
+  });
+
+  it('canWarehouseShipment 包含 isAdmin + !isWarehoused + customs + warehouse_id', () => {
+    expect(DETAIL_PAGE).toMatch(/canWarehouseShipment\s*=\s*isAdmin/);
+  });
+
+  it('定义 warehouseBlockReason 变量', () => {
+    expect(DETAIL_PAGE).toMatch(/warehouseBlockReason/);
+  });
+
+  it('warehouseBlockReason 含"无仓库"分支', () => {
+    expect(DETAIL_PAGE).toMatch(/未指定仓库，无法入仓/);
+  });
+
+  it('warehouseBlockReason 含"非 customs"分支', () => {
+    expect(DETAIL_PAGE).toMatch(/清关后方可确认入仓/);
+  });
+
+  it('warehouseBlockReason 含"isAdmin / isWarehoused 提前返回 null"分支', () => {
+    // The helper returns null early if not admin or already warehoused
+    expect(DETAIL_PAGE).toMatch(/!isAdmin.*isWarehoused/);
+  });
+
+  it('渲染 WarehouseShipmentButton 使用 canWarehouseShipment 条件', () => {
+    expect(DETAIL_PAGE).toMatch(/\{canWarehouseShipment\s*&&/);
+  });
+
+  it('渲染阻止原因使用 warehouseBlockReason 条件', () => {
+    expect(DETAIL_PAGE).toMatch(/\{warehouseBlockReason\s*&&/);
+  });
+
   it('导入 WarehouseShipmentButton', () => {
     expect(DETAIL_PAGE).toMatch(/WarehouseShipmentButton/);
   });
 
-  it('仅 customs + warehouse_id 时渲染按钮', () => {
-    // shipment.status === 'customs' && shipment.warehouse_id
-    expect(DETAIL_PAGE).toMatch(/status\s*===\s*'customs'/);
-    expect(DETAIL_PAGE).toMatch(/warehouse_id/);
-  });
-
   it('Admin 可见确认入口', () => {
     expect(DETAIL_PAGE).toMatch(/isAdmin/);
-  });
-
-  it('非 customs 状态显示不可入仓文案', () => {
-    expect(DETAIL_PAGE).toMatch(/清关后方可确认入仓/);
-  });
-
-  it('无仓库时显示无法入仓文案', () => {
-    expect(DETAIL_PAGE).toMatch(/未指定仓库，无法入仓/);
   });
 
   it('warehoused 时不显示操作区', () => {

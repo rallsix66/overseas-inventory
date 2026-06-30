@@ -83,6 +83,15 @@ export default async function ShipmentDetailPage({
 
   const isWarehoused = shipment.status === 'warehoused';
 
+  // P3-S5A: 入仓条件与阻止原因（统一判断，避免条件分散在模板中）
+  const canWarehouseShipment = isAdmin && !isWarehoused && shipment.status === 'customs' && !!shipment.warehouse_id;
+  const warehouseBlockReason = ((): string | null => {
+    if (!isAdmin || isWarehoused) return null;
+    if (!shipment.warehouse_id) return '该在途记录未指定仓库，无法入仓';
+    if (shipment.status !== 'customs') return `当前状态为「${statusLabel}」，清关后方可确认入仓`;
+    return null; // customs + has warehouse → 可入仓
+  })();
+
   return (
     <div className="px-4 sm:px-6 py-4 sm:py-6">
       {/* 顶部导航 */}
@@ -127,25 +136,19 @@ export default async function ShipmentDetailPage({
             shipmentId={shipment.id}
             currentStatus={shipment.status}
           />
-          {shipment.status === 'customs' && shipment.warehouse_id && (
+          {canWarehouseShipment && (
             <WarehouseShipmentButton shipmentId={shipment.id} />
           )}
         </div>
       )}
 
-      {/* P3-S5A: 非 customs 状态但 Admin → 提示不可入仓原因 */}
-      {user && isAdmin && !isWarehoused && shipment.status !== 'customs' && (
+      {/* P3-S5A: 不可入仓时显示阻止原因（Admin + 未入仓 + 不满足入仓条件） */}
+      {warehouseBlockReason && (
         <div className="mb-5 text-sm text-muted-foreground flex items-center gap-2">
           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-muted">
             确认入仓
           </span>
-          <span>
-            {!shipment.warehouse_id
-              ? '该在途记录未指定仓库，无法入仓'
-              : shipment.status === 'customs'
-                ? ''
-                : `当前状态为「${statusLabel}」，清关后方可确认入仓`}
-          </span>
+          <span>{warehouseBlockReason}</span>
         </div>
       )}
 

@@ -5,11 +5,11 @@
 --   同一事务内完成：
 --     1. shipment.status → 'warehoused'
 --     2. shipment_item.warehoused_quantity → quantity（全部入仓）
---     3. inventory.quantity 增加对应数量（UPSERT）
+--     3. inventory.quantity 增加对应数量（UPSERT via ON CONFLICT）
 --     4. tracking_event 插入 warehoused 轨迹
 --   仅 customs 状态允许入仓（业务规则约束）
 --   Admin-only + 禁止重复入仓 + 禁止超量入仓
---   并发安全：FOR UPDATE 锁定 shipment / shipment_item / inventory
+--   并发安全：FOR UPDATE 锁定 shipment / shipment_item
 --   SECURITY INVOKER，REVOKE PUBLIC/anon，GRANT authenticated
 -- ============================================
 
@@ -23,11 +23,10 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
 DECLARE
-  v_role             text;
-  v_shipment_wh_id   uuid;
-  v_shipment_status  text;
-  v_item             record;
-  v_existing_inv     record;
+  v_role            text;
+  v_shipment        record;
+  v_item            record;
+  v_remaining       integer;
 BEGIN
   -- ============================================
   -- 权限校验：仅已启用的 admin 可调用
@@ -39,37 +38,35 @@ BEGIN
 
   -- ============================================
   -- 1. SELECT shipment FOR UPDATE — 排他锁定目标行
-  --    确认存在、非 warehoused、有 warehouse_id、状态允许入仓
   -- ============================================
   SELECT id, warehouse_id, status
-  INTO v_shipment_wh_id, v_shipment_wh_id, v_shipment_status
+  INTO v_shipment
   FROM public.shipment
   WHERE id = p_shipment_id
   FOR UPDATE;
 
-  -- shipment 不存在
-  IF v_shipment_wh_id IS NULL THEN
+  IF NOT FOUND THEN
     RAISE EXCEPTION '在途记录不存在或无权访问' USING ERRCODE = 'P0001';
   END IF;
 
   -- 禁止重复入仓
-  IF v_shipment_status = 'warehoused' THEN
+  IF v_shipment.status = 'warehoused' THEN
     RAISE EXCEPTION '该在途记录已完成入仓，不可重复操作' USING ERRCODE = 'P0001';
   END IF;
 
-  -- 必须有仓库
-  IF v_shipment_wh_id IS NULL THEN
+  -- 必须有仓库（此时 v_shipment.warehouse_id 是独立字段，不会与 id/status 混淆）
+  IF v_shipment.warehouse_id IS NULL THEN
     RAISE EXCEPTION '该在途记录未指定仓库，无法入仓' USING ERRCODE = 'P0001';
   END IF;
 
   -- 仅 customs 允许入仓（清关后货物可入库）
-  IF v_shipment_status != 'customs' THEN
-    RAISE EXCEPTION '当前状态为 %，仅清关后可确认入仓', v_shipment_status
+  IF v_shipment.status != 'customs' THEN
+    RAISE EXCEPTION '当前状态为 %，仅清关后可确认入仓', v_shipment.status
       USING ERRCODE = 'P0001';
   END IF;
 
   -- ============================================
-  -- 2. SELECT shipment_item FOR UPDATE — 排他锁定明细行
+  -- 2. 遍历 shipment_item（FOR UPDATE 锁定明细行）
   -- ============================================
   FOR v_item IN
     SELECT id, variant_id, quantity, warehoused_quantity
@@ -78,55 +75,37 @@ BEGIN
     FOR UPDATE
   LOOP
     -- 超量入仓保护：warehoused_quantity 永远不会 > quantity
-    -- 但已全部入仓的 item 跳过（remaining = 0）
-    DECLARE
-      v_remaining integer;
-    BEGIN
-      v_remaining := v_item.quantity - v_item.warehoused_quantity;
-      IF v_remaining < 0 THEN
-        -- 数据异常：warehoused_quantity > quantity（不应出现）
-        RAISE EXCEPTION '数据异常：产品明细 % 已入仓数量超过总数', v_item.id
-          USING ERRCODE = 'P0001';
-      END IF;
+    v_remaining := v_item.quantity - v_item.warehoused_quantity;
+    IF v_remaining < 0 THEN
+      -- 数据异常：warehoused_quantity > quantity（不应出现）
+      RAISE EXCEPTION '数据异常：产品明细 % 已入仓数量超过总数', v_item.id
+        USING ERRCODE = 'P0001';
+    END IF;
 
-      IF v_remaining = 0 THEN
-        -- 该项已全部入仓，跳过（幂等安全）
-        CONTINUE;
-      END IF;
+    IF v_remaining = 0 THEN
+      -- 该项已全部入仓，跳过（幂等安全）
+      CONTINUE;
+    END IF;
 
-      -- ============================================
-      -- 3. UPSERT inventory — 增加 quantity（行锁防并发）
-      -- ============================================
-      SELECT id, quantity
-      INTO v_existing_inv
-      FROM public.inventory
-      WHERE variant_id = v_item.variant_id
-        AND warehouse_id = v_shipment_wh_id
-      FOR UPDATE;
+    -- ============================================
+    -- 3. 原子 UPSERT inventory（ON CONFLICT DO UPDATE，无 select-then-insert 窗口）
+    --    FOR UPDATE 隐式由 ON CONFLICT 的行锁处理后确保并发安全
+    -- ============================================
+    INSERT INTO public.inventory (variant_id, warehouse_id, quantity, last_sync_at)
+    VALUES (v_item.variant_id, v_shipment.warehouse_id, v_remaining, now())
+    ON CONFLICT (variant_id, warehouse_id)
+    DO UPDATE SET
+      quantity = public.inventory.quantity + EXCLUDED.quantity,
+      updated_at = now(),
+      last_sync_at = now();
 
-      IF v_existing_inv.id IS NOT NULL THEN
-        -- 已存在：增加数量
-        UPDATE public.inventory
-        SET quantity = quantity + v_remaining,
-            updated_at = now()
-        WHERE id = v_existing_inv.id;
-      ELSE
-        -- 不存在：创建新库存记录
-        INSERT INTO public.inventory (
-          variant_id, warehouse_id, quantity, last_sync_at
-        ) VALUES (
-          v_item.variant_id, v_shipment_wh_id, v_remaining, now()
-        );
-      END IF;
+    -- ============================================
+    -- 4. 更新 shipment_item.warehoused_quantity → quantity（全部入仓）
+    -- ============================================
+    UPDATE public.shipment_item
+    SET warehoused_quantity = quantity
+    WHERE id = v_item.id;
 
-      -- ============================================
-      -- 4. 更新 shipment_item.warehoused_quantity → quantity（全部入仓）
-      -- ============================================
-      UPDATE public.shipment_item
-      SET warehoused_quantity = quantity
-      WHERE id = v_item.id;
-
-    END;
   END LOOP;
 
   -- ============================================

@@ -6,7 +6,7 @@
 
 ## 状态
 
-**DONE**（2026-06-30）
+**DONE**（2026-06-30）+ **返工完成**（2026-06-30，变量绑定 + 原子 UPSERT + UI 条件收口）
 
 ## 背景
 
@@ -21,7 +21,7 @@ P3-S4A 已完成状态流转规则收口（Migration 00022 已执行并验证）
 
 ## 范围
 
-1. **Migration 00023** — 新增 `warehouse_shipment_transactional` RPC：SECURITY INVOKER + Admin-only + FOR UPDATE 行锁 + 逐 item 超量保护 + UPSERT inventory + 同事务 atomic
+1. **Migration 00023** — 新增 `warehouse_shipment_transactional` RPC：v_shipment record + IF NOT FOUND + 原子 `INSERT ... ON CONFLICT DO UPDATE`（非 select-then-insert）+ FOR UPDATE 行锁 + 同事务 atomic
 
 2. **Schema / Types** — 新增 `warehouseShipmentSchema`（shipmentId uuid + description optional max 500）+ `WarehouseShipmentData` 类型
 
@@ -29,9 +29,11 @@ P3-S4A 已完成状态流转规则收口（Migration 00022 已执行并验证）
 
 4. **Server Action** — `warehouseShipment()` Admin-only + Zod 校验 + revalidatePath 列表与详情 + 中文错误
 
-5. **UI** — `WarehouseShipmentButton` 组件：Dialog 二次确认 + 不可撤销警告 + 备注输入。详情页 customs 状态显示按钮，非 customs 显示原因，Operator 不显示
+5. **UI** — `WarehouseShipmentButton` 组件：Dialog 二次确认 + 不可撤销警告 + 备注输入。详情页 `canWarehouseShipment` / `warehouseBlockReason` 统一判断，修复 customs + 无仓库不显示原因的 bug
 
-6. **测试** — 90 项新测试：8 Zod + 28 Migration 源码检查 + 7 详情页源码 + 13 按钮组件源码 + 7 仓库行为 + 13 actions + 14 仓库/actions 源码检查
+6. **测试** — 104 项新测试（含返工追加：6 变量绑定 + 7 原子 UPSERT + 详情页 canWarehouseShipment/warehouseBlockReason 断言）
+
+7. **返工（2026-06-30）** — ① 00023 v_shipment record + IF NOT FOUND 替代重复 INTO 目标；② inventory 改为 `INSERT ... ON CONFLICT DO UPDATE` 替代 select-then-insert；③ 详情页抽取 `canWarehouseShipment`/`warehouseBlockReason` 统一判断，修复 customs + 无仓库不显示原因
 
 ## 禁止
 
@@ -50,7 +52,7 @@ P3-S4A 已完成状态流转规则收口（Migration 00022 已执行并验证）
 4. Actions `warehouseShipment()` Admin-only + 中文错误 ✓
 5. `WarehouseShipmentButton` 组件二次确认 + 不可撤销警告 ✓
 6. 详情页 customs 显示按钮 / 非 customs 显示原因 / Operator 隐藏 ✓
-7. `npm run test` 1778/1778（51 文件），`npm run lint` 0 errors / 25 warnings，`npm run build` 通过，`git diff --check` 通过 ✓
+7. `npm run test` 1793/1793（51 文件），`npm run lint` 0 errors / 25 warnings，`npm run build` 通过，`git diff --check` 通过 ✓
 
 ## 下一步
 
