@@ -2,11 +2,122 @@
 
 ## Task ID
 
-`P3-S3` — 手动创建/补录在途记录（任务设计与任务包准备）
+`P3-S2C` — 库存视图接入内部手动在途只读聚合
 
 ## 状态
 
-**DONE**（2026-06-28，Codex 独立验收通过）
+**DONE**（2026-06-30）
+
+## 背景
+
+P3-S2B 内部手动在途维护收口已完成。当前海外库存页、Dashboard 关注产品动态、Dashboard 在途库存入口卡片均未展示内部 shipment/shipment_item 在途数据。本任务将内部在途数据以只读方式接入这三个视图。
+
+## 依赖
+
+- P3-S2B DONE（shipment/shipment_item 表中有在途数据）
+- `warehouseAccessRepository`（仓库隔离）
+- `getUserRole()`（权限判断）
+
+## 范围
+
+1. `shipmentRepository.getInTransitByVariant()` — 按 variant_id 聚合在途数量（`quantity - warehoused_quantity`），排除 warehoused，Admin/Operator 仓库隔离，只读不写 inventory
+2. 海外库存页：新增"在途"和"库存+在途"列 + 在途统计卡片
+3. Dashboard 关注产品动态：新增"在途"列
+4. Dashboard 首页：在途库存入口卡片从占位替换为真实数据（SKU 数 + 在途总量）
+5. `InventoryItem` 类型新增 `inTransitQuantity`；`OverseasStats` 类型新增 `inTransitSkuCount`/`inTransitTotalQuantity`；`FollowedVariantBasic` 类型新增 `inTransitQuantity`
+
+## 禁止
+
+- 不新增 Migration
+- 不写 inventory.quantity
+- 不接 Best/shipment_external_ref 外部表
+- 不做入库联动
+- 不启用 warehoused 状态
+- 页面/组件不直接调用 `supabase.from()`
+
+## 停止条件（全部满足）
+
+1. `getInTransitByVariant()` 聚合逻辑正确（14 项行为测试全部通过）
+2. 海外库存页显示"在途"和"库存+在途"列 + 在途统计卡片
+3. Dashboard 关注产品动态显示"在途"列
+4. Dashboard 在途库存卡片显示真实数据（SKU 数 + 在途总量）
+5. Admin/Operator 仓库隔离有效
+6. `npm run test` 1541/1541 通过（46 文件），`npm run lint` 0/26，`npm run build` 通过
+
+## 下一步
+
+- P3-S2（完整在途列表与详情含百世双源）依赖 P3-S1D — **BLOCKED**
+- P3-S4（状态推进与轨迹映射）依赖 P3-S2 + P3-S3 — **BLOCKED**
+- P3-S5（入仓联动）依赖 P3-S4 — **BLOCKED**
+- P3-S6（权限与验收）依赖 P3-S5 — **BLOCKED**
+
+---
+
+# 历史任务包（已完成）
+
+## P3-S2B — 内部手动在途维护收口
+
+**DONE → 返工完成**（2026-06-29）
+
+## 背景
+
+P3-S2A（内部手动在途只读页面）DONE。P3-S2B 扩展为可维护管理台：新增单号字段、列表重新布局、详情可编辑、状态可手动变更。不读外部在途三表、不调百世 API、不做库存联动。
+
+## 依赖
+
+- P3-S2A DONE
+- P3-S3 DONE（创建表单）
+- Migration 00001（`shipment` / `shipment_item` / `tracking_event` 表）
+- Migration 00005（`create_shipment_transactional` RPC 旧版）
+- Migration 00015（仓库隔离 RLS）
+- Migration 00018（新增 `shipment_no` 字段 + RPC 更新为 10 参数）
+- Migration 00019（`change_shipment_status_transactional` RPC，原子化状态更新 + tracking_event 插入）
+- `requireActiveAuth()` / `warehouseAccessRepository`
+
+## 范围
+
+1. Migration 00018：`shipment.shipment_no` NOT NULL UNIQUE + 旧数据回填 SN-YYYYMMDD-NNNN + `create_shipment_transactional` 更新为 10 参数（含 p_shipment_no）
+2. 列表页：主标识改为单号 + 品名聚合列（最多 3 个），移除目的国列，船名/航次不再作为列表主显示
+3. 详情页：基本信息可编辑（`ShipmentEditForm` 客户端组件）+ 手动状态变更（`ShipmentStatusChange`，booking→loading→departed→arrived→customs，禁用 warehoused，每次追加 tracking_event）
+4. 创建页：新增单号必填输入
+5. Repository 新增 `update()` / `changeStatus()` + Operator 仓库隔离
+6. Server Actions 新增 `updateShipment()` / `changeShipmentStatus()`
+7. 权限：Admin 可编辑全部，Operator 仅自己仓库下的 shipment。`requireActiveAuth()` + Zod + Repository + RLS 兜底
+8. （返工）Migration 00019：`change_shipment_status_transactional` RPC 替代两阶段分离写入
+9. （返工）`update()` 使用 `.select('id').single()` 确认命中 1 行（PGRST116 → NOT_FOUND）
+10.（返工）新增 32 项 P3-S2B 行为测试
+
+## 禁止
+
+- 不读/写 `shipment_external_ref` / `shipment_external_item` / `tracking_event_external`
+- 不调百世 API
+- 不做库存联动（`changeStatus` 禁用 warehoused）
+- 页面/组件不直接调用 `supabase.from()`
+
+## 停止条件（已满足）
+
+1. 创建时可填单号（必填，格式校验）
+2. 列表显示单号 + 品名，不再用船名航次作为主信息，不显示目的国
+3. 详情可编辑基本信息（单号/船名/航次/港口/国家/仓库/预计到仓/备注）
+4. 状态可手动变更并产生 tracking_event（禁用 warehoused）
+5. Admin/Operator 仓库隔离有效（Operator 仅自己仓库下的 shipment 可编辑）
+6. `npm run test` 1526/1527 通过（2 预存失败：concurrency / best live dry-run），`npm run lint` 0/26，`npm run build` 通过
+7. `docs/current-state.md` / `docs/tasks/current-task.md` 同步
+
+## 下一步
+
+- P3-S2（完整在途列表与详情含百世双源）依赖 P3-S1D — **BLOCKED**
+- P3-S4（状态推进与轨迹映射）依赖 P3-S2 + P3-S3 — **BLOCKED**
+- P3-S5（入仓联动）依赖 P3-S4 — **BLOCKED**
+- P3-S6（权限与验收）依赖 P3-S5 — **BLOCKED**
+
+---
+
+# 历史任务包（已完成）
+
+## P3-S3 — 手动创建/补录在途记录
+
+**状态**：**DONE**（2026-06-28，Codex 独立验收通过）
 
 ## 背景
 

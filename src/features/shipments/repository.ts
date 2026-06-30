@@ -8,6 +8,7 @@ import type {
   ShipmentDetail,
   ShipmentFilters,
   CreateShipmentData,
+  UpdateShipmentData,
   VariantSelectorItem,
   WarehouseSelectorItem,
 } from './types';
@@ -25,20 +26,62 @@ export class ShipmentError extends Error {
   }
 }
 
+async function getUserRole(userId: string): Promise<'admin' | 'operator' | 'unknown'> {
+  const supabase = await createClient();
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('role:role_id(name)')
+    .eq('id', userId)
+    .single();
+
+  if (error) {
+    // PGRST116 = row not found — profile genuinely doesn't exist
+    if (error.code === 'PGRST116') return 'unknown';
+    // Real DB/RLS error — must not silently degrade to 'unknown' and widen permissions
+    throw new ShipmentError('查询用户角色失败', 'DB_ERROR');
+  }
+
+  const roleName = (profile as unknown as { role: { name: string } } | null)?.role?.name;
+  if (roleName === 'admin') return 'admin';
+  if (roleName === 'operator') return 'operator';
+  return 'unknown';
+}
+
 export const shipmentRepository = {
-  /** 在途列表（不含 warehoused） */
-  async list(filters: ShipmentFilters = {}): Promise<PaginatedResult<ShipmentListItem>> {
+  /** P3-S2A/P3-S2B: 在途列表（不含 warehoused），含仓库隔离 */
+  async list(
+    filters: ShipmentFilters = {},
+    userId?: string,
+  ): Promise<PaginatedResult<ShipmentListItem>> {
     const supabase = await createClient();
     const { country, status, page = 1, pageSize = PAGE_SIZE } = filters;
 
     let query = supabase
       .from('shipment')
       .select(
-        `id, vessel_name, voyage_number, country, status, estimated_arrival, created_by, created_at,
-         items:shipment_item (quantity, warehoused_quantity)`,
+        `id, shipment_no, vessel_name, voyage_number, country, warehouse_id, status,
+         estimated_arrival, created_by, created_at,
+         warehouse:warehouse_id(name),
+         items:shipment_item (
+           quantity, warehoused_quantity,
+           variant:variant_id (product:product_id (name))
+         )`,
         { count: 'exact' },
       )
       .neq('status', 'warehoused');
+
+    // Warehouse isolation for operator
+    if (userId) {
+      const role = await getUserRole(userId);
+      if (role === 'operator') {
+        const accessibleIds = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+        if (accessibleIds.size === 0) {
+          return { data: [], total: 0, page, pageSize };
+        }
+        query = query.in('warehouse_id', [...accessibleIds]);
+      }
+      // Admin: no warehouse filter (RLS allows all, including NULL warehouse_id)
+    }
 
     if (country) query = query.eq('country', country);
     if (status) query = query.eq('status', status);
@@ -48,24 +91,60 @@ export const shipmentRepository = {
       .order('created_at', { ascending: false })
       .range(from, from + pageSize - 1);
 
-    if (error || !data) {
+    if (error) {
+      throw new ShipmentError('查询在途列表失败', 'DB_ERROR');
+    }
+    if (!data) {
       return { data: [], total: 0, page, pageSize };
     }
 
+    const rows = data as unknown as Array<{
+      id: string;
+      shipment_no: string;
+      vessel_name: string | null;
+      voyage_number: string | null;
+      country: string;
+      warehouse_id: string | null;
+      status: string;
+      estimated_arrival: string | null;
+      created_by: string;
+      created_at: string;
+      warehouse: { name: string } | null;
+      items: Array<{
+        quantity: number;
+        warehoused_quantity: number;
+        variant: { product: { name: string } | null } | null;
+      }>;
+    }>;
+
     return {
-      data: data.map((row) => {
-        const items =
-          (row.items as unknown as { quantity: number; warehoused_quantity: number }[]) ?? [];
+      data: rows.map((row) => {
+        const items = row.items ?? [];
+        const wh = row.warehouse;
+
+        // P3-S2B: 聚合品名（最多 3 个，逗号分隔）
+        const productNames: string[] = [];
+        for (const item of items) {
+          const name = item.variant?.product?.name;
+          if (name && !productNames.includes(name)) {
+            productNames.push(name);
+            if (productNames.length >= 3) break;
+          }
+        }
+
         return {
           id: row.id,
+          shipmentNo: row.shipment_no,
           vesselName: row.vessel_name,
           voyageNumber: row.voyage_number,
           country: row.country,
+          warehouseName: wh?.name ?? null,
           status: row.status,
           estimatedArrival: row.estimated_arrival,
           productCount: items.length,
           totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
           inTransitQuantity: items.reduce((sum, i) => sum + (i.quantity - i.warehoused_quantity), 0),
+          productNames: productNames.length > 0 ? productNames.join('、') : null,
           createdBy: row.created_by,
           createdAt: row.created_at,
         };
@@ -76,8 +155,62 @@ export const shipmentRepository = {
     };
   },
 
-  /** 物流单详情 */
-  async getById(id: string): Promise<ShipmentDetail | null> {
+  /** P3-S2C: 按 variant_id 聚合在途数量（只读，不写 inventory）
+   *  在途 = shipment_item.quantity - shipment_item.warehoused_quantity
+   *  排除 shipment.status = 'warehoused'
+   *  Operator 仅统计已分配仓库；Admin 统计全部 */
+  async getInTransitByVariant(userId?: string): Promise<Map<string, number>> {
+    const supabase = await createClient();
+
+    // Determine warehouse filter before building query (role check consumes a DB call)
+    let accessibleWhIds: Set<string> | null = null;
+    if (userId) {
+      const role = await getUserRole(userId);
+      if (role === 'operator') {
+        const ids = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+        if (ids.size === 0) return new Map();
+        accessibleWhIds = ids;
+      }
+      // Admin: no warehouse filter (RLS allows all)
+    }
+
+    let query = supabase
+      .from('shipment')
+      .select('id')
+      .neq('status', 'warehoused');
+
+    if (accessibleWhIds) {
+      query = query.in('warehouse_id', [...accessibleWhIds]);
+    }
+
+    const { data: shipments, error } = await query;
+
+    if (error) {
+      throw new ShipmentError('查询在途数据失败', 'DB_ERROR');
+    }
+    if (!shipments || shipments.length === 0) return new Map();
+
+    const shipmentIds = shipments.map((s) => s.id);
+
+    const { data: items, error: itemsErr } = await supabase
+      .from('shipment_item')
+      .select('variant_id, quantity, warehoused_quantity')
+      .in('shipment_id', shipmentIds);
+
+    if (itemsErr) {
+      throw new ShipmentError('查询在途数据失败', 'DB_ERROR');
+    }
+
+    const map = new Map<string, number>();
+    for (const item of items ?? []) {
+      const inTransit = item.quantity - item.warehoused_quantity;
+      map.set(item.variant_id, (map.get(item.variant_id) ?? 0) + inTransit);
+    }
+    return map;
+  },
+
+  /** P3-S2A: 物流单详情，含仓库隔离 */
+  async getById(id: string, userId?: string): Promise<ShipmentDetail | null> {
     const supabase = await createClient();
 
     const { data: shipment, error } = await supabase
@@ -86,31 +219,72 @@ export const shipmentRepository = {
       .eq('id', id)
       .single();
 
-    if (error || !shipment) return null;
+    if (error) {
+      // PGRST116 = row not found (PostgREST code for .single() with 0 results)
+      if (error.code === 'PGRST116') return null;
+      throw new ShipmentError('查询在途详情失败', 'DB_ERROR');
+    }
+    if (!shipment) return null;
 
-    const { data: items } = await supabase
-      .from('shipment_item')
-      .select(
-        `id, quantity, warehoused_quantity, variant_id,
-         variant:variant_id (sku, product:product_id (name))`,
-      )
-      .eq('shipment_id', id);
+    // Warehouse isolation for operator
+    if (userId) {
+      const role = await getUserRole(userId);
+      if (role === 'operator') {
+        if (!shipment.warehouse_id) return null;
+        const canAccess = await warehouseAccessRepository.canAccessWarehouse(
+          userId,
+          shipment.warehouse_id,
+        );
+        if (!canAccess) return null;
+      }
+    }
 
-    const { data: events } = await supabase
-      .from('tracking_event')
-      .select('*')
-      .eq('shipment_id', id)
-      .order('occurred_at', { ascending: false });
+    const [itemsRes, eventsRes, profileRes] = await Promise.all([
+      supabase
+        .from('shipment_item')
+        .select(
+          `id, quantity, warehoused_quantity, variant_id,
+           variant:variant_id (sku, product:product_id (name))`,
+        )
+        .eq('shipment_id', id),
+      supabase
+        .from('tracking_event')
+        .select('*')
+        .eq('shipment_id', id)
+        .order('occurred_at', { ascending: false }),
+      supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('id', shipment.created_by)
+        .single(),
+    ]);
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('display_name')
-      .eq('id', shipment.created_by)
-      .single();
+    // Check all sub-query errors — DB/RLS errors must propagate
+    if (itemsRes.error) {
+      throw new ShipmentError('查询在途详情失败', 'DB_ERROR');
+    }
+    if (eventsRes.error) {
+      throw new ShipmentError('查询在途详情失败', 'DB_ERROR');
+    }
+    // profileRes.error is acceptable — creator may have been deleted (returns null)
+
+    // Resolve warehouse name
+    let warehouseName: string | null = null;
+    if (shipment.warehouse_id) {
+      const { data: wh, error: whErr } = await supabase
+        .from('warehouse')
+        .select('name')
+        .eq('id', shipment.warehouse_id)
+        .single();
+      if (whErr) {
+        throw new ShipmentError('查询在途详情失败', 'DB_ERROR');
+      }
+      warehouseName = wh?.name ?? null;
+    }
 
     return {
       ...shipment,
-      items: (items ?? []).map((item) => {
+      items: (itemsRes.data ?? []).map((item) => {
         const variant = unwrapJoin<{ sku: string; product: unknown }>(item.variant);
         const product = unwrapJoin<{ name: string }>(variant?.product);
         return {
@@ -122,8 +296,9 @@ export const shipmentRepository = {
           variantId: item.variant_id,
         };
       }),
-      events: events ?? [],
-      creatorName: profile?.display_name ?? null,
+      events: eventsRes.data ?? [],
+      creatorName: profileRes.data?.display_name ?? null,
+      warehouseName,
     };
   },
 
@@ -137,6 +312,7 @@ export const shipmentRepository = {
     }));
 
     const { data: shipmentId, error } = await supabase.rpc('create_shipment_transactional', {
+      p_shipment_no: data.shipmentNo,
       p_vessel_name: data.vesselName ?? null,
       p_voyage_number: data.voyageNumber ?? null,
       p_origin_port: data.originPort ?? null,
@@ -157,7 +333,103 @@ export const shipmentRepository = {
     return shipmentId;
   },
 
-  /** 推进物流状态 */
+  /** P3-S2B: 编辑在途基本信息 */
+  async update(data: UpdateShipmentData, userId?: string): Promise<boolean> {
+    const supabase = await createClient();
+
+    // Operator: verify warehouse access
+    if (userId) {
+      const role = await getUserRole(userId);
+      if (role === 'operator') {
+        // Fetch current record to check warehouse ownership
+        const { data: existing, error: fetchErr } = await supabase
+          .from('shipment')
+          .select('warehouse_id')
+          .eq('id', data.id)
+          .single();
+
+        if (fetchErr || !existing) {
+          throw new ShipmentError('在途记录不存在或无权访问', 'NOT_FOUND');
+        }
+        if (!existing.warehouse_id) {
+          throw new ShipmentError('您没有该记录的操作权限', 'FORBIDDEN');
+        }
+        const canAccess = await warehouseAccessRepository.canAccessWarehouse(
+          userId,
+          existing.warehouse_id,
+        );
+        if (!canAccess) {
+          throw new ShipmentError('您没有该记录的操作权限', 'FORBIDDEN');
+        }
+      }
+    }
+
+    const { data: updated, error } = await supabase
+      .from('shipment')
+      .update({
+        shipment_no: data.shipmentNo,
+        vessel_name: data.vesselName ?? null,
+        voyage_number: data.voyageNumber ?? null,
+        origin_port: data.originPort ?? null,
+        destination_port: data.destinationPort ?? null,
+        country: data.country,
+        warehouse_id: data.warehouseId ?? null,
+        estimated_arrival: data.estimatedArrival ?? null,
+        note: data.note ?? null,
+      })
+      .eq('id', data.id)
+      .select('id')
+      .single();
+
+    if (error) {
+      // PGRST116 = 0 rows matched → not found (RLS rejected or genuinely missing)
+      if (error.code === 'PGRST116') {
+        throw new ShipmentError('在途记录不存在或无权访问', 'NOT_FOUND');
+      }
+      throw new ShipmentError('更新在途记录失败', 'DB_ERROR');
+    }
+    if (!updated) {
+      throw new ShipmentError('在途记录不存在或无权访问', 'NOT_FOUND');
+    }
+    return true;
+  },
+
+  /** P3-S2B: 手动变更物流状态（不触发库存联动，禁用 warehoused）
+   *  使用 change_shipment_status_transactional RPC（Migration 00019）
+   *  同一事务内完成 shipment.status 更新 + tracking_event 插入
+   *  RLS 保障仓库隔离；RPC 内 GET DIAGNOSTICS 确认命中目标行 */
+  async changeStatus(
+    shipmentId: string,
+    status: string,
+    _userId: string,
+    description?: string,
+  ): Promise<boolean> {
+    const supabase = await createClient();
+
+    const statusLabel: Record<string, string> = {
+      booking: '订舱',
+      loading: '装柜',
+      departed: '离港',
+      arrived: '到港',
+      customs: '清关',
+    };
+
+    const { error } = await supabase.rpc('change_shipment_status_transactional', {
+      p_shipment_id: shipmentId,
+      p_status: status,
+      p_description: description ?? statusLabel[status] ?? status,
+    });
+
+    if (error) {
+      throw new ShipmentError(
+        error.message || '状态变更失败',
+        'DB_ERROR',
+      );
+    }
+    return true;
+  },
+
+  /** 推进物流状态（旧版—P3-S4 使用，保留完整性） */
   async advanceStatus(
     shipmentId: string,
     nextStatus: string,

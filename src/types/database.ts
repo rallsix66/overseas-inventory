@@ -210,6 +210,7 @@ export type Database = {
       shipment: {
         Row: {
           id: string
+          shipment_no: string
           vessel_name: string | null
           voyage_number: string | null
           origin_port: string | null
@@ -225,6 +226,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          shipment_no: string
           vessel_name: string | null
           voyage_number: string | null
           origin_port: string | null
@@ -240,6 +242,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          shipment_no?: string
           vessel_name?: string | null
           voyage_number?: string | null
           origin_port?: string | null
@@ -591,6 +594,7 @@ export type Database = {
       }
       create_shipment_transactional: {
         Args: {
+          p_shipment_no: string
           p_vessel_name: string | null
           p_voyage_number: string | null
           p_origin_port: string | null
@@ -602,6 +606,14 @@ export type Database = {
           p_items: Array<{ variant_id: string; quantity: number }>
         }
         Returns: string
+      }
+      change_shipment_status_transactional: {
+        Args: {
+          p_shipment_id: string
+          p_status: string
+          p_description: string | null
+        }
+        Returns: boolean
       }
       claim_sync_run: {
         Args: {

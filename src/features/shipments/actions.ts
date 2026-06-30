@@ -6,9 +6,25 @@ import { revalidatePath } from 'next/cache';
 import { requireActiveAuth } from '@/lib/auth';
 import { shipmentRepository } from './repository';
 import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
-import { createShipmentSchema, advanceStatusSchema, searchVariantsSchema } from './schema';
+import {
+  createShipmentSchema,
+  updateShipmentSchema,
+  changeStatusSchema,
+  advanceStatusSchema,
+  searchVariantsSchema,
+  shipmentFiltersSchema,
+  shipmentDetailParamsSchema,
+} from './schema';
 import type { ActionResult } from '@/types/common';
-import type { CreateShipmentData, VariantSelectorItem } from './types';
+import type { PaginatedResult } from '@/types/common';
+import type {
+  CreateShipmentData,
+  UpdateShipmentData,
+  VariantSelectorItem,
+  ShipmentListItem,
+  ShipmentDetail,
+  ShipmentListFilters,
+} from './types';
 
 export async function createShipment(
   formData: CreateShipmentData,
@@ -21,7 +37,7 @@ export async function createShipment(
       return { success: false, error: parsed.error.issues[0]?.message ?? '表单校验失败' };
     }
 
-    const { country, warehouseId, items } = parsed.data;
+    const { shipmentNo, country, warehouseId, items } = parsed.data;
 
     // Operator 权限校验（先于仓库业务校验）
     if (user.roleName === 'operator') {
@@ -43,7 +59,7 @@ export async function createShipment(
     const variantIds = items.map((i) => i.variantId);
     await shipmentRepository.validateVariantsForShipment(variantIds, country);
 
-    const shipmentId = await shipmentRepository.create(parsed.data);
+    const shipmentId = await shipmentRepository.create({ ...parsed.data, shipmentNo });
 
     revalidatePath('/dashboard/shipments');
     return { success: true, data: shipmentId };
@@ -52,6 +68,79 @@ export async function createShipment(
       return { success: false, error: error.message };
     }
     return { success: false, error: '创建在途记录失败，请稍后重试' };
+  }
+}
+
+/** P3-S2B: 编辑在途基本信息 */
+export async function updateShipment(
+  formData: UpdateShipmentData,
+): Promise<ActionResult> {
+  try {
+    const user = await requireActiveAuth();
+
+    const parsed = updateShipmentSchema.safeParse(formData);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '表单校验失败' };
+    }
+
+    // Operator: verify warehouse assignment via canAccessWarehouse
+    if (user.roleName === 'operator') {
+      if (!parsed.data.warehouseId) {
+        return { success: false, error: '运营必须指定仓库' };
+      }
+      const canAccess = await warehouseAccessRepository.canAccessWarehouse(user.id, parsed.data.warehouseId);
+      if (!canAccess) {
+        return { success: false, error: '您没有该仓库的操作权限' };
+      }
+    }
+
+    // Warehouse consistency validation
+    if (parsed.data.warehouseId) {
+      await shipmentRepository.validateWarehouseForShipment(parsed.data.warehouseId, parsed.data.country);
+    }
+
+    await shipmentRepository.update(parsed.data, user.id);
+
+    revalidatePath('/dashboard/shipments');
+    revalidatePath(`/dashboard/shipments/${parsed.data.id}`);
+    return { success: true };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '更新在途记录失败，请稍后重试' };
+  }
+}
+
+/** P3-S2B: 手动变更物流状态（禁用 warehoused，不触发库存联动） */
+export async function changeShipmentStatus(
+  shipmentId: string,
+  status: string,
+  description?: string,
+): Promise<ActionResult> {
+  try {
+    const user = await requireActiveAuth();
+
+    const parsed = changeStatusSchema.safeParse({ shipmentId, status, description });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '校验失败' };
+    }
+
+    await shipmentRepository.changeStatus(
+      parsed.data.shipmentId,
+      parsed.data.status,
+      user.id,
+      parsed.data.description,
+    );
+
+    revalidatePath('/dashboard/shipments');
+    revalidatePath(`/dashboard/shipments/${shipmentId}`);
+    return { success: true };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '状态变更失败，请稍后重试' };
   }
 }
 
@@ -111,5 +200,55 @@ export async function advanceShipmentStatus(
     return { success: true };
   } catch (error) {
     return { success: false, error: '状态推进失败，请稍后重试' };
+  }
+}
+
+// ─── P3-S2A: 在途列表只读 Server Action ─────────────────────────────────
+
+export async function listShipments(
+  filters: ShipmentListFilters = {},
+): Promise<ActionResult<PaginatedResult<ShipmentListItem>>> {
+  try {
+    const user = await requireActiveAuth();
+
+    const parsed = shipmentFiltersSchema.safeParse(filters);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '筛选参数无效' };
+    }
+
+    const result = await shipmentRepository.list(parsed.data, user.id);
+    return { success: true, data: result };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '查询在途列表失败，请稍后重试' };
+  }
+}
+
+// ─── P3-S2A: 在途详情只读 Server Action ─────────────────────────────────
+
+export async function getShipmentDetail(
+  id: string,
+): Promise<ActionResult<ShipmentDetail>> {
+  try {
+    const user = await requireActiveAuth();
+
+    const parsed = shipmentDetailParamsSchema.safeParse({ id });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '参数无效' };
+    }
+
+    const detail = await shipmentRepository.getById(parsed.data.id, user.id);
+    if (!detail) {
+      return { success: false, error: '在途记录不存在或无权访问' };
+    }
+
+    return { success: true, data: detail };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '查询在途详情失败，请稍后重试' };
   }
 }

@@ -3,6 +3,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { inventoryRepository } from '@/features/inventory/repository';
 import { preferencesRepository } from '@/features/preferences/repository';
+import { shipmentRepository } from '@/features/shipments/repository';
 import { FollowedProductsSection } from '@/features/preferences/components/followed-products-section';
 import type { FollowedVariantBasic } from '@/features/preferences/types';
 import { Package, Globe, Truck, ArrowRight, AlertTriangle } from 'lucide-react';
@@ -27,6 +28,24 @@ export default async function DashboardPage() {
     // 统计获取失败时静默处理，首页仍可渲染
   }
 
+  // P3-S2C: 获取在途聚合数据（供在途卡片 + 关注产品动态使用）
+  let inTransitMap: Map<string, number> = new Map();
+  let inTransitSkuCount = 0;
+  let inTransitTotalQuantity = 0;
+  if (user?.id) {
+    try {
+      inTransitMap = await shipmentRepository.getInTransitByVariant(user.id);
+    } catch {
+      // 在途数据获取失败静默处理，不影响首页其余区块
+    }
+    for (const qty of inTransitMap.values()) {
+      if (qty > 0) {
+        inTransitSkuCount++;
+        inTransitTotalQuantity += qty;
+      }
+    }
+  }
+
   // P5-SY12: 获取关注产品动态
   // 查询失败时显示错误状态，不伪装成"暂无关注产品"
   let followedVariants: FollowedVariantBasic[] = [];
@@ -34,6 +53,12 @@ export default async function DashboardPage() {
   if (user?.id) {
     try {
       followedVariants = await preferencesRepository.getFollowedVariantsBasic(user.id);
+      // P3-S2C: 注入在途数量到每个关注产品行
+      if (inTransitMap.size > 0) {
+        for (const v of followedVariants) {
+          v.inTransitQuantity = inTransitMap.get(v.variantId) ?? 0;
+        }
+      }
     } catch (e) {
       followedError = e instanceof Error ? e.message : '关注产品加载失败';
     }
@@ -110,21 +135,41 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* 在途库存 — 即将推出 */}
-        <div className="flex items-start gap-4 rounded-lg border border-gray-200 bg-gray-50/50 p-5 opacity-60 cursor-not-allowed">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-400">
+        {/* 在途库存 — P3-S2C: 接入内部手动在途数据 */}
+        <Link
+          href="/dashboard/shipments"
+          className="group flex items-start gap-4 rounded-lg border border-cyan-200 bg-cyan-50/50 p-5 hover:border-cyan-300 hover:bg-cyan-50 transition-colors"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-cyan-100 text-cyan-600">
             <Truck className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-900">在途库存</h3>
+              <ArrowRight className="h-4 w-4 text-cyan-500 opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0" />
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               已发货未入仓的货物追踪
             </p>
-            <p className="text-xs text-gray-400 mt-2">即将推出</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-2 text-xs text-muted-foreground">
+              <span>
+                在途总量{' '}
+                <span className="font-semibold text-gray-900 tabular-nums">
+                  {inTransitTotalQuantity.toLocaleString()}
+                </span>
+              </span>
+              <span>
+                SKU{' '}
+                <span className="font-semibold text-gray-900 tabular-nums">
+                  {inTransitSkuCount}
+                </span>
+              </span>
+              {inTransitSkuCount === 0 && (
+                <span className="text-gray-400">暂无在途数据</span>
+              )}
+            </div>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* P5-SY12D: 关注产品动态 — 运营可用性收口（筛选/跳转/未匹配说明） */}

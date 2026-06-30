@@ -59,7 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: '物流',
     icon: Ship,
     items: [
-      { href: '/dashboard/shipments', label: '在途管理', icon: Ship, phase: '3' },
+      { href: '/dashboard/shipments', label: '在途管理', icon: Ship, phase: '0' },
     ],
   },
   {

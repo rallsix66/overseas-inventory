@@ -34,6 +34,9 @@
 | **P3-S1B** | 百世 API Client、签名与 Dry Run 拉取 | P3-S1A | **CODE COMPLETE / BLOCKED_EXTERNAL (2026-06-28)** | `src/lib/providers/best/` 模块完成（types.ts / signature.ts / schema.ts / parse-response.ts / client.ts / dry-run.ts / index.ts + 3 测试文件）。MD5 签名、API Client、queryOrderInfoByOrderNo / 物流轨迹查询、Dry Run 入口全部就绪。本地测试（fake credentials + mock fetch）全部通过。真实 Dry Run 返回"未授权"：当前 partnerId 尚未获得 queryOrderInfoByOrderNo / trackingQuery 接口权限。代码和测试已保留。恢复条件：百世确认 partnerId 已授权两个只读接口后，重新执行 `npm run test:best-live`。不进入 P3-S1C。 |
 | **P3-S1C** | 百世只读数据写入 DIS 外部在途表 | P3-S1B | BLOCKED | Dry Run 结果幂等写入 external ref / item / tracking event + 同 provider+external_order_no 不重复 + 未匹配商品保留未匹配状态 + 不更新 inventory |
 | **P3-S1D** | 外部商品到 ProductVariant 的人工匹配基础 | P3-S1C | BLOCKED | `shipment_external_item.matched_variant_id` 可读写 + Admin/Operator 可匹配/解除匹配 + 不自动匹配 + 不用 SKU 做主键 |
+| **P3-S2C** | 库存视图接入内部手动在途只读聚合 | P3-S2B | **DONE (2026-06-30)** | `shipmentRepository.getInTransitByVariant()` 按 variant_id 聚合在途数量（`quantity - warehoused_quantity`），排除 warehoused，Admin/Operator 仓库隔离。海外库存页新增"在途"/"库存+在途"列 + 在途统计卡片。Dashboard 关注产品动态新增"在途"列。Dashboard 在途库存卡片从占位替换为真实数据。14 项 repository 行为测试。1541/1541 测试（46 文件），lint 0/26，build pass。不新增 Migration。 |
+| **P3-S2B** | 内部手动在途维护收口（P3-S2A 扩展） | P3-S2A | **DONE → 返工完成 (2026-06-29)** | `/dashboard/shipments` 列表 + `/dashboard/shipments/[id]` 详情 + 编辑基本信息 + 手动状态变更。Migration 00018 新增 `shipment_no` UNIQUE NOT NULL + RPC 10 参数。Migration 00019 新增 `change_shipment_status_transactional` RPC（原子化状态更新 + tracking_event 插入，GET DIAGNOSTICS 行确认）。`update()` 使用 `.select('id').single()` 确认命中 1 行。`changeStatus()` 调用 RPC 替代两阶段分离写入。列表页单号 + 品名聚合列为主标识（移除目的国）。详情页可编辑基本信息和手动推进状态（booking→loading→departed→arrived→customs，禁用 warehoused）。创建表单新增单号必填。Admin/Operator 仓库隔离 + 编辑权限。1526/1527 测试（47 文件），lint 0/26，build pass。不做库存联动。 |
+| **P3-S2A** | 内部手动在途只读页面（P3-S2 子任务） | P3-S3 | **DONE (2026-06-29)** (被 P3-S2B 扩展) | `/dashboard/shipments` 列表 + `/dashboard/shipments/[id]` 详情。仅读内部 `shipment` / `shipment_item` / `tracking_event`，不读外部在途三表。国家/状态筛选、分页、仓库隔离、loading/error/not-found 全覆盖。Range: 不做状态推进/入仓/库存联动。 |
 | **P3-S2** | 在途列表与详情只读页面 | P3-S1D | BLOCKED | 列表展示国家/仓库/外部单号/商品数量/匹配状态/物流状态/最后同步时间 + 详情含商品明细/未匹配提示/轨迹时间线 + 不做新建/状态推进/入仓 |
 | **P3-S3** | 手动创建/补录在途记录 | P3-S1A | **DONE (2026-06-28)** | Codex 独立验收通过。目标测试 96/96，全量 1439/1439（44 文件），lint 0 errors / 26 warnings，build pass。`/dashboard/shipments/new` 表单就绪 + `requireActiveAuth()` + 仓库数据一致性校验 + `warehouseAccessRepository.canAccessWarehouse()` + Variant 服务端校验 + `create_shipment_transactional` RPC（Migration 00005）+ 服务端 Variant 搜索（所有查询 error 检查 + notIn 在 limit 前 + LIKE 转义 \\/%/\_ + ilike 真实参数断言 + 真实 Server Action 链路）。未实现列表/详情/状态推进/入仓/库存联动。 |
 | **P3-S4** | 状态推进与物流轨迹映射 | P3-S2、P3-S3 | BLOCKED | DIS 六态可推进 + 百世状态保守映射 + 未识别状态只记录 tracking_event 不自动推进 shipment.status + 每次推进产生 tracking_event |
@@ -52,6 +55,7 @@ P3-S1A（数据模型）
   │                 └── P3-S2（在途列表与详情页面）
   │
   └── P3-S3（手动补录）
+        ├── P3-S2A ✅（内部手动在途只读页面）
         │
         └── P3-S2 + P3-S3
               └── P3-S4（状态推进与轨迹映射）
@@ -177,13 +181,19 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S3` — 手动创建/补录在途记录（**DONE**，2026-06-28，Codex 独立验收通过）
+**当前任务**：`P3-S2C` — 库存视图接入内部手动在途只读聚合（**DONE**，2026-06-30）
+
+**P3-S3 状态**：DONE（2026-06-28，Codex 独立验收通过）
 
 **P3-S1B 状态**：CODE COMPLETE / BLOCKED_EXTERNAL（2026-06-28）。百世 API Client、签名与 Dry Run 代码全部就绪，本地测试通过。阻塞原因：百世账号 API 权限尚未开通（真实 Dry Run 返回"未授权"）。恢复条件：百世确认 partnerId 已授权 queryOrderInfoByOrderNo / trackingQuery 两个只读接口后，重新执行 `npm run test:best-live`。代码和测试已保留，不删除，不进入 P3-S1C。
 
-**P3-S3 最终验收通过**：目标测试 96/96，全量 1439/1439（44 文件），lint 0 errors / 26 warnings，build pass，git diff --check pass。Repository 错误传播、LIKE 实际参数、真实 Server Action 链路均已验证。
+**P3-S2C 完成**（2026-06-30）：`shipmentRepository.getInTransitByVariant()` 按 variant_id 聚合在途数量（`quantity - warehoused_quantity`），排除 warehoused，Admin/Operator 仓库隔离。海外库存页新增"在途"/"库存+在途"列 + 在途统计卡片。Dashboard 关注产品动态新增"在途"列。Dashboard 在途库存卡片从占位替换为真实数据。14 项测试。1541/1541（46 文件），lint 0/26，build pass。不新增 Migration。
 
-**下一步**：Phase 3 等待百世 API 授权，或等待用户明确批准调整 P3-S2 依赖/拆分内部手动在途只读页面。P3-S2（依赖 P3-S1D，BLOCKED）/ P3-S4（依赖 P3-S2 + P3-S3，BLOCKED）不得直接开始。
+**P3-S2B 返工完成**（2026-06-29）：Migration 00018 新增 `shipment_no` NOT NULL UNIQUE + RPC 10 参数。Migration 00019 新增 `change_shipment_status_transactional` RPC（原子化状态更新 + tracking_event 插入，GET DIAGNOSTICS 行确认，SECURITY INVOKER）。`update()` 使用 `.select('id').single()` 确认命中 1 行（PGRST116 → NOT_FOUND）。`changeStatus()` 改为调用 RPC 替代两阶段分离写入。列表页单号 + 品名聚合列为主标识，移除目的国列和船名航次主显示。详情页可编辑基本信息（ShipmentEditForm）和手动变更状态（ShipmentStatusChange，booking→loading→departed→arrived→customs，禁用 warehoused，每次追加 tracking_event）。创建表单新增单号必填。Repository 新增 `update()` / `changeStatus()` + Server Actions 新增 `updateShipment()` / `changeShipmentStatus()`。Admin/Operator 仓库隔离 + 编辑权限完整。1526/1527 测试（47 文件），lint 0/26，build pass。不做库存联动。
+
+**P3-S2A 完成**（被 P3-S2B 扩展）：`/dashboard/shipments` 列表页 + `/dashboard/shipments/[id]` 详情页就绪。仅读内部三表，不读外部在途三表。1491/1491 测试通过（45 文件，含 51 项 P3-S2A 行为测试），lint 0/26，build 通过。
+
+**下一步**：P3-S2（完整在途列表与详情，含百世数据双源展示）仍然依赖 P3-S1D（BLOCKED）。P3-S4（状态推进与轨迹映射）依赖 P3-S2 + P3-S3。P3-S5（入仓联动）依赖 P3-S4。P3-S6（权限与验收）依赖 P3-S5。
 
 ## 与现有代码的关系
 

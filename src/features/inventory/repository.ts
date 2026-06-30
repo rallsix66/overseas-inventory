@@ -112,6 +112,7 @@ export const inventoryRepository = {
         safetyStock: product?.safety_stock ?? 0,
         matchStatus: variant?.match_status ?? 'unmatched',
         isFavorited: false,
+        inTransitQuantity: 0,
       };
     });
 
@@ -187,6 +188,7 @@ export const inventoryRepository = {
         safetyStock: product?.safety_stock ?? 0,
         matchStatus: variant?.match_status ?? 'unmatched',
         isFavorited: favoritedVariantIds.has(row.variant_id),
+        inTransitQuantity: 0,
       };
     });
 
@@ -282,6 +284,7 @@ export const inventoryRepository = {
           safetyStock: product?.safety_stock ?? 0,
           matchStatus: variant?.match_status ?? 'unmatched',
           isFavorited: false,
+        inTransitQuantity: 0,
         };
       })
       .filter((item) => item.quantity <= item.safetyStock);
@@ -328,6 +331,7 @@ export const inventoryRepository = {
         safetyStock: 0,
         matchStatus: variant?.match_status ?? 'unmatched',
         isFavorited: false,
+        inTransitQuantity: 0,
       };
     });
   },
@@ -355,7 +359,10 @@ export const inventoryRepository = {
    * 排除当前用户已归档 Variant。
    * 数据量增大后改为数据库 RPC 函数。
    */
-  async getOverseasStats(userId?: string): Promise<OverseasStats> {
+  async getOverseasStats(
+    userId?: string,
+    inTransitMap?: Map<string, number>,
+  ): Promise<OverseasStats> {
     const supabase = await createClient();
     const archivedVariantIds = await getUserArchivedVariantIds(userId);
 
@@ -370,7 +377,14 @@ export const inventoryRepository = {
     }
 
     if (!data || data.length === 0) {
-      return { totalQuantity: 0, skuCount: 0, lowStockCount: 0, lastSyncAt: null };
+      return {
+        totalQuantity: 0,
+        skuCount: 0,
+        lowStockCount: 0,
+        lastSyncAt: null,
+        inTransitSkuCount: 0,
+        inTransitTotalQuantity: 0,
+      };
     }
 
     // P5-SY13A: 获取已分配仓库 ID
@@ -410,11 +424,26 @@ export const inventoryRepository = {
       }
     }
 
+    // P3-S2C: 从预聚合的在途 Map 中计算在途统计
+    let inTransitSkuCount = 0;
+    let inTransitTotalQuantity = 0;
+    if (inTransitMap && inTransitMap.size > 0) {
+      for (const [variantId, qty] of inTransitMap) {
+        // 在途只统计海外库存中存在的 Variant（与显示数据一致）
+        if (skuSet.has(variantId) && qty > 0) {
+          inTransitSkuCount++;
+          inTransitTotalQuantity += qty;
+        }
+      }
+    }
+
     return {
       totalQuantity,
       skuCount: skuSet.size,
       lowStockCount: lowStockSkus.size,
       lastSyncAt,
+      inTransitSkuCount,
+      inTransitTotalQuantity,
     };
   },
 

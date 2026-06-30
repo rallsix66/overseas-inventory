@@ -54,6 +54,7 @@ export function ShipmentCreateForm({ user, warehouses }: Props) {
   const [submitting, setSubmitting] = useState(false);
 
   // 主单字段
+  const [shipmentNo, setShipmentNo] = useState('');
   const [vesselName, setVesselName] = useState('');
   const [voyageNumber, setVoyageNumber] = useState('');
   const [originPort, setOriginPort] = useState('');
@@ -174,6 +175,7 @@ export function ShipmentCreateForm({ user, warehouses }: Props) {
 
   const canSubmit =
     !submitting &&
+    shipmentNo.trim() !== '' &&
     country !== '' &&
     items.length >= 1 &&
     items.length <= MAX_ITEMS &&
@@ -187,6 +189,7 @@ export function ShipmentCreateForm({ user, warehouses }: Props) {
 
     try {
       const result = await createShipment({
+        shipmentNo: shipmentNo.trim(),
         vesselName: vesselName.trim() || undefined,
         voyageNumber: voyageNumber.trim() || undefined,
         originPort: originPort.trim() || undefined,
@@ -217,6 +220,22 @@ export function ShipmentCreateForm({ user, warehouses }: Props) {
       {/* 基本信息 */}
       <fieldset className="space-y-4">
         <legend className="text-base font-semibold">基本信息</legend>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label htmlFor="shipmentNo">
+              单号 <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="shipmentNo"
+              value={shipmentNo}
+              onChange={(e) => setShipmentNo(e.target.value)}
+              placeholder="例：SN-20260629-0001"
+              maxLength={50}
+              aria-label="单号"
+            />
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-2">

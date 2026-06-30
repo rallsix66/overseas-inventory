@@ -169,6 +169,7 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
                   <th className="py-2 px-3">产品/SKU</th>
                   <th className="py-2 px-3">国家/仓库</th>
                   <th className="py-2 px-3 text-right">库存</th>
+                  <th className="py-2 px-3 text-right">在途</th>
                   <th className="py-2 px-3 text-right">日销</th>
                   <th className="py-2 px-3 text-right">可售天数</th>
                   <th className="py-2 px-3 text-right">补货周期</th>
@@ -211,6 +212,11 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
                       }`}
                     >
                       {v.quantity}
+                    </td>
+
+                    {/* 在途 */}
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+                      {v.inTransitQuantity > 0 ? v.inTransitQuantity : '—'}
                     </td>
 
                     {/* 日销 */}

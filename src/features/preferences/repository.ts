@@ -298,6 +298,7 @@ export const preferencesRepository = {
         leadTimeDays,
         alertLevel,
         alertReason,
+        inTransitQuantity: 0,
       });
     }
 

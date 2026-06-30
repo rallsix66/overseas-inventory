@@ -26,6 +26,7 @@ const WID1 = '00000000-0000-4000-8000-000000000004';
 
 describe('P3-S3 — createShipmentSchema (Zod)', () => {
   const validData = {
+    shipmentNo: 'TEST-SN-001',
     country: 'TH',
     items: [{ variantId: VID1, quantity: 100 }],
   };
@@ -35,8 +36,24 @@ describe('P3-S3 — createShipmentSchema (Zod)', () => {
     expect(r.success).toBe(true);
   });
 
+  it('缺少 shipmentNo 拒绝', () => {
+    const r = createShipmentSchema.safeParse({ country: 'TH', items: validData.items });
+    expect(r.success).toBe(false);
+  });
+
+  it('空 shipmentNo 拒绝', () => {
+    const r = createShipmentSchema.safeParse({ ...validData, shipmentNo: '' });
+    expect(r.success).toBe(false);
+  });
+
+  it('shipmentNo 含非法字符拒绝', () => {
+    const r = createShipmentSchema.safeParse({ ...validData, shipmentNo: 'SN 001' });
+    expect(r.success).toBe(false);
+  });
+
   it('完整可选字段通过', () => {
     const r = createShipmentSchema.safeParse({
+      shipmentNo: 'TS-FULL',
       vesselName: 'EVER FORTUNE',
       voyageNumber: 'V1234',
       originPort: '上海港',
@@ -57,34 +74,35 @@ describe('P3-S3 — createShipmentSchema (Zod)', () => {
   });
 
   it.each(['TH', 'ID', 'MY', 'PH', 'VN', 'CN'])('country=%s 通过', (c) => {
-    const r = createShipmentSchema.safeParse({ country: c, items: validData.items });
+    const r = createShipmentSchema.safeParse({ shipmentNo: 'TS-EACH', country: c, items: validData.items });
     expect(r.success).toBe(true);
   });
 
   it('非法 country 拒绝', () => {
-    const r = createShipmentSchema.safeParse({ country: 'XX', items: validData.items });
+    const r = createShipmentSchema.safeParse({ shipmentNo: 'TS-XX', country: 'XX', items: validData.items });
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0]?.message).toContain('请选择目的国');
   });
 
   it('缺少 country 拒绝', () => {
-    const r = createShipmentSchema.safeParse({ items: validData.items });
+    const r = createShipmentSchema.safeParse({ shipmentNo: 'TS-01', items: validData.items });
     expect(r.success).toBe(false);
   });
 
   it('空 items 数组拒绝', () => {
-    const r = createShipmentSchema.safeParse({ country: 'TH', items: [] });
+    const r = createShipmentSchema.safeParse({ shipmentNo: 'TS-01', country: 'TH', items: [] });
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0]?.message).toContain('至少添加一个产品');
   });
 
   it('缺少 items 拒绝', () => {
-    const r = createShipmentSchema.safeParse({ country: 'TH' });
+    const r = createShipmentSchema.safeParse({ shipmentNo: 'TS-01', country: 'TH' });
     expect(r.success).toBe(false);
   });
 
   it('quantity <= 0 拒绝', () => {
     const r = createShipmentSchema.safeParse({
+      shipmentNo: 'TS-01',
       country: 'TH',
       items: [{ variantId: VID1, quantity: 0 }],
     });
@@ -96,6 +114,7 @@ describe('P3-S3 — createShipmentSchema (Zod)', () => {
 
   it('quantity 非整数拒绝', () => {
     const r = createShipmentSchema.safeParse({
+      shipmentNo: 'TS-FLT',
       country: 'TH',
       items: [{ variantId: VID1, quantity: 1.5 }],
     });
@@ -107,6 +126,7 @@ describe('P3-S3 — createShipmentSchema (Zod)', () => {
 
   it('非法 variantId UUID 拒绝', () => {
     const r = createShipmentSchema.safeParse({
+      shipmentNo: 'TS-BADV',
       country: 'TH',
       items: [{ variantId: 'not-a-uuid', quantity: 10 }],
     });
@@ -190,6 +210,7 @@ describe('P3-S3 — createShipmentSchema (Zod)', () => {
 
   it('重复 variantId 拒绝', () => {
     const r = createShipmentSchema.safeParse({
+      shipmentNo: 'TS-DUP',
       country: 'TH',
       items: [
         { variantId: VID1, quantity: 10 },
@@ -210,7 +231,7 @@ describe('P3-S3 — createShipmentSchema (Zod)', () => {
       variantId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
       quantity: 1,
     }));
-    const r = createShipmentSchema.safeParse({ country: 'TH', items: items50 });
+    const r = createShipmentSchema.safeParse({ shipmentNo: 'TS-M50', country: 'TH', items: items50 });
     expect(r.success).toBe(true);
   });
 
@@ -219,7 +240,7 @@ describe('P3-S3 — createShipmentSchema (Zod)', () => {
       variantId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
       quantity: 1,
     }));
-    const r = createShipmentSchema.safeParse({ country: 'TH', items: items51 });
+    const r = createShipmentSchema.safeParse({ shipmentNo: 'TS-M51', country: 'TH', items: items51 });
     expect(r.success).toBe(false);
     if (!r.success) {
       expect(r.error.issues.map((i) => i.message)).toContain('最多添加 50 个产品');
@@ -391,6 +412,7 @@ describe('P3-S3 — createShipment action', () => {
   const operatorUser = { id: 'u-op', roleName: 'operator', isActive: true as const, email: 'o@x.com', displayName: 'Op' };
 
   const validInput = {
+    shipmentNo: 'TEST-SN-001',
     country: 'TH' as const,
     items: [{ variantId: VID1, quantity: 100 }],
   };
@@ -428,7 +450,7 @@ describe('P3-S3 — createShipment action', () => {
       variantId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
       quantity: 1,
     }));
-    const result = await createShipment({ country: 'TH', items: items51 });
+    const result = await createShipment({ shipmentNo: 'TEST-SN-051', country: 'TH', items: items51 });
     expect(result.success).toBe(false);
     expect(result.error).toContain('最多添加 50 个产品');
     expect(mockCreate).not.toHaveBeenCalled();

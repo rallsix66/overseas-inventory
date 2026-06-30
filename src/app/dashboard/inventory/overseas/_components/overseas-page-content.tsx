@@ -5,7 +5,7 @@
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
 import { useOptimistic, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Package, AlertTriangle, Clock, RefreshCw, Star } from 'lucide-react';
+import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -290,7 +290,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
         <StatCard
           icon={Package}
           label="库存总量"
@@ -315,6 +315,13 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           label="最后同步"
           value={formatTime(stats.lastSyncAt)}
           colorClass="bg-slate-50 text-slate-600"
+        />
+        <StatCard
+          icon={Truck}
+          label="在途库存"
+          value={stats.inTransitTotalQuantity.toLocaleString()}
+          sub={`${stats.inTransitSkuCount} 个 SKU`}
+          colorClass="bg-cyan-50 text-cyan-600"
         />
       </div>
 
@@ -428,6 +435,8 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                   <TableHead>SKU</TableHead>
                   <TableHead>产品名称</TableHead>
                   <TableHead className="text-right">当前库存</TableHead>
+                  <TableHead className="text-right">在途</TableHead>
+                  <TableHead className="text-right">库存+在途</TableHead>
                   <TableHead className="text-right">安全库存</TableHead>
                   <TableHead>库存状态</TableHead>
                   <TableHead>同步状态</TableHead>
@@ -468,6 +477,14 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                       >
                         {item.quantity}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                      {item.inTransitQuantity > 0 ? item.inTransitQuantity : '—'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">
+                      {item.inTransitQuantity > 0
+                        ? (item.quantity + item.inTransitQuantity).toLocaleString()
+                        : item.quantity}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                       {item.matchStatus === 'matched' ? item.safetyStock : '—'}

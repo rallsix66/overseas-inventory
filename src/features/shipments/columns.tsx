@@ -14,27 +14,34 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
 
 export const shipmentColumns: ColumnDef<ShipmentListItem>[] = [
   {
-    key: 'vesselName',
-    header: '船名航次',
+    key: 'shipmentNo',
+    header: '单号',
+    render: (item) => (
+      <span className="font-medium text-sm tabular-nums">{item.shipmentNo}</span>
+    ),
+  },
+  {
+    key: 'productNames',
+    header: '品名',
     render: (item) => {
-      const name = item.vesselName || '';
-      const voyage = item.voyageNumber || '';
-      if (!name && !voyage) return '—';
-      return `${name} ${voyage}`.trim();
+      if (!item.productNames) return <span className="text-muted-foreground text-sm">—</span>;
+      return (
+        <span className="text-sm truncate max-w-[200px] block" title={item.productNames}>
+          {item.productNames}
+        </span>
+      );
     },
   },
   {
-    key: 'country',
-    header: '目的国',
+    key: 'warehouseName',
+    header: '仓库',
     render: (item) => (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
-        {item.country}
-      </span>
+      <span className="text-sm">{item.warehouseName || <span className="text-muted-foreground">未指定</span>}</span>
     ),
   },
   {
     key: 'status',
-    header: '状态',
+    header: '物流状态',
     render: (item) => {
       const s = STATUS_MAP[item.status] ?? STATUS_MAP.booking;
       return (
@@ -45,33 +52,52 @@ export const shipmentColumns: ColumnDef<ShipmentListItem>[] = [
     },
   },
   {
+    key: 'estimatedArrival',
+    header: '预计到仓',
+    render: (item) =>
+      item.estimatedArrival
+        ? new Date(item.estimatedArrival).toLocaleDateString('zh-CN')
+        : '—',
+  },
+  {
     key: 'productCount',
     header: '产品数',
-    className: 'text-center',
+    className: 'text-right',
+    render: (item) => (
+      <span className="tabular-nums text-sm">{item.productCount}</span>
+    ),
   },
   {
     key: 'totalQuantity',
-    header: '总件数',
+    header: '总数量',
     className: 'text-right',
+    render: (item) => (
+      <span className="tabular-nums text-sm">{item.totalQuantity.toLocaleString()}</span>
+    ),
   },
   {
     key: 'inTransitQuantity',
     header: '在途剩余',
     className: 'text-right',
     render: (item) => (
-      <span className={item.inTransitQuantity > 0 ? 'text-blue-600 font-medium' : 'text-green-600'}>
-        {item.inTransitQuantity}
+      <span
+        className={`tabular-nums text-sm ${
+          item.inTransitQuantity > 0 ? 'text-blue-600 font-medium' : 'text-green-600'
+        }`}
+      >
+        {item.inTransitQuantity.toLocaleString()}
       </span>
     ),
   },
   {
-    key: 'estimatedArrival',
-    header: '预计到港',
-    render: (item) => item.estimatedArrival || '—',
-  },
-  {
     key: 'createdAt',
     header: '创建时间',
-    render: (item) => new Date(item.createdAt).toLocaleString('zh-CN'),
+    render: (item) =>
+      new Date(item.createdAt).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
   },
 ];

@@ -4,6 +4,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { inventoryRepository } from './repository';
+import { shipmentRepository } from '@/features/shipments/repository';
 import { inventoryUpdateSchema, inventorySearchSchema } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } from './types';
@@ -12,7 +13,7 @@ import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } 
 export type { InventoryItem, OverseasStats, WarehouseOption } from './types';
 
 /**
- * 获取海外库存数据 — 统计、仓库列表、分页列表 + 当前用户关注状态
+ * 获取海外库存数据 — 统计、仓库列表、分页列表 + 当前用户关注状态 + P3-S2C 在途数量
  * 查询失败时抛出错误，由页面 error.tsx 边界处理
  */
 export async function getOverseasInventory(filters: InventoryFilters): Promise<{
@@ -32,13 +33,22 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
 
   const userId = user.id;
 
+  // P3-S2C: 加载在途聚合数据（与库存查询并行）
+  const inTransitMap = await shipmentRepository.getInTransitByVariant(userId);
+
   // getOverseasList 内部已完成：归档过滤 → 关注标记 → 排序（关注置顶）→ 分页
-  // 不在此处重复标记 isFavorited，避免对已分页数据二次覆盖
   const [stats, warehouses, result] = await Promise.all([
-    inventoryRepository.getOverseasStats(userId),
+    inventoryRepository.getOverseasStats(userId, inTransitMap),
     inventoryRepository.getOverseasWarehouses(),
     inventoryRepository.getOverseasList({ ...parsed.data, userId }),
   ]);
+
+  // P3-S2C: 合并在途数量到每个分页项
+  if (inTransitMap.size > 0) {
+    for (const item of result.data) {
+      item.inTransitQuantity = inTransitMap.get(item.variantId) ?? 0;
+    }
+  }
 
   return { stats, warehouses, result };
 }

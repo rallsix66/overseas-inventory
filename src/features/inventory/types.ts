@@ -24,6 +24,8 @@ export interface InventoryItem {
   matchStatus: string;
   /** 当前用户是否已关注此 Variant（P5-SY12，基于 user_variant_preference preference_type='favorited'） */
   isFavorited: boolean;
+  /** P3-S2C: 该 Variant 的聚合在途数量（shipment_item.quantity - warehoused_quantity，不含 warehoused 状态） */
+  inTransitQuantity: number;
 }
 
 /** 库存筛选条件 */
@@ -46,6 +48,10 @@ export interface OverseasStats {
   skuCount: number;
   lowStockCount: number;
   lastSyncAt: string | null;
+  /** P3-S2C: 内部在途 SKU 数（shipment_item 聚合，不含 warehoused） */
+  inTransitSkuCount: number;
+  /** P3-S2C: 内部在途总量（shipment_item 聚合，不含 warehoused） */
+  inTransitTotalQuantity: number;
 }
 
 /** 仓库选项（用于筛选下拉） */

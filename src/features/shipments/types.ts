@@ -14,16 +14,28 @@ export type TrackingEventRow = Database['public']['Tables']['tracking_event']['R
 /** 物流主单列表项（含聚合信息） */
 export interface ShipmentListItem {
   id: string;
+  shipmentNo: string;
   vesselName: string | null;
   voyageNumber: string | null;
   country: string;
+  warehouseName: string | null;
   status: string;
   estimatedArrival: string | null;
   productCount: number;
   totalQuantity: number;
   inTransitQuantity: number;
+  /** 聚合品名（从 shipment_item → product_variant.product.name，逗号分隔，最多 3 个） */
+  productNames: string | null;
   createdBy: string;
   createdAt: string;
+}
+
+/** P3-S2A: 在途列表筛选（URL search params 映射） */
+export interface ShipmentListFilters {
+  country?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 /** 在途状态（六种） */
@@ -40,6 +52,7 @@ export interface ShipmentDetail extends ShipmentRow {
   items: ShipmentItemDetail[];
   events: TrackingEventRow[];
   creatorName: string | null;
+  warehouseName: string | null;
 }
 
 /** 在途明细 */
@@ -60,6 +73,7 @@ export interface ShipmentFilters extends PaginationParams {
 
 /** 新建在途表单 */
 export interface CreateShipmentData {
+  shipmentNo: string;
   vesselName?: string;
   voyageNumber?: string;
   originPort?: string;
@@ -69,6 +83,27 @@ export interface CreateShipmentData {
   estimatedArrival?: string;
   note?: string;
   items: { variantId: string; quantity: number }[];
+}
+
+/** P3-S2B: 编辑在途基本信息 */
+export interface UpdateShipmentData {
+  id: string;
+  shipmentNo: string;
+  vesselName?: string;
+  voyageNumber?: string;
+  originPort?: string;
+  destinationPort?: string;
+  country: string;
+  warehouseId?: string;
+  estimatedArrival?: string;
+  note?: string;
+}
+
+/** P3-S2B: 手动变更物流状态 */
+export interface ChangeStatusData {
+  shipmentId: string;
+  status: string;
+  description?: string;
 }
 
 /** P3-S3: Variant 选择器条目 */

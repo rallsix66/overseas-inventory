@@ -70,4 +70,6 @@ export interface FollowedVariantBasic {
   leadTimeDays: number | null; // 仓库补货周期天（warehouse.lead_time_days）
   alertLevel: 'critical' | 'warning' | 'normal' | 'unknown';
   alertReason: string | null;  // 中文告警原因，normal 时为 null
+  /** P3-S2C: 该 Variant 的聚合在途数量（shipment_item.quantity - warehoused_quantity，不含 warehoused 状态） */
+  inTransitQuantity: number;
 }
