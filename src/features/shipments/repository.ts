@@ -209,6 +209,81 @@ export const shipmentRepository = {
     return map;
   },
 
+  /** P3-S2D: 按 (variant_id, warehouse_id) 聚合在途数量（只读，不写 inventory）
+   *  在途 = shipment_item.quantity - shipment_item.warehoused_quantity
+   *  排除 shipment.status = 'warehoused'
+   *  Operator 仅统计已分配仓库；Admin 统计全部
+   *  返回 Map<variantId, Map<warehouseId, inTransitQty>> */
+  async getInTransitByVariantAndWarehouse(
+    userId?: string,
+  ): Promise<Map<string, Map<string, number>>> {
+    const supabase = await createClient();
+
+    // Determine warehouse filter before building query (role check consumes a DB call)
+    let accessibleWhIds: Set<string> | null = null;
+    if (userId) {
+      const role = await getUserRole(userId);
+      if (role === 'operator') {
+        const ids = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+        if (ids.size === 0) return new Map();
+        accessibleWhIds = ids;
+      }
+      // Admin: no warehouse filter (RLS allows all)
+    }
+
+    let query = supabase
+      .from('shipment')
+      .select('id, warehouse_id')
+      .neq('status', 'warehoused');
+
+    if (accessibleWhIds) {
+      query = query.in('warehouse_id', [...accessibleWhIds]);
+    }
+
+    const { data: shipments, error } = await query;
+
+    if (error) {
+      throw new ShipmentError('查询在途数据失败', 'DB_ERROR');
+    }
+    if (!shipments || shipments.length === 0) return new Map();
+
+    // Build shipment_id → warehouse_id lookup (skip null warehouse_id — items
+    // in shipments without a warehouse are excluded from in-transit aggregation)
+    const shipmentWarehouseMap = new Map<string, string>();
+    for (const s of shipments) {
+      if (s.warehouse_id) {
+        shipmentWarehouseMap.set(s.id, s.warehouse_id);
+      }
+    }
+
+    const shipmentIds = shipments.map((s) => s.id);
+
+    const { data: items, error: itemsErr } = await supabase
+      .from('shipment_item')
+      .select('variant_id, quantity, warehoused_quantity, shipment_id')
+      .in('shipment_id', shipmentIds);
+
+    if (itemsErr) {
+      throw new ShipmentError('查询在途数据失败', 'DB_ERROR');
+    }
+
+    const map = new Map<string, Map<string, number>>();
+    for (const item of items ?? []) {
+      const whId = shipmentWarehouseMap.get(item.shipment_id);
+      if (!whId) continue; // skip items whose shipment has no warehouse (shouldn't happen)
+
+      const inTransit = item.quantity - item.warehoused_quantity;
+
+      let innerMap = map.get(item.variant_id);
+      if (!innerMap) {
+        innerMap = new Map();
+        map.set(item.variant_id, innerMap);
+      }
+      innerMap.set(whId, (innerMap.get(whId) ?? 0) + inTransit);
+    }
+    return map;
+  },
+
   /** P3-S2A: 物流单详情，含仓库隔离 */
   async getById(id: string, userId?: string): Promise<ShipmentDetail | null> {
     const supabase = await createClient();

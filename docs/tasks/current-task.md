@@ -2,11 +2,57 @@
 
 ## Task ID
 
-`P3-S2C` — 库存视图接入内部手动在途只读聚合
+`P3-S2D` — 在途库存聚合精确到仓库
 
 ## 状态
 
 **DONE**（2026-06-30）
+
+## 背景
+
+P3-S2C 的 `getInTransitByVariant()` 按 variant_id 聚合在途数量，但海外库存页每行是 (variant + warehouse) 维度。同一 variant 在两个仓库都有在途时，两行显示相同的总在途数量（串仓）。P3-S2D 扩展为按 (variant_id, warehouse_id) 聚合，海外库存页每行只显示对应仓库的在途数量。
+
+## 依赖
+
+- P3-S2C DONE（`getInTransitByVariant()` 基础聚合）
+- `warehouseAccessRepository`（仓库隔离）
+- `getUserRole()`（权限判断）
+
+## 范围
+
+1. `shipmentRepository.getInTransitByVariantAndWarehouse()` — 新增方法，按 (variant_id, warehouse_id) 聚合，返回 `Map<variantId, Map<warehouseId, inTransitQty>>`，shipment 查询同时 select warehouse_id，shipment_item 查询同时 select shipment_id 用于关联
+2. `getOverseasInventory` action — 改用仓库维度在途 Map，每行 `inTransitQuantity` 精确匹配 `variantId + warehouseId`；从仓库维度 Map 计算 variant 总在途供统计卡片使用
+3. Dashboard 关注产品动态保持 `getInTransitByVariant()` variant 总在途（用户确认可接受）
+4. 不写 inventory，不启用 warehoused，不接 Best，不做入库联动，不新增 Migration
+
+## 禁止
+
+- 不新增 Migration
+- 不写 inventory.quantity
+- 不接 Best/shipment_external_ref 外部表
+- 不做入库联动
+- 不启用 warehoused 状态
+- 页面/组件不直接调用 `supabase.from()`
+
+## 停止条件（全部满足）
+
+1. `getInTransitByVariantAndWarehouse()` 按仓库维度聚合正确（16 项行为测试全部通过）
+2. 同一 variant 在两个仓库都有在途时，海外库存每行只显示对应仓库数量（不串仓）
+3. Admin/Operator 仓库隔离有效
+4. `npm run test` 1558/1559 通过（49 文件，concurrency/best live 预存失败），`npm run lint` 0 errors / 27 warnings（all pre-existing），`npm run build` 通过
+
+## 下一步
+
+- P3-S2（完整在途列表与详情含百世双源）依赖 P3-S1D — **BLOCKED**
+- P3-S4（状态推进与轨迹映射）依赖 P3-S2 + P3-S3 — **BLOCKED**
+- P3-S5（入仓联动）依赖 P3-S4 — **BLOCKED**
+- P3-S6（权限与验收）依赖 P3-S5 — **BLOCKED**
+
+---
+
+# 历史任务包（已完成）
+
+## P3-S2C — 库存视图接入内部手动在途只读聚合
 
 ## 背景
 

@@ -33,21 +33,29 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
 
   const userId = user.id;
 
-  // P3-S2C: 加载在途聚合数据（与库存查询并行）
-  const inTransitMap = await shipmentRepository.getInTransitByVariant(userId);
+  // P3-S2D: 加载按仓库维度的在途聚合数据（与库存查询并行）
+  const whInTransitMap = await shipmentRepository.getInTransitByVariantAndWarehouse(userId);
+
+  // 从仓库维度在途 Map 计算 variant 总在途（供统计卡片使用）
+  const variantTotalMap = new Map<string, number>();
+  for (const [variantId, whMap] of whInTransitMap) {
+    let total = 0;
+    for (const [, qty] of whMap) {
+      total += qty;
+    }
+    if (total > 0) variantTotalMap.set(variantId, total);
+  }
 
   // getOverseasList 内部已完成：归档过滤 → 关注标记 → 排序（关注置顶）→ 分页
   const [stats, warehouses, result] = await Promise.all([
-    inventoryRepository.getOverseasStats(userId, inTransitMap),
+    inventoryRepository.getOverseasStats(userId, variantTotalMap),
     inventoryRepository.getOverseasWarehouses(),
     inventoryRepository.getOverseasList({ ...parsed.data, userId }),
   ]);
 
-  // P3-S2C: 合并在途数量到每个分页项
-  if (inTransitMap.size > 0) {
-    for (const item of result.data) {
-      item.inTransitQuantity = inTransitMap.get(item.variantId) ?? 0;
-    }
+  // P3-S2D: 按仓库维度合并在途数量到每个分页项
+  for (const item of result.data) {
+    item.inTransitQuantity = whInTransitMap.get(item.variantId)?.get(item.warehouseId) ?? 0;
   }
 
   return { stats, warehouses, result };
