@@ -48,10 +48,36 @@ export type ShipmentStatus =
   | 'customs'
   | 'warehoused';
 
+/** P3-S4A: 状态流转规则 — 仅允许按顺序推进，warehoused 禁止手动推进 */
+export const SHIPMENT_STATUS_FLOW: Record<string, string | null> = {
+  booking: 'loading',
+  loading: 'departed',
+  departed: 'arrived',
+  arrived: 'customs',
+  customs: null, // 无合法下一状态（warehoused 禁止手动推进）
+};
+
+/** P3-S4A: 获取当前状态的下一合法目标状态（null 表示无） */
+export function getNextValidStatus(current: string): string | null {
+  return SHIPMENT_STATUS_FLOW[current] ?? null;
+}
+
+/** P3-S4A: 轨迹事件含创建人姓名 */
+export interface TrackingEventDetail {
+  id: string;
+  shipmentId: string;
+  status: string;
+  description: string | null;
+  occurredAt: string;
+  createdBy: string;
+  createdAt: string;
+  creatorName: string | null;
+}
+
 /** 物流主单详情 */
 export interface ShipmentDetail extends ShipmentRow {
   items: ShipmentItemDetail[];
-  events: TrackingEventRow[];
+  events: TrackingEventDetail[];
   creatorName: string | null;
   warehouseName: string | null;
 }

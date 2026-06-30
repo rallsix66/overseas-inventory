@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
 import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
 import { variantRepository } from '@/features/variants/repository';
+import { isValidStatusTransition } from './schema';
 import type {
   ShipmentListItem,
   ShipmentDetail,
@@ -12,6 +13,7 @@ import type {
   VariantSelectorItem,
   WarehouseSelectorItem,
   InTransitDetailItem,
+  TrackingEventDetail,
 } from './types';
 import type { PaginatedResult } from '@/types/common';
 
@@ -411,11 +413,15 @@ export const shipmentRepository = {
            variant:variant_id (sku, product:product_id (name))`,
         )
         .eq('shipment_id', id),
+      // P3-S4A: 轨迹按 occurred_at 升序（时间线从上到下为最早→最新），join profiles 获取创建人姓名
       supabase
         .from('tracking_event')
-        .select('*')
+        .select(
+          `id, shipment_id, status, description, occurred_at, created_by, created_at,
+           profile:created_by (display_name)`,
+        )
         .eq('shipment_id', id)
-        .order('occurred_at', { ascending: false }),
+        .order('occurred_at', { ascending: true }),
       supabase
         .from('profiles')
         .select('display_name')
@@ -460,7 +466,19 @@ export const shipmentRepository = {
           variantId: item.variant_id,
         };
       }),
-      events: eventsRes.data ?? [],
+      events: (eventsRes.data ?? []).map((event) => {
+        const profile = event.profile as unknown as { display_name: string | null } | null;
+        return {
+          id: event.id,
+          shipmentId: event.shipment_id,
+          status: event.status,
+          description: event.description,
+          occurredAt: event.occurred_at,
+          createdBy: event.created_by,
+          createdAt: event.created_at,
+          creatorName: profile?.display_name ?? null,
+        } satisfies TrackingEventDetail;
+      }),
       creatorName: profileRes.data?.display_name ?? null,
       warehouseName,
     };
@@ -560,8 +578,9 @@ export const shipmentRepository = {
     return true;
   },
 
-  /** P3-S2B: 手动变更物流状态（不触发库存联动，禁用 warehoused）
-   *  使用 change_shipment_status_transactional RPC（Migration 00019）
+  /** P3-S2B/P3-S4A: 手动变更物流状态（不触发库存联动，禁用 warehoused）
+   *  使用 change_shipment_status_transactional RPC（Migration 00022）
+   *  P3-S4A: 应用层预校验当前状态 → 流转规则 → 再调用 RPC
    *  同一事务内完成 shipment.status 更新 + tracking_event 插入
    *  RLS 保障仓库隔离；RPC 内 GET DIAGNOSTICS 确认命中目标行 */
   async changeStatus(
@@ -571,6 +590,32 @@ export const shipmentRepository = {
     description?: string,
   ): Promise<boolean> {
     const supabase = await createClient();
+
+    // P3-S4A: 读取当前状态，预校验流转规则（应用层校验，RPC 层也校验兜底）
+    const { data: current, error: fetchErr } = await supabase
+      .from('shipment')
+      .select('status')
+      .eq('id', shipmentId)
+      .single();
+
+    if (fetchErr) {
+      if (fetchErr.code === 'PGRST116') {
+        throw new ShipmentError('在途记录不存在或无权访问', 'NOT_FOUND');
+      }
+      throw new ShipmentError('查询在途记录失败', 'DB_ERROR');
+    }
+
+    if (!current) {
+      throw new ShipmentError('在途记录不存在或无权访问', 'NOT_FOUND');
+    }
+
+    // P3-S4A: 状态流转规则校验 — 仅允许按顺序推进，禁止倒退和跳步
+    if (!isValidStatusTransition(current.status, status)) {
+      throw new ShipmentError(
+        `状态不可从「${current.status}」变更为「${status}」：仅允许按顺序推进`,
+        'VALIDATION',
+      );
+    }
 
     const statusLabel: Record<string, string> = {
       booking: '订舱',
@@ -595,55 +640,22 @@ export const shipmentRepository = {
     return true;
   },
 
-  /** 推进物流状态（旧版—P3-S4 使用，保留完整性） */
+  /** 推进物流状态（旧版兼容路径—P3-S4A 返工：统一委托 changeStatus → RPC）
+   *  禁止直接 update shipment + insert tracking_event；
+   *  所有手动状态推进入口必须通过 change_shipment_status_transactional RPC 完成。 */
   async advanceStatus(
     shipmentId: string,
     nextStatus: string,
     userId: string,
     description?: string,
   ): Promise<boolean> {
-    const supabase = await createClient();
-
-    const { error } = await supabase
-      .from('shipment')
-      .update({ status: nextStatus })
-      .eq('id', shipmentId);
-
-    if (error) return false;
-
+    // P3-S4A: 禁用 warehoused（显式守卫，给出明确错误消息）
     if (nextStatus === 'warehoused') {
-      const { data: items } = await supabase
-        .from('shipment_item')
-        .select('id, quantity')
-        .eq('shipment_id', shipmentId);
-
-      if (items) {
-        for (const item of items) {
-          await supabase
-            .from('shipment_item')
-            .update({ warehoused_quantity: item.quantity })
-            .eq('id', item.id);
-        }
-      }
+      throw new ShipmentError('当前不支持手动推进到入仓状态', 'VALIDATION');
     }
 
-    const statusLabel: Record<string, string> = {
-      loading: '装柜',
-      departed: '离港',
-      arrived: '到港',
-      customs: '清关',
-      warehoused: '入仓',
-    };
-
-    await supabase.from('tracking_event').insert({
-      shipment_id: shipmentId,
-      status: nextStatus,
-      description: description ?? statusLabel[nextStatus] ?? nextStatus,
-      occurred_at: new Date().toISOString(),
-      created_by: userId,
-    });
-
-    return true;
+    // P3-S4A REWORK: 统一委托 changeStatus → RPC，不在本方法内直接写表
+    return this.changeStatus(shipmentId, nextStatus, userId, description);
   },
 
   // ─── P3-S3: 表单选择器数据 ──────────────────────────────────────────

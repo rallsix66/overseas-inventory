@@ -241,6 +241,7 @@ export default async function ShipmentDetailPage({
             <div className="relative">
               {shipment.events.map((event, idx) => {
                 const isLast = idx === shipment.events.length - 1;
+                const isFirst = idx === 0;
                 const eventStatusLabel = STATUS_LABELS[event.status] ?? event.status;
                 const eventStatusClass =
                   STATUS_CLASSES[event.status] ?? 'bg-gray-100 text-gray-700';
@@ -248,7 +249,7 @@ export default async function ShipmentDetailPage({
                   <div key={event.id} className="flex gap-3 pb-4 last:pb-0">
                     {/* 时间线 */}
                     <div className="flex flex-col items-center">
-                      <div className="w-2.5 h-2.5 rounded-full bg-gray-300 mt-1.5 shrink-0" />
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isFirst ? 'bg-blue-500 mt-1.5' : 'bg-gray-300 mt-1.5'}`} />
                       {!isLast && <div className="w-px flex-1 bg-gray-200 mt-1" />}
                     </div>
                     {/* 内容 */}
@@ -260,13 +261,18 @@ export default async function ShipmentDetailPage({
                           {eventStatusLabel}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(event.occurred_at).toLocaleString('zh-CN', {
+                          {new Date(event.occurredAt).toLocaleString('zh-CN', {
                             month: '2-digit',
                             day: '2-digit',
                             hour: '2-digit',
                             minute: '2-digit',
                           })}
                         </span>
+                        {event.creatorName && (
+                          <span className="text-xs text-muted-foreground">
+                            · {event.creatorName}
+                          </span>
+                        )}
                       </div>
                       {event.description && (
                         <p className="text-sm mt-1 text-gray-700">{event.description}</p>

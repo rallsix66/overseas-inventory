@@ -41,7 +41,8 @@
 | **P3-S2A** | 内部手动在途只读页面（P3-S2 子任务） | P3-S3 | **DONE (2026-06-29)** (被 P3-S2B 扩展) | `/dashboard/shipments` 列表 + `/dashboard/shipments/[id]` 详情。仅读内部 `shipment` / `shipment_item` / `tracking_event`，不读外部在途三表。国家/状态筛选、分页、仓库隔离、loading/error/not-found 全覆盖。Range: 不做状态推进/入仓/库存联动。 |
 | **P3-S2** | 在途列表与详情只读页面 | P3-S1D | BLOCKED | 列表展示国家/仓库/外部单号/商品数量/匹配状态/物流状态/最后同步时间 + 详情含商品明细/未匹配提示/轨迹时间线 + 不做新建/状态推进/入仓 |
 | **P3-S3** | 手动创建/补录在途记录 | P3-S1A | **DONE (2026-06-28)** | Codex 独立验收通过。目标测试 96/96，全量 1439/1439（44 文件），lint 0 errors / 26 warnings，build pass。`/dashboard/shipments/new` 表单就绪 + `requireActiveAuth()` + 仓库数据一致性校验 + `warehouseAccessRepository.canAccessWarehouse()` + Variant 服务端校验 + `create_shipment_transactional` RPC（Migration 00005）+ 服务端 Variant 搜索（所有查询 error 检查 + notIn 在 limit 前 + LIKE 转义 \\/%/\_ + ilike 真实参数断言 + 真实 Server Action 链路）。未实现列表/详情/状态推进/入仓/库存联动。 |
-| **P3-S4** | 状态推进与物流轨迹映射 | P3-S2、P3-S3 | BLOCKED | DIS 六态可推进 + 百世状态保守映射 + 未识别状态只记录 tracking_event 不自动推进 shipment.status + 每次推进产生 tracking_event |
+| **P3-S4A** | 内部手动在途状态轨迹收口（含返工） | P3-S2E、P3-S3 | **DONE (2026-06-30)** | Migration 00022：RPC SELECT 当前状态 → 校验流转规则（booking→loading→departed→arrived→customs，禁止倒退/跳步/warehoused）→ UPDATE + INSERT。`SHIPMENT_STATUS_FLOW` + `isValidStatusTransition()` + `getNextValidStatus()` 纯函数。Repository `changeStatus()` 预读 status 校验 + `advanceStatus()` 委托 `changeStatus()` → RPC（不再直接 `from('shipment').update` + `from('tracking_event').insert`）+ `getById()` tracking_event join profiles 升序 + `TrackingEventDetail` 含 creatorName。Actions `advanceShipmentStatus()` Admin-only + 使用 `parsed.data.*`。`ShipmentStatusChange` 仅展示下一合法状态。详情页轨迹升序时间线 + 创建人 + 首个节点蓝色高亮。79 项 P3-S4A 源码检查 + 7 项追加行为测试。1688/1688 测试（50 文件），lint 0/25，build pass。Migration 00022 待手动执行。不做百世映射/入仓联动。 |
+| **P3-S4** | 状态推进与物流轨迹映射（百世路径） | P3-S2、P3-S3 | BLOCKED | 百世状态保守映射 + 未识别状态只记录 tracking_event 不自动推进 shipment.status（P3-S4A 已将内部状态流转收口；百世映射待 P3-S1B 解除阻塞后实施） |
 | **P3-S5** | 入仓事务与库存联动 | P3-S4 | BLOCKED | 仅在用户确认入仓时更新 inventory + shipment_item.warehoused_quantity 与 inventory.quantity 事务化 + 百世同步不自动改库存 |
 | **P3-S6** | 在途模块权限、RLS 与端到端验收 | P3-S5 | BLOCKED | Admin/Operator 权限完整 + 已分配仓库隔离 + Server Action/Repository/RLS 链路一致 + 空状态/无权限/错误/加载状态验收 |
 
@@ -58,9 +59,14 @@ P3-S1A（数据模型）
   │
   └── P3-S3（手动补录）
         ├── P3-S2A ✅（内部手动在途只读页面）
+        │     └── P3-S2B ✅（维护收口）
+        │           └── P3-S2C ✅（库存视图接入在途）
+        │                 └── P3-S2D ✅（仓库维度聚合）
+        │                       └── P3-S2E ✅（入口收口 + 采购单号）
+        │                             └── P3-S4A ✅（状态轨迹收口 — 内部路径）
         │
         └── P3-S2 + P3-S3
-              └── P3-S4（状态推进与轨迹映射）
+              └── P3-S4（状态推进 — 百世路径，BLOCKED by P3-S1B）
                     └── P3-S5（入仓事务与库存联动）
                           └── P3-S6（权限与验收）
 ```
@@ -146,16 +152,19 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 **停止条件**：手动创建在途表单就绪 + 事务性写入（复用 `create_shipment_transactional` RPC Migration 00005，9 参数、SECURITY INVOKER、auth.uid()）+ Admin/Operator 权限校验（Operator 仅已分配仓库）+ 仓库数据一致性校验（存在/启用/类型/国家一致）+ 与百世同步 UI 入口分离。
 
-### P3-S4 — 状态推进与物流轨迹映射
+### P3-S4A — 内部手动在途状态轨迹收口（已完成）
+
+**已完成 + 返工**（2026-06-30）：内部 shipment/shipment_item/tracking_event 状态轨迹收口已完成。Migration 00022 三层校验（Zod/Repository/RPC）。`advanceStatus()` 统一委托 `changeStatus()` → RPC，不再直接 `from('shipment').update` + `from('tracking_event').insert`。详情页轨迹优化（升序+创建人）。1688/1688 测试（50 文件）。不接 Best/外部表/入仓联动。
+
+### P3-S4 — 状态推进与物流轨迹映射（百世路径）
 
 **范围**：
-- DIS 内部六态推进：`booking → loading → departed → arrived → customs → warehoused`。
 - 百世状态只做保守映射（仅映射明确可对应的状态）。
 - 未识别状态只记录 tracking_event，不自动推进 `shipment.status`。
 - 每次状态推进必须产生 `tracking_event`。
-- 同时覆盖手动在途（P3-S3）和百世同步在途（P3-S1C）的状态推进。
+- 覆盖百世同步在途（P3-S1C）的状态推进。
 
-**停止条件**：六态可推进 + 百世状态保守映射 + 未识别不自动推进 + tracking_event 必生成 + 权限校验。
+**停止条件**：百世状态保守映射 + 未识别不自动推进 + tracking_event 必生成 + 权限校验。
 
 ### P3-S5 — 入仓事务与库存联动
 
@@ -183,7 +192,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S2E` — 在途入口收口 + 采购单号 + 海外库存轻量展开（**DONE**，2026-06-30）
+**当前任务**：`P3-S4A` — 内部手动在途状态轨迹收口（**DONE**，2026-06-30）
 
 **P3-S3 状态**：DONE（2026-06-28，Codex 独立验收通过）
 
@@ -199,7 +208,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 **P3-S2A 完成**（被 P3-S2B 扩展）：`/dashboard/shipments` 列表页 + `/dashboard/shipments/[id]` 详情页就绪。仅读内部三表，不读外部在途三表。1491/1491 测试通过（45 文件，含 51 项 P3-S2A 行为测试），lint 0/26，build 通过。
 
-**下一步**：P3-S2（完整在途列表与详情，含百世数据双源展示）仍然依赖 P3-S1D（BLOCKED）。P3-S4（状态推进与轨迹映射）依赖 P3-S2 + P3-S3。P3-S5（入仓联动）依赖 P3-S4。P3-S6（权限与验收）依赖 P3-S5。
+**下一步**：P3-S4A DONE（内部状态轨迹收口）。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S5（入仓联动）依赖 P3-S4。P3-S6（权限与验收）依赖 P3-S5。
 
 ## 与现有代码的关系
 

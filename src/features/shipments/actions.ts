@@ -166,6 +166,8 @@ export async function searchVariants(
   }
 }
 
+/** P3-S4A: 推进物流状态（旧版兼容路径，建议使用 changeShipmentStatus）
+ *  收紧为 Admin-only + 禁止 warehoused + 状态流转规则校验 */
 export async function advanceShipmentStatus(
   shipmentId: string,
   nextStatus: string,
@@ -174,25 +176,30 @@ export async function advanceShipmentStatus(
   try {
     const user = await requireActiveAuth();
 
+    // P3-S4A: 仅 Admin 可推进状态
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可推进物流状态' };
+    }
+
     const parsed = advanceStatusSchema.safeParse({ shipmentId, nextStatus, description });
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues[0]?.message ?? '校验失败' };
     }
 
-    const ok = await shipmentRepository.advanceStatus(
-      shipmentId,
-      nextStatus,
+    await shipmentRepository.advanceStatus(
+      parsed.data.shipmentId,
+      parsed.data.nextStatus,
       user.id,
-      description,
+      parsed.data.description,
     );
-    if (!ok) {
-      return { success: false, error: '状态推进失败' };
-    }
 
     revalidatePath('/dashboard/shipments');
     revalidatePath(`/dashboard/shipments/${shipmentId}`);
     return { success: true };
   } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
     return { success: false, error: '状态推进失败，请稍后重试' };
   }
 }

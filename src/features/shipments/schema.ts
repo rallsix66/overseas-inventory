@@ -1,5 +1,11 @@
 // 物流模块 Zod 校验 schema
 import { z } from 'zod';
+import { SHIPMENT_STATUS_FLOW } from './types';
+
+/** P3-S4A: 校验状态流转是否合法（仅允许按顺序推进，禁止倒退和跳步） */
+export function isValidStatusTransition(current: string, next: string): boolean {
+  return SHIPMENT_STATUS_FLOW[current] === next;
+}
 
 const YMD_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
@@ -121,10 +127,12 @@ export const shipmentDetailParamsSchema = z.object({
   id: z.string().uuid('无效的在途记录 ID'),
 });
 
-/** 物流状态推进 */
+/** P3-S4A: 物流状态推进（禁止 warehoused，仅允许 booking→loading→departed→arrived→customs） */
 export const advanceStatusSchema = z.object({
   shipmentId: z.string().uuid(),
-  nextStatus: z.enum(['loading', 'departed', 'arrived', 'customs', 'warehoused']),
+  nextStatus: z.enum(['loading', 'departed', 'arrived', 'customs'], {
+    error: '无效的物流状态',
+  }),
   description: z.string().max(500).optional(),
 });
 
