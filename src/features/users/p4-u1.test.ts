@@ -1,5 +1,5 @@
 // P4-U1: 用户数据层、邮箱字段与权限收口 — 测试
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -8,8 +8,6 @@ import { resolve } from 'node:path';
 function readSrc(relativePath: string): string {
   return readFileSync(resolve('src', relativePath), 'utf-8');
 }
-
-type ActionResult<T = unknown> = { success: boolean; error?: string; data?: T };
 
 // ─── 1. Repository ──────────────────────────────────────────
 
@@ -115,6 +113,96 @@ describe('P4-U1 Repository', () => {
     expect(svcMatches).not.toBeNull();
     // createServiceClient 只应在 email helper 中出现（fetchEmailMap + fetchUserEmail = 2 次）
     // 至少 ≥ 2，profile 查询应该用 createClient
+  });
+
+  // ── 1f. 返工修复：email helper 错误传播 ────────────────────
+
+  it('fetchEmailMap 在 auth.admin.listUsers error 时抛 UserError，不 break 静默', () => {
+    const fn = extractFnBody(repo, 'fetchEmailMap');
+    // 有独立的 if (error) 检查（不再合并为 if (error || ...)）
+    expect(fn).toContain('if (error)');
+    // error 分支抛 UserError
+    expect(fn).toContain("throw new UserError('DB_ERROR', '获取用户邮箱失败");
+    // 旧式 if (error || !data?.users) break 已不存在
+    expect(fn).not.toMatch(/if\s*\(\s*error\s*\|\|/);
+    // break 仅用于正常结束（"无更多用户" + "最后一页"），共 2 处
+    const breakMatches = fn.match(/\bbreak\b/g) || [];
+    expect(breakMatches.length).toBe(2);
+  });
+
+  it('fetchUserEmail 在 auth.admin.getUserById error 时抛 UserError，不静默返回空串', () => {
+    const fn = extractFnBody(repo, 'fetchUserEmail');
+    expect(fn).toContain('if (error)');
+    expect(fn).toContain("throw new UserError('DB_ERROR', '获取用户邮箱失败");
+    // 旧式 if (error || !data?.user?.email) return '' 已不存在
+    expect(fn).not.toMatch(/if\s*\(\s*error\s*\|\|.*return\s*''/);
+  });
+
+  it('fetchUserEmail 在 auth user 不存在时（无 error）返回空字符串并附注释说明', () => {
+    const fn = extractFnBody(repo, 'fetchUserEmail');
+    // 注释说明 auth user 不存在时的行为
+    expect(fn).toContain('auth user 不存在');
+    // 无 error 但无 user/email 时返回 ''
+    expect(fn).toContain("!data?.user?.email");
+  });
+
+  // ── 1g. 返工修复：updateRole / toggleActive 确认行存在 ─────
+
+  it('updateRole 使用 .select(\'id\').single() 确认目标存在', () => {
+    const fn = extractFnBody(repo, 'updateRole');
+    expect(fn).toContain(".select('id')");
+    expect(fn).toContain('.single()');
+  });
+
+  it('updateRole 在 0 行命中时抛 UserError NOT_FOUND（不再返回成功）', () => {
+    const fn = extractFnBody(repo, 'updateRole');
+    expect(fn).toContain("error.code === 'PGRST116'");
+    expect(fn).toContain("throw new UserError('NOT_FOUND', '用户不存在')");
+  });
+
+  it('toggleActive 使用 .select(\'id\').single() 确认目标存在', () => {
+    const fn = extractFnBody(repo, 'toggleActive');
+    expect(fn).toContain(".select('id')");
+    expect(fn).toContain('.single()');
+  });
+
+  it('toggleActive 在 0 行命中时抛 UserError NOT_FOUND（不再返回成功）', () => {
+    const fn = extractFnBody(repo, 'toggleActive');
+    expect(fn).toContain("error.code === 'PGRST116'");
+    expect(fn).toContain("throw new UserError('NOT_FOUND', '用户不存在')");
+  });
+
+  // ── 1h. 返工修复：countByRole 显式 join ────────────────────
+
+  it('countByRole 通过 role 表显式查询 roleId，不使用未 join 的 role.name 过滤', () => {
+    const fn = extractFnBody(repo, 'countByRole');
+    // 先查 role 表
+    expect(fn).toContain("from('role')");
+    // 用 role_id 过滤 profiles，不再用 role.name
+    expect(fn).toContain(".eq('role_id', roleData.id)");
+    // 旧式未 join 的 .eq('role.name', ...) 已不存在
+    expect(fn).not.toMatch(/\.eq\(['"]role\.name/);
+  });
+
+  it('countByRole role 不存在时返回 0（非抛错）', () => {
+    const fn = extractFnBody(repo, 'countByRole');
+    expect(fn).toContain("PGRST116') return 0");
+  });
+
+  it('countByRole roleError 为真实 DB 错误时抛 UserError', () => {
+    const fn = extractFnBody(repo, 'countByRole');
+    // countByRole 中有两处 DB error 处理（role 查询 + profiles count）
+    const throwMatches = fn.match(/throw new UserError\('DB_ERROR'/g) || [];
+    expect(throwMatches.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // ── 1i. 返工修复：getRoleName 区分 PGRST116 ────────────────
+
+  it('getRoleName 区分 PGRST116（角色不存在 → null）与真实 DB 错误（throw）', () => {
+    const fn = extractFnBody(repo, 'getRoleName');
+    expect(fn).toContain("error.code === 'PGRST116'");
+    expect(fn).toContain('return null');
+    expect(fn).toContain("throw new UserError('DB_ERROR'");
   });
 });
 
@@ -245,6 +333,25 @@ describe('P4-U1 Actions', () => {
       // 至少有一个 error.message 或中文兜底
       expect(body).toMatch(/error\.message|失败，请稍后重试/);
     }
+  });
+
+  // ── 2h. 返工修复：revalidatePath 仅在成功路径调用 ──────────
+
+  it('updateUserRole 仅在 updateRole 调用成功后 revalidatePath，失败分支不 revalidate', () => {
+    const body = extractFnBody(actions, 'updateUserRole');
+    const revalIdx = body.indexOf('revalidatePath');
+    const updateCallIdx = body.indexOf('userRepository.updateRole');
+    expect(updateCallIdx).toBeGreaterThan(0);
+    // revalidatePath 出现在 updateRole 调用之后（成功路径）
+    expect(revalIdx).toBeGreaterThan(updateCallIdx);
+  });
+
+  it('toggleUserActive 仅在 toggleActive 调用成功后 revalidatePath，失败分支不 revalidate', () => {
+    const body = extractFnBody(actions, 'toggleUserActive');
+    const revalIdx = body.indexOf('revalidatePath');
+    const toggleCallIdx = body.indexOf('userRepository.toggleActive');
+    expect(toggleCallIdx).toBeGreaterThan(0);
+    expect(revalIdx).toBeGreaterThan(toggleCallIdx);
   });
 });
 

@@ -6,7 +6,7 @@
 
 ## 状态
 
-**DONE**（2026-06-30）
+**DONE — 返工完成**（2026-07-01）
 
 ## 背景
 
@@ -70,10 +70,24 @@ Phase 3 内部路径（S2A~S6）已全部完成，进入 Phase 4 用户管理。
 
 ### 6. 质量门
 
-- `npm run test` — **2005/2005**（53 文件，+50 P4-U1）
-- `npm run lint` — **0 errors / 25 warnings**（all pre-existing）
+- `npm run test` — **2018/2019**（53 文件，+63 P4-U1；1 预存 live test 失败）
+- `npm run lint` — **0 errors / 0 warnings**（返工后清理了 test 文件未使用 import）
 - `npm run build` — **PASS**
 - `git diff --check` — **pass**
+
+### 7. 返工（2026-07-01）
+
+P4-U1 初始完成后发现 5 项真实行为风险，逐一修复：
+
+| # | 风险 | 修复 |
+|---|---|---|
+| 1 | `fetchEmailMap` 中 `auth.admin.listUsers()` 发生 error 时 `break` 静默返回空 Map | 改为 `throw new UserError('DB_ERROR', '获取用户邮箱失败，请稍后重试')`。`!data?.users`（无更多用户）单独 break，不混入 error 分支 |
+| 2 | `fetchUserEmail` 中 `auth.admin.getUserById()` 发生 error 时返回空字符串 | 改为 throw `UserError('DB_ERROR', ...)`。auth user 不存在时（无 error 但 `data.user` 为空）返回 `''` 并附注释说明 |
+| 3 | `updateRole`/`toggleActive` 未确认目标 profile 存在，0 行更新仍返回 success | 增加 `.select('id').single()` 链式调用。PGRST116 → `throw new UserError('NOT_FOUND', '用户不存在')` |
+| 4 | `countByRole` 使用未显式 join 的 `.eq('role.name', roleName)` | 改为两步查询：先 `from('role').select('id').eq('name', roleName).single()` → 再 `from('profiles').select('id', {count: 'exact', head: true}).eq('role_id', roleData.id).eq('is_active', true)`。roleError PGRST116 → return 0 |
+| 5 | `getRoleName` 用 `if (error \|\| !data) return null` 掩盖真实 DB 错误 | 区分 PGRST116（角色不存在 → null）与真实 DB error（throw `UserError`） |
+
+新增 13 项行为/源码测试覆盖上述 5 项修复（63 项 total vs 初始 50 项）。`actions.ts` 中 `revalidatePath` 位置已验证仅在 `userRepository.updateRole`/`toggleActive` 调用成功后才执行（失败分支不 revalidate）。
 
 ## 禁止
 

@@ -29,7 +29,10 @@ async function fetchEmailMap(userIds: string[]): Promise<Map<string, string>> {
       perPage,
     });
 
-    if (error || !data?.users) break;
+    if (error) {
+      throw new UserError('DB_ERROR', '获取用户邮箱失败，请稍后重试');
+    }
+    if (!data?.users) break; // 无更多用户，正常结束
 
     for (const u of data.users) {
       if (targetIds.has(u.id) && u.email) {
@@ -50,7 +53,11 @@ async function fetchUserEmail(userId: string): Promise<string> {
   const serviceClient = createServiceClient();
   const { data, error } = await serviceClient.auth.admin.getUserById(userId);
 
-  if (error || !data?.user?.email) return '';
+  if (error) {
+    throw new UserError('DB_ERROR', '获取用户邮箱失败，请稍后重试');
+  }
+  // auth user 不存在时 data.user 为空，返回空字符串
+  if (!data?.user?.email) return '';
   return data.user.email;
 }
 
@@ -146,18 +153,35 @@ export const userRepository = {
       .eq('id', roleId)
       .single();
 
-    if (error || !data) return null;
-    return data.name;
+    if (error) {
+      if (error.code === 'PGRST116') return null; // 角色不存在
+      throw new UserError('DB_ERROR', '查询角色信息失败，请稍后重试');
+    }
+    return data?.name ?? null;
   },
 
-  /** 统计拥有指定角色名的活跃用户数 */
+  /** 统计拥有指定角色名的活跃用户数（先查 roleId，再 count profiles） */
   async countByRole(roleName: string): Promise<number> {
     const supabase = await createClient();
+
+    // 先查角色 ID
+    const { data: roleData, error: roleError } = await supabase
+      .from('role')
+      .select('id')
+      .eq('name', roleName)
+      .single();
+
+    if (roleError) {
+      if (roleError.code === 'PGRST116') return 0; // 角色不存在 → 0 个用户
+      throw new UserError('DB_ERROR', '查询角色统计失败，请稍后重试');
+    }
+
+    // 再统计该角色的活跃用户数
     const { count, error } = await supabase
       .from('profiles')
       .select('id', { count: 'exact', head: true })
-      .eq('is_active', true)
-      .eq('role.name', roleName);
+      .eq('role_id', roleData.id)
+      .eq('is_active', true);
 
     if (error) {
       throw new UserError('DB_ERROR', '查询角色统计失败，请稍后重试');
@@ -166,28 +190,38 @@ export const userRepository = {
     return count ?? 0;
   },
 
-  /** 切换用户角色 */
+  /** 切换用户角色（确认目标存在，0 行 → NOT_FOUND） */
   async updateRole(userId: string, roleId: string): Promise<void> {
     const supabase = await createClient();
     const { error } = await supabase
       .from('profiles')
       .update({ role_id: roleId })
-      .eq('id', userId);
+      .eq('id', userId)
+      .select('id')
+      .single();
 
     if (error) {
+      if (error.code === 'PGRST116') {
+        throw new UserError('NOT_FOUND', '用户不存在');
+      }
       throw new UserError('DB_ERROR', '更新角色失败，请稍后重试');
     }
   },
 
-  /** 启用/禁用用户 */
+  /** 启用/禁用用户（确认目标存在，0 行 → NOT_FOUND） */
   async toggleActive(userId: string, isActive: boolean): Promise<void> {
     const supabase = await createClient();
     const { error } = await supabase
       .from('profiles')
       .update({ is_active: isActive })
-      .eq('id', userId);
+      .eq('id', userId)
+      .select('id')
+      .single();
 
     if (error) {
+      if (error.code === 'PGRST116') {
+        throw new UserError('NOT_FOUND', '用户不存在');
+      }
       throw new UserError('DB_ERROR', '操作失败，请稍后重试');
     }
   },
