@@ -1,22 +1,70 @@
-// 用户模块数据访问层 — 封装 profiles + role 查询
-// 用户邮箱来自 auth.users，需通过 Supabase Admin API 获取
-// 当前阶段通过 profiles + auth.users join 获取（使用 service_role）
-import { createClient } from '@/lib/supabase/server';
+// 用户模块数据访问层 — 封装 profiles + role + email 查询
+// email 来自 auth.users，通过 service_role admin API 获取
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
-import type { UserItem, UserFilters } from './types';
+import { UserError } from './types';
+import type { UserItem, UserListFilters } from './types';
 import type { PaginatedResult } from '@/types/common';
 
 const PAGE_SIZE = 20;
 
+// ─── 内部 helper ─────────────────────────────────────────────
+
+/** 通过 service_role admin API 批量获取 email 映射 */
+async function fetchEmailMap(userIds: string[]): Promise<Map<string, string>> {
+  if (userIds.length === 0) return new Map();
+
+  const serviceClient = createServiceClient();
+  const map = new Map<string, string>();
+
+  // auth.admin.listUsers() 默认每页 50，最多 500。循环拉取直到覆盖全部 id。
+  let page = 1;
+  const perPage = 500; // 单次最大
+  const targetIds = new Set(userIds);
+  const found = new Set<string>();
+
+  while (found.size < targetIds.size && page <= 10) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error || !data?.users) break;
+
+    for (const u of data.users) {
+      if (targetIds.has(u.id) && u.email) {
+        map.set(u.id, u.email);
+        found.add(u.id);
+      }
+    }
+
+    if (data.users.length < perPage) break; // 最后一页
+    page++;
+  }
+
+  return map;
+}
+
+/** 通过 service_role admin API 获取单个用户 email */
+async function fetchUserEmail(userId: string): Promise<string> {
+  const serviceClient = createServiceClient();
+  const { data, error } = await serviceClient.auth.admin.getUserById(userId);
+
+  if (error || !data?.user?.email) return '';
+  return data.user.email;
+}
+
+// ─── Repository ──────────────────────────────────────────────
+
 export const userRepository = {
-  /** 分页列表（profiles + role join） */
-  async list(filters: UserFilters = {}): Promise<PaginatedResult<UserItem>> {
+  /** 分页列表（profiles + role join + auth.users email） */
+  async list(filters: UserListFilters = {}): Promise<PaginatedResult<UserItem>> {
     const supabase = await createClient();
     const { roleId, isActive, page = 1, pageSize = PAGE_SIZE } = filters;
 
     let query = supabase.from('profiles').select(
       `id, display_name, is_active, created_at, role:role_id (id, name)`,
-      { count: 'exact' }
+      { count: 'exact' },
     );
 
     if (roleId) query = query.eq('role_id', roleId);
@@ -27,21 +75,24 @@ export const userRepository = {
       .order('created_at', { ascending: false })
       .range(from, from + pageSize - 1);
 
-    if (error || !data) {
-      return { data: [], total: 0, page, pageSize };
+    if (error) {
+      throw new UserError('DB_ERROR', '查询用户列表失败，请稍后重试');
     }
 
-    // 批量获取 auth.users email — 需要通过 service_role 客户端
-    // 对于 admin 权限的调用，用 service role 查询 auth.users
-    // 当前阶段：使用 profile 的 display_name 中的邮箱前缀（handle_new_user 默认值）
-    // Phase 4 完善时切换到 service_role 查询 auth.users
+    if (!data || data.length === 0) {
+      return { data: [], total: count ?? 0, page, pageSize };
+    }
+
+    // 批量获取 email
+    const userIds = data.map((r) => r.id);
+    const emailMap = await fetchEmailMap(userIds);
 
     return {
       data: data.map((row) => {
         const role = unwrapJoin<{ id: string; name: string }>(row.role);
         return {
           id: row.id,
-          email: '', // Phase 4 从 auth.users 获取
+          email: emailMap.get(row.id) ?? '',
           displayName: row.display_name,
           roleId: role?.id ?? '',
           roleName: role?.name ?? 'operator',
@@ -64,13 +115,20 @@ export const userRepository = {
       .eq('id', id)
       .single();
 
-    if (error || !data) return null;
+    if (error) {
+      // PGRST116 = 0 行，不是 DB 错误
+      if (error.code === 'PGRST116') return null;
+      throw new UserError('DB_ERROR', '查询用户信息失败，请稍后重试');
+    }
+
+    if (!data) return null;
 
     const role = unwrapJoin<{ id: string; name: string }>(data.role);
+    const email = await fetchUserEmail(id);
 
     return {
       id: data.id,
-      email: '',
+      email,
       displayName: data.display_name,
       roleId: role?.id ?? '',
       roleName: role?.name ?? 'operator',
@@ -79,25 +137,58 @@ export const userRepository = {
     };
   },
 
+  /** 查询角色名（按 roleId） */
+  async getRoleName(roleId: string): Promise<string | null> {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('role')
+      .select('name')
+      .eq('id', roleId)
+      .single();
+
+    if (error || !data) return null;
+    return data.name;
+  },
+
+  /** 统计拥有指定角色名的活跃用户数 */
+  async countByRole(roleName: string): Promise<number> {
+    const supabase = await createClient();
+    const { count, error } = await supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .eq('role.name', roleName);
+
+    if (error) {
+      throw new UserError('DB_ERROR', '查询角色统计失败，请稍后重试');
+    }
+
+    return count ?? 0;
+  },
+
   /** 切换用户角色 */
-  async updateRole(userId: string, roleId: string): Promise<boolean> {
+  async updateRole(userId: string, roleId: string): Promise<void> {
     const supabase = await createClient();
     const { error } = await supabase
       .from('profiles')
       .update({ role_id: roleId })
       .eq('id', userId);
 
-    return !error;
+    if (error) {
+      throw new UserError('DB_ERROR', '更新角色失败，请稍后重试');
+    }
   },
 
   /** 启用/禁用用户 */
-  async toggleActive(userId: string, isActive: boolean): Promise<boolean> {
+  async toggleActive(userId: string, isActive: boolean): Promise<void> {
     const supabase = await createClient();
     const { error } = await supabase
       .from('profiles')
       .update({ is_active: isActive })
       .eq('id', userId);
 
-    return !error;
+    if (error) {
+      throw new UserError('DB_ERROR', '操作失败，请稍后重试');
+    }
   },
 };
