@@ -5,7 +5,7 @@
 | Task ID | 任务 | 依赖 | 状态 |
 |---|---|---|---|
 | P4-U1 | 用户数据层、邮箱字段与权限收口 | P0-F3 | **DONE — 返工完成 (2026-07-01)** |
-| P4-U2 | 用户列表只读页面 | P4-U1 | **DONE (2026-07-01)** |
+| P4-U2 | 用户列表只读页面 | P4-U1 | **DONE — 返工完成 (2026-07-01)** |
 | P4-U3 | 修改角色 | P4-U2 | BACKLOG |
 | P4-U4 | 启用、禁用与认证链校验 | P4-U3 | BLOCKED |
 | P4-U5 | 用户模块安全与流程验收 | P4-U4 | BLOCKED |
@@ -64,9 +64,17 @@
 
 5. **新增 `listRoles`**：`userRepository.listRoles()` + `listRoles()` Server Action（Admin-only）。
 
-6. **测试**：`src/features/users/p4-u2.test.ts` — 41 项测试（架构合规 + 权限 + 只读 + 筛选/Zod + UI 状态 + 详情 Sheet + P4-U1 回归）。
+6. **测试**：`src/features/users/p4-u2.test.ts` — 42 项测试（架构合规 + 权限 + 只读 + 筛选/Zod + UI 状态 + 详情 Sheet + listRoles + P4-U1 回归）。
 
-7. **质量门**：2059/2060 tests（54 文件，2 预存 env 依赖跳过），lint 0，build pass。
+7. **质量门**：2060/2061 tests（56 文件，concurrency 与 best live 预存 env 依赖），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass（LF/CRLF warning only）。
+
+### 返工修复（2026-07-01）
+
+**问题**：`page.tsx` 中 `listRoles` 失败时静默降级为空数组（`rolesResult.success ? (rolesResult.data ?? []) : []`），隐藏 DB error / 权限 error。
+
+**修复**：`if (!rolesResult.success) throw new Error(rolesResult.error ?? '加载角色列表失败')`，失败时交给 error boundary 处理。
+
+新增 1 项测试覆盖（页面架构合规 7→9 项，总 41→42 项）。
 
 ### P4-U3 就绪
 

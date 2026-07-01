@@ -109,6 +109,15 @@ describe('P4-U2 页面架构合规', () => {
     expect(page).toContain('listRoles');
   });
 
+  it('page.tsx listRoles 失败时抛出错误，不静默降级为空数组', () => {
+    const body = extractFnBody(page, 'UsersPage');
+    // 禁止静默降级模式：rolesResult.success ? (rolesResult.data ?? []) : []
+    expect(body).not.toMatch(/rolesResult\.success\s*\?/);
+    // 必须 throw error 传播失败
+    expect(body).toContain("!rolesResult.success");
+    expect(body).toContain('throw new Error');
+  });
+
   it('page.tsx 获取当前用户进行权限校验（getCurrentActiveUser）', () => {
     expect(page).toContain('getCurrentActiveUser');
     expect(page).toContain("from '@/lib/auth'");

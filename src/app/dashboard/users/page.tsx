@@ -31,7 +31,10 @@ export default async function UsersPage({
 
   // 获取角色列表（供筛选下拉使用）
   const rolesResult = await listRoles();
-  const roles = rolesResult.success ? (rolesResult.data ?? []) : [];
+  if (!rolesResult.success) {
+    throw new Error(rolesResult.error ?? '加载角色列表失败');
+  }
+  const roles = rolesResult.data ?? [];
 
   // 构建筛选参数
   const isActive =

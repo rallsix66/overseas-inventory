@@ -6,7 +6,7 @@
 
 ## 状态
 
-**DONE**（2026-07-01）
+**DONE — 返工完成**（2026-07-01）
 
 ## 依赖
 
@@ -62,11 +62,11 @@
 
 ### 7. 测试
 
-新增 `src/features/users/p4-u2.test.ts` — 41 项测试：
+新增 `src/features/users/p4-u2.test.ts` — 42 项测试：
 
 | 分组 | 测试数 | 内容 |
 |---|---|---|
-| 页面架构合规 | 7 | 无 supabase.from/rpc、无 auth.admin、无 createServiceClient；通过 listUsers/listRoles actions 获取数据；getCurrentActiveUser 校验 |
+| 页面架构合规 | 9 | 无 supabase.from/rpc、无 auth.admin、无 createServiceClient；通过 listUsers/listRoles actions 获取数据；getCurrentActiveUser 校验；listRoles 失败 throw error 不静默降级 |
 | 权限控制 | 2 | roleName !== 'admin' 检查 + 无权限提示；先权限检查再调用 listUsers |
 | 只读保证 | 5 | page/content 不导入 updateUserRole/toggleActive；Sheet 只用 getUserById；无写操作按钮文案；无 supabase |
 | 筛选与 Zod 链路 | 6 | searchParams 读取 status/role/page；status→isActive 映射；role→roleId 转换；pageSize: 20；listFiltersSchema.safeParse；schema default 值 |
@@ -75,13 +75,31 @@
 | listRoles | 3 | repository 方法存在 + error 传播；actions Admin-only |
 | P4-U1 回归 | 6 | 所有方法/actions 仍存在；关键修复（fetchEmailMap error throw、updateRole .select+single、countByRole 两步查询）未回退 |
 
-### 8. 质量门
+### 8. 返工修复（2026-07-01）
 
-- `npm run test -- src/features/users/` — **104/104**（63 P4-U1 + 41 P4-U2）
-- `npm run test` — **2059/2060**（54 源码文件，2 预存 env 依赖跳过）
-- `npm run lint` — **0 errors / 0 warnings**
+**问题**：`page.tsx` 中 `listRoles` 失败时静默降级为空数组（`rolesResult.success ? (rolesResult.data ?? []) : []`），隐藏 DB error / 权限 error。
+
+**修复**：
+```typescript
+// Before（静默降级）
+const roles = rolesResult.success ? (rolesResult.data ?? []) : [];
+
+// After（错误传播）
+if (!rolesResult.success) {
+  throw new Error(rolesResult.error ?? '加载角色列表失败');
+}
+const roles = rolesResult.data ?? [];
+```
+
+新增 1 项测试（页面架构合规 → 9 项）。
+
+### 9. 质量门
+
+- `npm run test -- src/features/users/` — **105/105**（63 P4-U1 + 42 P4-U2）
+- `npm run test` — **2060/2061**（56 文件，concurrency 与 best live 预存 env 依赖）
+- `npm run lint` — **0 errors / 24 warnings**（all pre-existing）
 - `npm run build` — **PASS**
-- `git diff --check` — **pass**（LF only）
+- `git diff --check` — **PASS**（LF/CRLF warning only）
 
 ## 禁止
 
