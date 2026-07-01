@@ -1,8 +1,9 @@
 'use client';
 
-// P4-U2 / P4-U3: 用户详情 Sheet（只读 + 修改角色入口）
+// P4-U2 / P4-U3 / P4-U4: 用户详情 Sheet（只读 + 修改角色入口 + 启用/禁用入口）
 // 通过 getUserById Server Action 获取单个用户详情
 // P4-U3 新增"修改角色"按钮，调用 updateUserRole action
+// P4-U4 新增"启用/禁用"按钮，通过 UserActiveToggleDialog 提交
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getUserById } from '@/features/users/actions';
 import { UserRoleChangeDialog } from '@/features/users/components/user-role-change-dialog';
+import { UserActiveToggleDialog } from '@/features/users/components/user-active-toggle-dialog';
 import type { UserItem } from '@/features/users/types';
 
 interface RoleOption {
@@ -40,9 +42,16 @@ export function UserDetailSheet({ userId, onClose, roles }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [toggleDialogOpen, setToggleDialogOpen] = useState(false);
 
   const handleRoleChangeSuccess = () => {
     setRoleDialogOpen(false);
+    onClose();
+    router.refresh();
+  };
+
+  const handleToggleSuccess = () => {
+    setToggleDialogOpen(false);
     onClose();
     router.refresh();
   };
@@ -108,13 +117,22 @@ export function UserDetailSheet({ userId, onClose, roles }: Props) {
                 </div>
               </DetailRow>
               <DetailRow label="状态">
-                {user.isActive ? (
-                  <Badge variant="outline" className="border-green-300 bg-green-50 text-green-700">
-                    启用
-                  </Badge>
-                ) : (
-                  <Badge variant="destructive">禁用</Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  {user.isActive ? (
+                    <Badge variant="outline" className="border-green-300 bg-green-50 text-green-700">
+                      启用
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive">禁用</Badge>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setToggleDialogOpen(true)}
+                  >
+                    {user.isActive ? '禁用' : '启用'}
+                  </Button>
+                </div>
               </DetailRow>
               <DetailRow
                 label="创建时间"
@@ -136,6 +154,17 @@ export function UserDetailSheet({ userId, onClose, roles }: Props) {
           roles={roles}
           onClose={() => setRoleDialogOpen(false)}
           onSuccess={handleRoleChangeSuccess}
+        />
+      )}
+
+      {/* 启用/禁用确认对话框 */}
+      {user && (
+        <UserActiveToggleDialog
+          open={toggleDialogOpen}
+          userId={user.id}
+          isActive={user.isActive}
+          onClose={() => setToggleDialogOpen(false)}
+          onSuccess={handleToggleSuccess}
         />
       )}
     </Sheet>

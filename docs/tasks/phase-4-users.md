@@ -7,8 +7,8 @@
 | P4-U1 | 用户数据层、邮箱字段与权限收口 | P0-F3 | **DONE — 返工完成 (2026-07-01)** |
 | P4-U2 | 用户列表只读页面 | P4-U1 | **DONE — 返工完成 (2026-07-01)** |
 | P4-U3 | 修改角色 | P4-U2 | **DONE (2026-07-01)** |
-| P4-U4 | 启用、禁用与认证链校验 | P4-U3 | BACKLOG |
-| P4-U5 | 用户模块安全与流程验收 | P4-U4 | BLOCKED |
+| P4-U4 | 启用、禁用与认证链校验 | P4-U3 | **DONE (2026-07-01)** |
+| P4-U5 | 用户模块安全与流程验收 | P4-U4 | BACKLOG |
 
 角色修改与账号启停必须拆分，分别验收防止锁死管理员和禁用绕过。
 
@@ -95,10 +95,32 @@
    - 修改 `src/features/users/components/user-detail-sheet.tsx`（新增 roles prop + 修改角色按钮 + Dialog 集成 + router.refresh）
    - 修改 `src/app/dashboard/users/_components/users-page-content.tsx`（透传 roles prop）
 
-4. **测试**：`src/features/users/p4-u3.test.ts` — 35 项测试（架构合规 + 导入控制 + Dialog 行为 + Sheet 集成 + 透传 + 权限 + P4-U1/P4-U2 回归）
+4. **测试**：`src/features/users/p4-u3.test.ts` — 36 项测试（架构合规 + 导入控制 + Dialog 行为 + Sheet 集成 + 透传 + 权限 + P4-U1/P4-U2 回归）
 
-5. **质量门**：2095/2095 tests（55 文件，concurrency 与 best live 预存 env 依赖），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass
+5. **质量门**：2096/2096 tests（55 文件，concurrency 与 best live 预存 env 依赖），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass
 
 ### P4-U4 就绪
 
-P4-U3 修改角色已完成。P4-U4（启用/禁用）已解除阻塞，可复用 `toggleUserActive` action + P4-U3 页面模式（Sheet → Dialog → action → refresh）。
+~~P4-U4（启用/禁用）已解除阻塞，可复用 `toggleUserActive` action + P4-U3 页面模式。~~
+
+---
+
+## P4-U4 完成摘要（2026-07-01）
+
+### 实现内容
+
+1. **UI 入口**：`UserDetailSheet` 详情 Sheet 状态行新增"启用"/"禁用"按钮（按钮文案根据 `isActive` 切换）。点击后弹出 `UserActiveToggleDialog`（shadcn/ui Dialog）：区分启用/禁用说明文案 + 确认操作 + Loader2 pending 状态 + 失败展示中文错误。成功后关闭 Sheet + `router.refresh()` 刷新页面列表。
+
+2. **权限链路**：写操作通过 `toggleUserActive` Server Action（Admin-only + 自禁用保护 + 最后管理员保护）。Dialog 组件直接调用 action，页面/Sheet/Content 不直接写数据库。不新增 service_role 使用点。`UserActiveToggleDialog` 使用 `resetAndClose` 统一关闭模式（与 P4-U3 返工保持一致）。
+
+3. **文件**：
+   - 新建 `src/features/users/components/user-active-toggle-dialog.tsx`
+   - 修改 `src/features/users/components/user-detail-sheet.tsx`（新增启用/禁用按钮 + Dialog 集成）
+
+4. **测试**：`src/features/users/p4-u4.test.ts` — 29 项测试（架构合规 + 导入控制 + Dialog 行为 + Sheet 集成 + 权限 + P4-U1/P4-U2/P4-U3 回归）
+
+5. **质量门**：2125/2125 tests（56 文件，concurrency 与 best live 预存 env 依赖），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass
+
+### P4-U5 就绪
+
+P4-U4 启用/禁用已完成。P4-U5（用户模块安全与流程验收）已解除阻塞。

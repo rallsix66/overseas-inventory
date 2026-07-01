@@ -81,12 +81,15 @@ export function UserRoleChangeDialog({
     }
   };
 
+  const resetAndClose = () => {
+    setSelectedRoleId(undefined);
+    setError(null);
+    onClose();
+  };
+
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-      // 关闭时重置状态
-      setSelectedRoleId(undefined);
-      setError(null);
-      onClose();
+      resetAndClose();
     }
   };
 
@@ -135,7 +138,7 @@ export function UserRoleChangeDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={pending}>
+          <Button variant="outline" onClick={resetAndClose} disabled={pending}>
             取消
           </Button>
           <Button

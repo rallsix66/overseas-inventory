@@ -199,9 +199,19 @@ describe('P4-U3 UserRoleChangeDialog', () => {
 
   it('关闭时重置 selectedRoleId 和 error 状态', () => {
     const body = extractFnBody(dialog, 'UserRoleChangeDialog');
-    // handleOpenChange handler
+    // handleOpenChange -> resetAndClose
     expect(body).toContain('setSelectedRoleId(undefined)');
     expect(body).toContain('setError(null)');
+  });
+
+  it('取消按钮调用统一 resetAndClose，不直接 onClick={onClose}', () => {
+    const body = extractFnBody(dialog, 'UserRoleChangeDialog');
+    // 取消按钮必须使用 resetAndClose 而非直接 onClose
+    expect(body).toContain('onClick={resetAndClose}');
+    expect(body).not.toMatch(/onClick=\{onClose\}/);
+    // resetAndClose 统一封装重置 + 关闭
+    expect(body).toContain('const resetAndClose');
+    expect(body).toContain('onClose()');
   });
 });
 
