@@ -177,10 +177,11 @@ describe('P4-U2 只读保证', () => {
     expect(content).not.toContain('toggleUserActive');
   });
 
-  it('user-detail-sheet.tsx 只使用 getUserById，不使用写操作', () => {
+  it('user-detail-sheet.tsx 只使用 getUserById，不直接导入 updateUserRole/toggleUserActive', () => {
     const sheet = readSrc('features/users/components/user-detail-sheet.tsx');
     expect(sheet).toContain('getUserById');
-    expect(sheet).not.toContain('updateUserRole');
+    // Sheet 通过 UserRoleChangeDialog 间接使用 updateUserRole，不直接 import
+    expect(sheet).not.toMatch(/import.*updateUserRole/);
     expect(sheet).not.toContain('toggleUserActive');
   });
 

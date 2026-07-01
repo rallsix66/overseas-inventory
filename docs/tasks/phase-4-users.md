@@ -6,8 +6,8 @@
 |---|---|---|---|
 | P4-U1 | 用户数据层、邮箱字段与权限收口 | P0-F3 | **DONE — 返工完成 (2026-07-01)** |
 | P4-U2 | 用户列表只读页面 | P4-U1 | **DONE — 返工完成 (2026-07-01)** |
-| P4-U3 | 修改角色 | P4-U2 | BACKLOG |
-| P4-U4 | 启用、禁用与认证链校验 | P4-U3 | BLOCKED |
+| P4-U3 | 修改角色 | P4-U2 | **DONE (2026-07-01)** |
+| P4-U4 | 启用、禁用与认证链校验 | P4-U3 | BACKLOG |
 | P4-U5 | 用户模块安全与流程验收 | P4-U4 | BLOCKED |
 
 角色修改与账号启停必须拆分，分别验收防止锁死管理员和禁用绕过。
@@ -78,4 +78,27 @@
 
 ### P4-U3 就绪
 
-P4-U2 只读列表已完成。P4-U3（修改角色）可直接复用 `updateUserRole` action + P4-U2 页面上的角色 Badge 交互。
+~~P4-U2 只读列表已完成。P4-U3（修改角色）可直接复用 `updateUserRole` action + P4-U2 页面上的角色 Badge 交互。~~
+
+---
+
+## P4-U3 完成摘要（2026-07-01）
+
+### 实现内容
+
+1. **UI 入口**：`UserDetailSheet` 详情 Sheet 角色行新增"修改角色"按钮。点击后弹出 `UserRoleChangeDialog`（shadcn/ui Dialog）：选择新角色（过滤当前角色避免重复提交）+ 确认修改 + Loader2 pending 状态 + 失败展示中文错误。成功后关闭 Sheet + `router.refresh()` 刷新页面列表。
+
+2. **权限链路**：写操作通过 `updateUserRole` Server Action（Admin-only + 自降级保护 + 最后管理员保护）。Dialog 组件直接调用 action，页面/Sheet/Content 不直接写数据库。不新增 service_role 使用点。
+
+3. **文件**：
+   - 新建 `src/features/users/components/user-role-change-dialog.tsx`
+   - 修改 `src/features/users/components/user-detail-sheet.tsx`（新增 roles prop + 修改角色按钮 + Dialog 集成 + router.refresh）
+   - 修改 `src/app/dashboard/users/_components/users-page-content.tsx`（透传 roles prop）
+
+4. **测试**：`src/features/users/p4-u3.test.ts` — 35 项测试（架构合规 + 导入控制 + Dialog 行为 + Sheet 集成 + 透传 + 权限 + P4-U1/P4-U2 回归）
+
+5. **质量门**：2095/2095 tests（55 文件，concurrency 与 best live 预存 env 依赖），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass
+
+### P4-U4 就绪
+
+P4-U3 修改角色已完成。P4-U4（启用/禁用）已解除阻塞，可复用 `toggleUserActive` action + P4-U3 页面模式（Sheet → Dialog → action → refresh）。

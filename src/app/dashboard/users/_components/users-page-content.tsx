@@ -198,6 +198,7 @@ export function UsersPageContent({
       {selectedUserId && (
         <UserDetailSheet
           userId={selectedUserId}
+          roles={roles}
           onClose={() => setSelectedUserId(null)}
         />
       )}

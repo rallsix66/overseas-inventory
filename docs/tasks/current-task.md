@@ -2,115 +2,77 @@
 
 ## Task ID
 
-`P4-U2` — 用户列表只读页面
+`P4-U3` — 修改用户角色
 
 ## 状态
 
-**DONE — 返工完成**（2026-07-01）
+**DONE**（2026-07-01）
 
 ## 依赖
 
-- P4-U1 DONE — 返工完成（用户数据层、邮箱字段与权限收口）
+- P4-U2 DONE — 返工完成（用户列表只读页面）
 
 ## 范围
 
-### 1. 页面改造
+### 1. UI 入口
 
-- `src/app/dashboard/users/page.tsx` — Server Component 替换占位页
-- Admin 可访问并查看用户列表；Operator 显示无权限提示
-- 数据走 Server Action 链路：`page → listUsers/listRoles → repository → Supabase/RLS`
-- 页面不直接调用 `supabase.from` / `supabase.rpc` / `auth.admin` / `createServiceClient`
+- 用户详情 Sheet（`UserDetailSheet`）角色行新增"修改角色"按钮
+- 点击后弹出 `UserRoleChangeDialog`（shadcn/ui Dialog）确认对话框
+- 当前角色不可重复提交（过滤掉相同 roleId）
+- 提交中显示 Loader2 pending 状态，按钮禁用
+- 成功后关闭 Sheet + `router.refresh()` 刷新页面列表
+- 失败时展示 `updateUserRole` 返回的中文错误（自降级、最后管理员保护、角色不存在、权限不足等）
+- 不加入 toggleUserActive，不实现启用/禁用
 
-### 2. 列表内容
+### 2. 权限与架构
 
-| 列 | 说明 |
-|---|---|
-| 邮箱 | `user.email`，截断显示 |
-| 显示名 | `user.displayName` |
-| 角色 | Badge（管理员 = default / 运营 = secondary） |
-| 状态 | Badge（启用 = green outline / 禁用 = destructive） |
-| 创建时间 | `toLocaleDateString('zh-CN')` |
-| 用户 ID | 前 8 位 + `…`，monospace |
+- 写操作只通过 `updateUserRole` Server Action
+- 页面和客户端组件不直接调用 `supabase.from` / `supabase.rpc` / `auth.admin` / `createServiceClient`
+- 不新增 service_role 使用点
+- 不绕过 P4-U1 的自保护与最后管理员保护逻辑
+- Operator 仍不能访问 `/dashboard/users`，也不能触发写操作
 
-### 3. 筛选与分页
+### 3. 文件
 
-- 状态筛选：全部 / 启用 / 禁用 → searchParams `?status=active\|disabled`
-- 角色筛选：全部 / 管理员 / 运营 → searchParams `?role=<uuid>\|all`（UUID 通过 `listRoles` action 获取）
-- 分页：20 条/页，searchParams `?page=N`
-- 筛选变更时自动重置页码
-- 筛选/分页通过 URL searchParams 实现，避免复杂客户端状态
+- `src/features/users/components/user-role-change-dialog.tsx` — 新建 Dialog 组件
+- `src/features/users/components/user-detail-sheet.tsx` — 新增角色修改按钮 + 对话框集成
+- `src/app/dashboard/users/_components/users-page-content.tsx` — 透传 roles prop 给 Sheet
 
-### 4. 用户详情只读
+### 4. 测试
 
-- 行点击 → `UserDetailSheet`（shadcn/ui Sheet）
-- 调用 `getUserById(id)` Server Action 获取详情
-- 加载中：Skeleton
-- 错误：中文提示
-- 只读显示：邮箱、显示名、角色 Badge、状态 Badge、创建时间、用户 ID
-- 无写操作按钮（不出现"修改角色""启用""禁用"等文案和 `updateUserRole`/`toggleUserActive` 调用）
-
-### 5. UI/体验
-
-- 复用 shadcn/ui：Table、Badge、Select、Button、Sheet、Skeleton
-- 遵循项目设计规则（表格紧凑、hover 浅灰、空数据居中提示、桌面端 1024px+）
-- 状态处理：loading（error.tsx 边界）、空数据（"暂无匹配的用户"）、无权限（"仅管理员可访问用户管理"）
-
-### 6. 新增 listRoles
-
-- `userRepository.listRoles()` → `from('role').select('id, name').order('name')`，DB error → throw `UserError`
-- `listRoles` Server Action：Admin-only + `requireActiveAuth` + `UserError` 捕获
-
-### 7. 测试
-
-新增 `src/features/users/p4-u2.test.ts` — 42 项测试：
+新增 `src/features/users/p4-u3.test.ts` — 35 项测试：
 
 | 分组 | 测试数 | 内容 |
 |---|---|---|
-| 页面架构合规 | 9 | 无 supabase.from/rpc、无 auth.admin、无 createServiceClient；通过 listUsers/listRoles actions 获取数据；getCurrentActiveUser 校验；listRoles 失败 throw error 不静默降级 |
-| 权限控制 | 2 | roleName !== 'admin' 检查 + 无权限提示；先权限检查再调用 listUsers |
-| 只读保证 | 5 | page/content 不导入 updateUserRole/toggleActive；Sheet 只用 getUserById；无写操作按钮文案；无 supabase |
-| 筛选与 Zod 链路 | 6 | searchParams 读取 status/role/page；status→isActive 映射；role→roleId 转换；pageSize: 20；listFiltersSchema.safeParse；schema default 值 |
-| UI 状态 | 7 | 空数据提示；分页控件 + 禁用逻辑；筛选重置页码；列表列名；角色/状态 Badge 样式 |
-| 详情 Sheet | 5 | getUserById 调用；Skeleton 加载；error 处理；字段展示；cancelled cleanup |
-| listRoles | 3 | repository 方法存在 + error 传播；actions Admin-only |
-| P4-U1 回归 | 6 | 所有方法/actions 仍存在；关键修复（fetchEmailMap error throw、updateRole .select+single、countByRole 两步查询）未回退 |
+| 架构合规 | 6 | 所有新增/修改文件不直接访问 supabase/service_role |
+| 导入控制 | 4 | Sheet/Dialog 不导入 toggleUserActive；page/content 不导入 updateUserRole/toggleUserActive |
+| Dialog 行为 | 6 | 过滤当前角色、确认按钮禁用、pending 状态、错误展示、成功回调、关闭重置 |
+| Sheet 集成 | 5 | 接受 roles prop、"修改角色"按钮、roleDialogOpen 状态、router.refresh()、无启用/禁用按钮 |
+| 透传 | 2 | UsersPageContent 传递 roles；不导入写操作 actions |
+| 权限控制 | 2 | page.tsx roleName 校验；actions updateUserRole Admin-only |
+| P4-U1 回归 | 4 | 自降级保护、最后管理员保护、toggleUserActive 未变、updateRole .select+single |
+| P4-U2 回归 | 7 | listUsers/listRoles 仍存在、listRoles throw、筛选栏、分页、空数据、getUserById、loading/error/cancelled |
 
-### 8. 返工修复（2026-07-01）
+### 5. 质量门
 
-**问题**：`page.tsx` 中 `listRoles` 失败时静默降级为空数组（`rolesResult.success ? (rolesResult.data ?? []) : []`），隐藏 DB error / 权限 error。
-
-**修复**：
-```typescript
-// Before（静默降级）
-const roles = rolesResult.success ? (rolesResult.data ?? []) : [];
-
-// After（错误传播）
-if (!rolesResult.success) {
-  throw new Error(rolesResult.error ?? '加载角色列表失败');
-}
-const roles = rolesResult.data ?? [];
-```
-
-新增 1 项测试（页面架构合规 → 9 项）。
-
-### 9. 质量门
-
-- `npm run test -- src/features/users/` — **105/105**（63 P4-U1 + 42 P4-U2）
-- `npm run test` — **2060/2060**（54 文件，concurrency 与 best live 预存 env 依赖）
+- `npm run test -- src/features/users/` — **140/140**（63 P4-U1 + 42 P4-U2 + 35 P4-U3）
+- `npm run test` — **2095/2095**（55 文件，concurrency 与 best live 预存 env 依赖）
 - `npm run lint` — **0 errors / 24 warnings**（all pre-existing）
 - `npm run build` — **PASS**
 - `git diff --check` — **PASS**（LF/CRLF warning only）
 
 ## 禁止
 
-- 不实现角色修改、启用/禁用、仓库分配
+- 不做账号启用/禁用
+- 不做仓库分配
 - 不新增 Migration
-- 不让页面或客户端组件直接触碰 Supabase 或 service_role
+- 不修改已执行 Migration
+- 不引入新权限模型
+- 不进入 P4-U4
 
 ## 下一步
 
-- **P4-U3**（修改角色）：已解除阻塞。可复用 `updateUserRole` action + P4-U2 页面。
-- **P4-U4**（启用/禁用）：依赖 P4-U3，BLOCKED。
+- **P4-U4**（启用/禁用）：已解除阻塞。可复用 `toggleUserActive` action + P4-U3 页面模式。
 - **P3-S5B**（Admin 部分入仓 / Admin 批量入仓，按需拆分）。
 - **P3-S1B**：CODE COMPLETE / BLOCKED_EXTERNAL。
 
