@@ -545,12 +545,14 @@ function extractExports(src: string): string[] {
 function extractFnBody(src: string, fnName: string): string {
   const escaped = fnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // Try patterns in order: (1) export async function fnName (2) async function fnName (3) async fnName(...)
+  // Try patterns in order: (1) export async function (2) async function (3) const fn =
+  // (4) async fnName(...) (5) generic fnName(...) — avoid matching calls over definitions
   const patterns = [
     `export\\s+async\\s+function\\s+${escaped}\\b`,
     `async\\s+function\\s+${escaped}\\b`,
-    `async\\s+${escaped}\\s*\\(`,          // method shorthand e.g. "async updateRole("
-    `\\b${escaped}\\s*\\(`,                // fallback: plain function call pattern
+    `\\bconst\\s+${escaped}\\s*=`,          // arrow function: const fn = (...) => {
+    `async\\s+${escaped}\\s*\\(`,           // method shorthand e.g. "async updateRole("
+    `\\b${escaped}\\s*\\(`,                 // fallback (may match calls)
   ];
 
   let startMatch: RegExpExecArray | null = null;
@@ -586,8 +588,17 @@ function extractFnBody(src: string, fnName: string): string {
   }
   if (parenEnd === -1) return '';
 
-  // Find the real opening { for the function body (skip return type annotation)
-  const bodyOpen = src.indexOf('{', parenEnd);
+  // Find the real opening { for the function body (skip return type annotation + nested generics)
+  let pos = parenEnd + 1;
+  let angleDepth = 0;
+  while (pos < src.length) {
+    const ch = src[pos];
+    if (ch === '<') angleDepth++;
+    else if (ch === '>') angleDepth--;
+    else if (ch === '{' && angleDepth === 0) break;
+    pos++;
+  }
+  const bodyOpen = pos < src.length ? pos : -1;
   if (bodyOpen === -1) return '';
 
   // Bracket-match from the real body opening

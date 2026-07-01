@@ -73,6 +73,25 @@ export async function getUserById(
   }
 }
 
+/** Admin 获取角色列表（供筛选下拉使用） */
+export async function listRoles(): Promise<ActionResult<{ id: string; name: string }[]>> {
+  try {
+    const user = await requireActiveAuth();
+
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可查看角色列表' };
+    }
+
+    const roles = await userRepository.listRoles();
+    return { success: true, data: roles };
+  } catch (error) {
+    if (error instanceof UserError) {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '查询角色列表失败，请稍后重试' };
+  }
+}
+
 // ─── 写操作 ─────────────────────────────────────────────────
 
 /** Admin 切换用户角色

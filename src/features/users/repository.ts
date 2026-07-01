@@ -225,4 +225,19 @@ export const userRepository = {
       throw new UserError('DB_ERROR', '操作失败，请稍后重试');
     }
   },
+
+  /** 列出所有角色（供筛选下拉使用） */
+  async listRoles(): Promise<{ id: string; name: string }[]> {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('role')
+      .select('id, name')
+      .order('name');
+
+    if (error) {
+      throw new UserError('DB_ERROR', '查询角色列表失败，请稍后重试');
+    }
+
+    return data ?? [];
+  },
 };

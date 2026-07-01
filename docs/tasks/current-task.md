@@ -2,141 +2,100 @@
 
 ## Task ID
 
-`P4-U1` — 用户数据层、邮箱字段与权限收口
+`P4-U2` — 用户列表只读页面
 
 ## 状态
 
-**DONE — 返工完成**（2026-07-01）
-
-## 背景
-
-Phase 3 内部路径（S2A~S6）已全部完成，进入 Phase 4 用户管理。P3-S6 已完成在途模块权限/RLS/端到端验收。
-
-`src/features/users` 已有旧骨架，存在以下问题：
-1. `userRepository.list/getById` 的 `email` 始终为空字符串
-2. `actions.ts` 使用旧 `requireAdmin`/`getCurrentUser`，未收口到 `requireActiveAuth`/`roleName`
-3. `updateUserRole` 自降级保护不可靠（通过 `targetUser.roleName` 判断而非目标 `roleId` 对应角色）
-4. 缺少最后管理员保护、list/get Server Actions、DB 错误静默吞掉
+**DONE**（2026-07-01）
 
 ## 依赖
 
-- P5-SY13A DONE（仓库分配权限：user_warehouses 表 + get_assigned_warehouse_ids()）
+- P4-U1 DONE — 返工完成（用户数据层、邮箱字段与权限收口）
 
 ## 范围
 
-### 1. 邮箱数据契约修复
+### 1. 页面改造
 
-- `UserItem.email` 从 `auth.users.email` 获取，通过 `createServiceClient().auth.admin.listUsers()` / `.getUserById()` 封装
-- `service_role` 仅在 repository 内部 email helper 中使用，不暴露到 actions 或前端
+- `src/app/dashboard/users/page.tsx` — Server Component 替换占位页
+- Admin 可访问并查看用户列表；Operator 显示无权限提示
+- 数据走 Server Action 链路：`page → listUsers/listRoles → repository → Supabase/RLS`
+- 页面不直接调用 `supabase.from` / `supabase.rpc` / `auth.admin` / `createServiceClient`
 
-### 2. Repository 修复
+### 2. 列表内容
 
-- `list(filters)` — profiles + role + email（`fetchEmailMap` 批量映射），支持分页、roleId、isActive
-- `getById(id)` — 单个用户 + email（`fetchUserEmail`），PGRST116 → null，DB error → throw `UserError`
-- `getRoleName(roleId)` — 新增，查询角色名用于自保护校验
-- `countByRole(roleName)` — 新增，统计活跃用户数用于最后管理员检查
-- `updateRole` / `toggleActive` — 返回 `Promise<void>`，DB error → throw `UserError`
-- 禁止静默吞掉 DB 错误（不再返回空 data/boolean false 掩盖错误）
+| 列 | 说明 |
+|---|---|
+| 邮箱 | `user.email`，截断显示 |
+| 显示名 | `user.displayName` |
+| 角色 | Badge（管理员 = default / 运营 = secondary） |
+| 状态 | Badge（启用 = green outline / 禁用 = destructive） |
+| 创建时间 | `toLocaleDateString('zh-CN')` |
+| 用户 ID | 前 8 位 + `…`，monospace |
 
-### 3. Server Actions 权限收口
+### 3. 筛选与分页
 
-- 使用 `requireActiveAuth()` 替代旧 `requireAdmin`/`getCurrentUser`
-- Admin-only 统一判断 `user.roleName !== 'admin'`
-- 新增 `listUsers(filters)` / `getUserById(id)` 读操作（Admin-only）
-- 保留并修正自保护逻辑：
-  - 不能禁用自己
-  - 不能将自己的角色改为非管理员（查询目标 `roleId` 对应角色名，而非当前 `roleName`）
-  - 不能移除最后一个管理员（降级/禁用均拦截）
-- 所有外部参数走 Zod
+- 状态筛选：全部 / 启用 / 禁用 → searchParams `?status=active\|disabled`
+- 角色筛选：全部 / 管理员 / 运营 → searchParams `?role=<uuid>\|all`（UUID 通过 `listRoles` action 获取）
+- 分页：20 条/页，searchParams `?page=N`
+- 筛选变更时自动重置页码
+- 筛选/分页通过 URL searchParams 实现，避免复杂客户端状态
 
-### 4. Schema / Types
+### 4. 用户详情只读
 
-- 补全 `listFiltersSchema` / `userIdSchema` / `updateRoleSchema` / `toggleActiveSchema`
-- 新增 `UserError` class（DB_ERROR / NOT_FOUND / FORBIDDEN / LAST_ADMIN）
-- 禁止 `any`
+- 行点击 → `UserDetailSheet`（shadcn/ui Sheet）
+- 调用 `getUserById(id)` Server Action 获取详情
+- 加载中：Skeleton
+- 错误：中文提示
+- 只读显示：邮箱、显示名、角色 Badge、状态 Badge、创建时间、用户 ID
+- 无写操作按钮（不出现"修改角色""启用""禁用"等文案和 `updateUserRole`/`toggleUserActive` 调用）
 
-### 5. 测试
+### 5. UI/体验
 
-新增 `src/features/users/p4-u1.test.ts` — 50 项源码级测试：
+- 复用 shadcn/ui：Table、Badge、Select、Button、Sheet、Skeleton
+- 遵循项目设计规则（表格紧凑、hover 浅灰、空数据居中提示、桌面端 1024px+）
+- 状态处理：loading（error.tsx 边界）、空数据（"暂无匹配的用户"）、无权限（"仅管理员可访问用户管理"）
+
+### 6. 新增 listRoles
+
+- `userRepository.listRoles()` → `from('role').select('id, name').order('name')`，DB error → throw `UserError`
+- `listRoles` Server Action：Admin-only + `requireActiveAuth` + `UserError` 捕获
+
+### 7. 测试
+
+新增 `src/features/users/p4-u2.test.ts` — 41 项测试：
 
 | 分组 | 测试数 | 内容 |
 |---|---|---|
-| Repository | 17 | email 链路（createServiceClient + auth.admin.listUsers/getUserById）、DB error 传播（throw UserError 非静默吞）、PGRST116 → null、countByRole/getRoleName、updateRole/toggleActive 返回 void |
-| Actions | 20 | requireActiveAuth 全量覆盖、非 admin 拒绝（含中文消息）、Zod 全量、自保护（自我降级/禁用/最后管理员）、UserError 捕获 |
-| Schema & Types | 5 | UserError class / listFiltersSchema / userIdSchema / 禁止 any |
-| Service Role 隔离 | 4 | actions 不导入 createServiceClient / SUPABASE_SERVICE_ROLE_KEY、page 无 supabase 直访、repository 内 createServiceClient 仅 email helper 使用 |
-| 权限行为 mock | 2 | 自降级/自禁用检查在最后管理员检查之前；targetRoleName 查询而非 targetUser.roleName 比较 |
-| 旧问题修复确认 | 2 | email 不再空字符串、actions 不再导入 requireAdmin、updateRole/toggleActive 不再返回 boolean |
+| 页面架构合规 | 7 | 无 supabase.from/rpc、无 auth.admin、无 createServiceClient；通过 listUsers/listRoles actions 获取数据；getCurrentActiveUser 校验 |
+| 权限控制 | 2 | roleName !== 'admin' 检查 + 无权限提示；先权限检查再调用 listUsers |
+| 只读保证 | 5 | page/content 不导入 updateUserRole/toggleActive；Sheet 只用 getUserById；无写操作按钮文案；无 supabase |
+| 筛选与 Zod 链路 | 6 | searchParams 读取 status/role/page；status→isActive 映射；role→roleId 转换；pageSize: 20；listFiltersSchema.safeParse；schema default 值 |
+| UI 状态 | 7 | 空数据提示；分页控件 + 禁用逻辑；筛选重置页码；列表列名；角色/状态 Badge 样式 |
+| 详情 Sheet | 5 | getUserById 调用；Skeleton 加载；error 处理；字段展示；cancelled cleanup |
+| listRoles | 3 | repository 方法存在 + error 传播；actions Admin-only |
+| P4-U1 回归 | 6 | 所有方法/actions 仍存在；关键修复（fetchEmailMap error throw、updateRole .select+single、countByRole 两步查询）未回退 |
 
-### 6. 质量门
+### 8. 质量门
 
-- `npm run test` — **2018/2019**（53 文件，+63 P4-U1；1 预存 live test 失败）
-- `npm run lint` — **0 errors / 0 warnings**（返工后清理了 test 文件未使用 import）
+- `npm run test -- src/features/users/` — **104/104**（63 P4-U1 + 41 P4-U2）
+- `npm run test` — **2059/2060**（54 源码文件，2 预存 env 依赖跳过）
+- `npm run lint` — **0 errors / 0 warnings**
 - `npm run build` — **PASS**
-- `git diff --check` — **pass**
-
-### 7. 返工（2026-07-01）
-
-P4-U1 初始完成后发现 5 项真实行为风险，逐一修复：
-
-| # | 风险 | 修复 |
-|---|---|---|
-| 1 | `fetchEmailMap` 中 `auth.admin.listUsers()` 发生 error 时 `break` 静默返回空 Map | 改为 `throw new UserError('DB_ERROR', '获取用户邮箱失败，请稍后重试')`。`!data?.users`（无更多用户）单独 break，不混入 error 分支 |
-| 2 | `fetchUserEmail` 中 `auth.admin.getUserById()` 发生 error 时返回空字符串 | 改为 throw `UserError('DB_ERROR', ...)`。auth user 不存在时（无 error 但 `data.user` 为空）返回 `''` 并附注释说明 |
-| 3 | `updateRole`/`toggleActive` 未确认目标 profile 存在，0 行更新仍返回 success | 增加 `.select('id').single()` 链式调用。PGRST116 → `throw new UserError('NOT_FOUND', '用户不存在')` |
-| 4 | `countByRole` 使用未显式 join 的 `.eq('role.name', roleName)` | 改为两步查询：先 `from('role').select('id').eq('name', roleName).single()` → 再 `from('profiles').select('id', {count: 'exact', head: true}).eq('role_id', roleData.id).eq('is_active', true)`。roleError PGRST116 → return 0 |
-| 5 | `getRoleName` 用 `if (error \|\| !data) return null` 掩盖真实 DB 错误 | 区分 PGRST116（角色不存在 → null）与真实 DB error（throw `UserError`） |
-
-新增 13 项行为/源码测试覆盖上述 5 项修复（63 项 total vs 初始 50 项）。`actions.ts` 中 `revalidatePath` 位置已验证仅在 `userRepository.updateRole`/`toggleActive` 调用成功后才执行（失败分支不 revalidate）。
+- `git diff --check` — **pass**（LF only）
 
 ## 禁止
 
-- 不做完整用户列表页面 UI
-- 不做仓库分配管理（已有 `/dashboard/users/warehouses`）
-- 不新增 Migration（email 通过 API，自保护通过应用逻辑）
-- 不修改已执行 migration
-- 不绕过 Repository / Server Action / RLS 边界
-
-## 输出
-
-### Email 获取方案
-
-`auth.users` 表位于 Supabase `auth` schema，不可通过 PostgREST `from('auth.users')` 直接查询。使用 `createServiceClient()`（service_role）调用 Auth Admin API：
-
-- `list()`: `auth.admin.listUsers({ page, perPage })` → 循环拉取覆盖全部目标 ID → `emailMap`
-- `getById()`: `auth.admin.getUserById(id)` → `data.user.email`
-
-`createServiceClient` 仅在 repository 的 `fetchEmailMap` / `fetchUserEmail` 内部 helper 中使用（共 2 次调用），不穿透到 actions 或页面。
-
-### 修复的权限/数据层问题
-
-| # | 问题 | 修复 |
-|---|---|---|
-| 1 | email 始终 `''` | repository 通过 service_role admin API 获取 auth.users.email |
-| 2 | DB error 静默吞掉（返回 `{ data: [] }` 或 `false`） | Repository 全部 throw `UserError('DB_ERROR', ...)` |
-| 3 | actions 使用旧 `requireAdmin`/`getCurrentUser` | 收口到 `requireActiveAuth` + `roleName !== 'admin'` |
-| 4 | `updateUserRole` 自降级检查 `targetUser.roleName`（当前角色） | 改为 `getRoleName(roleId)` 查询目标角色名 |
-| 5 | 无最后管理员保护 | `countByRole('admin') <= 1` 拦截降级/禁用 |
-| 6 | 无 `listUsers` / `getUserById` actions | 新增，Admin-only + Zod + 中文错误 |
-| 7 | `updateRole`/`toggleActive` 返回 `boolean`（无法区分 DB error 和 not found） | 改为 `Promise<void>`，error → throw |
-
-### P4-U2 可否开始
-
-**可以。** P4-U1 数据层和权限链已就绪：
-- 所有 4 个 Server Actions 可用（listUsers / getUserById / updateUserRole / toggleUserActive）
-- 权限自保护完整（自我降级、自我禁用、最后管理员）
-- Email 通过 service_role auth admin API 获取
-- 页面通过 Server Action → Repository → RLS 链路访问数据，前端零 service_role
-
-P4-U2（用户列表只读页面）可直接使用 `listUsers()` / `getUserById()` actions 构建页面。
+- 不实现角色修改、启用/禁用、仓库分配
+- 不新增 Migration
+- 不让页面或客户端组件直接触碰 Supabase 或 service_role
 
 ## 下一步
 
-- **P4-U2**（用户列表只读页面）— 已解除阻塞
-- P3-S5B（Admin 部分入仓 / Admin 批量入仓，按需拆分）
-- P3-S1B 恢复（百世 API 授权后）
-- Phase 6（国内库存）
+- **P4-U3**（修改角色）：已解除阻塞。可复用 `updateUserRole` action + P4-U2 页面。
+- **P4-U4**（启用/禁用）：依赖 P4-U3，BLOCKED。
+- **P3-S5B**（Admin 部分入仓 / Admin 批量入仓，按需拆分）。
+- **P3-S1B**：CODE COMPLETE / BLOCKED_EXTERNAL。
 
 ## 当前业务口径
 
-Admin 维护在途和入仓，Operator 只读查看已分配仓库数据。除非用户后续明确重新开放 Operator 写权限，否则不将 Operator 写操作作为默认选项。
+Admin 维护在途和入仓、管理用户账号；Operator 只读查看已分配仓库数据，不可访问用户管理。
