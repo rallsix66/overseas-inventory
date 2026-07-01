@@ -146,30 +146,34 @@ describe('P4-U1 Repository', () => {
     expect(fn).toContain("!data?.user?.email");
   });
 
-  // ── 1g. 返工修复：updateRole / toggleActive 确认行存在 ─────
+  // ── 1g. P4-U5 收口：updateRole / toggleActive 调用原子 RPC ─
 
-  it('updateRole 使用 .select(\'id\').single() 确认目标存在', () => {
+  it('updateRole 调用 update_user_role_protected RPC（原子化消除 TOCTOU 竞态）', () => {
     const fn = extractFnBody(repo, 'updateRole');
-    expect(fn).toContain(".select('id')");
-    expect(fn).toContain('.single()');
+    expect(fn).toContain(".rpc('update_user_role_protected'");
+    expect(fn).toContain('p_target_user_id');
+    expect(fn).toContain('p_new_role_id');
+    expect(fn).toContain('p_operator_user_id');
   });
 
-  it('updateRole 在 0 行命中时抛 UserError NOT_FOUND（不再返回成功）', () => {
+  it('updateRole RPC error 时抛 UserError（含 RPC 返回的中文错误消息）', () => {
     const fn = extractFnBody(repo, 'updateRole');
-    expect(fn).toContain("error.code === 'PGRST116'");
-    expect(fn).toContain("throw new UserError('NOT_FOUND', '用户不存在')");
+    expect(fn).toContain("throw new UserError('DB_ERROR'");
+    expect(fn).toContain('error.message');
   });
 
-  it('toggleActive 使用 .select(\'id\').single() 确认目标存在', () => {
+  it('toggleActive 调用 toggle_user_active_protected RPC（原子化消除 TOCTOU 竞态）', () => {
     const fn = extractFnBody(repo, 'toggleActive');
-    expect(fn).toContain(".select('id')");
-    expect(fn).toContain('.single()');
+    expect(fn).toContain(".rpc('toggle_user_active_protected'");
+    expect(fn).toContain('p_target_user_id');
+    expect(fn).toContain('p_is_active');
+    expect(fn).toContain('p_operator_user_id');
   });
 
-  it('toggleActive 在 0 行命中时抛 UserError NOT_FOUND（不再返回成功）', () => {
+  it('toggleActive RPC error 时抛 UserError（含 RPC 返回的中文错误消息）', () => {
     const fn = extractFnBody(repo, 'toggleActive');
-    expect(fn).toContain("error.code === 'PGRST116'");
-    expect(fn).toContain("throw new UserError('NOT_FOUND', '用户不存在')");
+    expect(fn).toContain("throw new UserError('DB_ERROR'");
+    expect(fn).toContain('error.message');
   });
 
   // ── 1h. 返工修复：countByRole 显式 join ────────────────────
@@ -284,35 +288,39 @@ describe('P4-U1 Actions', () => {
     expect(body).toContain('toggleActiveSchema.safeParse');
   });
 
-  // 2d. 自保护 — 不能降级自己
+  // 2d. 自保护 — 已收口至 RPC（原子化消除 TOCTOU 竞态）
 
-  it('updateUserRole 拒绝将自己改为非管理员', () => {
-    const body = extractFnBody(actions, 'updateUserRole');
-    expect(body).toContain('不允许将自己的角色改为非管理员');
-    expect(body).toContain("parsed.data.userId === currentUser.id");
+  it('update_user_role_protected RPC 包含自降级保护', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    // RPC 函数体包含自降级检查
+    const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION update_user_role_protected');
+    const rpcEnd = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
+    const rpcBody = migration.slice(rpcStart, rpcEnd > 0 ? rpcEnd : undefined);
+    expect(rpcBody).toContain('不允许将自己的角色改为非管理员');
+    expect(rpcBody).toContain("p_target_user_id = p_operator_user_id");
   });
 
-  // 2e. 自保护 — 不能禁用自己
+  // 2e. 自保护 — 已收口至 RPC
 
-  it('toggleUserActive 拒绝禁用自己', () => {
-    const body = extractFnBody(actions, 'toggleUserActive');
-    expect(body).toContain('不允许禁用自己的账号');
-    expect(body).toContain('!parsed.data.isActive');
+  it('toggle_user_active_protected RPC 包含自禁用保护', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
+    const rpcBody = migration.slice(rpcStart);
+    expect(rpcBody).toContain('不允许禁用自己的账号');
+    expect(rpcBody).toContain('NOT p_is_active AND p_target_user_id = p_operator_user_id');
   });
 
-  // 2f. 自保护 — 不能降级/禁用最后一个管理员
+  // 2f. 最后管理员保护 — 已收口至 RPC
 
-  it('updateUserRole 拒绝降级最后一个管理员', () => {
-    const body = extractFnBody(actions, 'updateUserRole');
-    expect(body).toContain('不允许移除最后一个管理员的角色');
-    expect(body).toContain('countByRole');
-    expect(body).toContain('adminCount <= 1');
+  it('update_user_role_protected RPC 包含最后管理员保护', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    expect(migration).toContain('不允许移除最后一个管理员的角色');
+    expect(migration).toContain("v_admin_count <= 1");
   });
 
-  it('toggleUserActive 拒绝禁用最后一个管理员', () => {
-    const body = extractFnBody(actions, 'toggleUserActive');
-    expect(body).toContain('不允许禁用最后一个管理员');
-    expect(body).toContain('countByRole');
+  it('toggle_user_active_protected RPC 包含最后管理员保护', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    expect(migration).toContain('不允许禁用最后一个管理员');
   });
 
   // 2g. 错误处理
@@ -443,36 +451,37 @@ describe('P4-U1 Service Role 隔离', () => {
 describe('P4-U1 权限行为（mock）', () => {
   // 这些测试验证 action 函数体中的权限逻辑，不连接 Supabase
 
-  it('updateUserRole 自降级检查：比较 userId === currentUser.id 且 targetRoleName !== admin', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'updateUserRole');
-    // 检查逻辑顺序：先 getRoleName → 再 self-check → 再 last-admin check
-    const selfCheckIdx = body.indexOf("parsed.data.userId === currentUser.id");
-    const lastAdminIdx = body.indexOf('不允许移除最后一个管理员的角色');
-    expect(selfCheckIdx).toBeGreaterThan(0);
+  it('update_user_role_protected RPC 自降级检查先于最后管理员检查', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION update_user_role_protected');
+    const rpcEnd = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
+    const rpcBody = migration.slice(rpcStart, rpcEnd > 0 ? rpcEnd : undefined);
+    const selfIdx = rpcBody.indexOf('不允许将自己的角色改为非管理员');
+    const lastAdminIdx = rpcBody.indexOf('不允许移除最后一个管理员的角色');
+    expect(selfIdx).toBeGreaterThan(0);
     expect(lastAdminIdx).toBeGreaterThan(0);
-    // 自检查在最后管理员检查之前
-    expect(selfCheckIdx).toBeLessThan(lastAdminIdx);
+    expect(selfIdx).toBeLessThan(lastAdminIdx);
   });
 
-  it('toggleUserActive 自禁用检查在最后管理员检查之前', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'toggleUserActive');
-    const selfDisableIdx = body.indexOf('不允许禁用自己的账号');
-    const lastAdminIdx = body.indexOf('不允许禁用最后一个管理员');
-    expect(selfDisableIdx).toBeGreaterThan(0);
+  it('toggle_user_active_protected RPC 自禁用检查先于最后管理员检查', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
+    const rpcBody = migration.slice(rpcStart);
+    const selfIdx = rpcBody.indexOf('不允许禁用自己的账号');
+    const lastAdminIdx = rpcBody.indexOf('不允许禁用最后一个管理员');
+    expect(selfIdx).toBeGreaterThan(0);
     expect(lastAdminIdx).toBeGreaterThan(0);
-    expect(selfDisableIdx).toBeLessThan(lastAdminIdx);
+    expect(selfIdx).toBeLessThan(lastAdminIdx);
   });
 
-  it('updateUserRole 先查 targetRoleName 再比较，避免 roleName 字符串比较绕过', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'updateUserRole');
-    // 使用 getRoleName 查询目标角色，而非比较 targetUser.roleName（那是当前角色）
-    expect(body).toContain('getRoleName');
-    // targetRoleName 用于自我保护和最后管理员检查
-    const targetRoleNameCount = (body.match(/targetRoleName/g) || []).length;
-    expect(targetRoleNameCount).toBeGreaterThanOrEqual(2);
+  it('update_user_role_protected RPC 先查 v_new_role_name 再做比较', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION update_user_role_protected');
+    const rpcEnd = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
+    const rpcBody = migration.slice(rpcStart, rpcEnd > 0 ? rpcEnd : undefined);
+    // v_new_role_name 从 role 表查询而非比较 targetUser.roleName
+    expect(rpcBody).toContain('SELECT name INTO v_new_role_name FROM public.role WHERE id = p_new_role_id');
+    expect(rpcBody).toContain('v_new_role_name');
   });
 });
 
@@ -495,35 +504,28 @@ describe('P4-U1 旧问题修复确认', () => {
     expect(actions).not.toContain('getCurrentUser');
   });
 
-  it('updateUserRole 不再使用 targetUser.roleName 判断自降级', () => {
+  it('P4-U5 updateUserRole action 不再使用 targetUser.roleName（业务规则收口至 RPC）', () => {
     const actions = readSrc('features/users/actions.ts');
     const body = extractFnBody(actions, 'updateUserRole');
-    // 旧代码: if (targetUser && targetUser.roleName !== 'admin')
-    // 新代码: targetRoleName !== 'admin'（查询目标 roleId 的角色名）
-    // 自保护段不应出现 targetUser.roleName
-    const selfProtectStart = body.indexOf("parsed.data.userId === currentUser.id");
-    const selfProtectEnd = body.indexOf('}', selfProtectStart);
-    const selfProtectBlock = body.slice(selfProtectStart, selfProtectEnd > 0 ? selfProtectEnd + 1 : undefined);
-    expect(selfProtectBlock).not.toContain('targetUser.roleName');
+    // 业务规则已收入 RPC，action 不再直接比较 targetUser.roleName
+    expect(body).not.toContain('targetUser.roleName');
+    expect(body).not.toContain('targetRoleName');
   });
 
-  it('repository updateRole 返回 void（不返回 boolean）', () => {
+  it('repository updateRole 仍返回 Promise<void>（P4-U5 新增 operatorId 参数）', () => {
     const repo = readSrc('features/users/repository.ts');
-    // find the full function signature + body
-    const fnStart = repo.indexOf('updateRole(userId: string, roleId: string)');
+    const fnStart = repo.indexOf('updateRole(userId: string, roleId: string, operatorId: string)');
+    expect(fnStart).toBeGreaterThan(0);
     const fnBody = extractFnBody(repo, 'updateRole');
-    const fullFn = repo.slice(Math.max(0, fnStart - 10), fnStart + 200); // include "async " prefix
-    expect(fullFn).toMatch(/Promise<void>/);
-    expect(fnBody).not.toMatch(/return\s+!/);
+    expect(fnBody).not.toMatch(/return\s+true|return\s+false/);
   });
 
-  it('repository toggleActive 返回 void（不返回 boolean）', () => {
+  it('repository toggleActive 仍返回 Promise<void>（P4-U5 新增 operatorId 参数）', () => {
     const repo = readSrc('features/users/repository.ts');
-    const fnStart = repo.indexOf('toggleActive(userId: string, isActive: boolean)');
+    const fnStart = repo.indexOf('toggleActive(userId: string, isActive: boolean, operatorId: string)');
+    expect(fnStart).toBeGreaterThan(0);
     const fnBody = extractFnBody(repo, 'toggleActive');
-    const fullFn = repo.slice(Math.max(0, fnStart - 10), fnStart + 200);
-    expect(fullFn).toMatch(/Promise<void>/);
-    expect(fnBody).not.toMatch(/return\s+!/);
+    expect(fnBody).not.toMatch(/return\s+true|return\s+false/);
   });
 });
 

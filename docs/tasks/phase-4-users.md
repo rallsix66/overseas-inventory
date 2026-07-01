@@ -8,7 +8,7 @@
 | P4-U2 | 用户列表只读页面 | P4-U1 | **DONE — 返工完成 (2026-07-01)** |
 | P4-U3 | 修改角色 | P4-U2 | **DONE (2026-07-01)** |
 | P4-U4 | 启用、禁用与认证链校验 | P4-U3 | **DONE (2026-07-01)** |
-| P4-U5 | 用户模块安全与流程验收 | P4-U4 | BACKLOG |
+| P4-U5 | 用户模块安全与流程验收 | P4-U4 | **DONE (2026-07-01)** |
 
 角色修改与账号启停必须拆分，分别验收防止锁死管理员和禁用绕过。
 
@@ -123,4 +123,60 @@
 
 ### P4-U5 就绪
 
-P4-U4 启用/禁用已完成。P4-U5（用户模块安全与流程验收）已解除阻塞。
+~~P4-U5（用户模块安全与流程验收）已解除阻塞。~~
+
+---
+
+## P4-U5 完成摘要（2026-07-01）
+
+### 安全审计发现
+
+**TOCTOU 竞态条件**：`updateUserRole` 和 `toggleUserActive` 中的「最后活跃管理员保护」存在检查-使用竞态窗口。`countByRole('admin')` 检查与数据库写入非原子，两个管理员可同时互相禁用/降级，均通过 count 检查，导致系统失去所有活跃管理员。
+
+### 修复
+
+**Migration 00024** 新增两个 SECURITY INVOKER RPC：
+
+| RPC | 功能 |
+|---|---|
+| `update_user_role_protected(p_target_user_id, p_new_role_id, p_operator_user_id)` | 原子化角色变更：自降级保护 + 最后管理员保护 + 写入 |
+| `toggle_user_active_protected(p_target_user_id, p_is_active, p_operator_user_id)` | 原子化状态切换：自禁用保护 + 最后管理员保护 + 写入 |
+
+原子保护机制：
+- `pg_advisory_xact_lock(987654321)` 序列化所有 Admin 写操作（两个 RPC 共用同一锁 ID 互斥）
+- `FOR UPDATE` 锁定目标 profile 行
+- SECURITY INVOKER（不绕过 RLS，仅 Admin 可执行）
+- 所有 RAISE EXCEPTION 使用中文错误消息
+
+### 代码变更
+
+| 文件 | 变更 |
+|---|---|
+| `supabase/migrations/00024_atomic_user_admin_guard.sql` | 新建 |
+| `src/features/users/repository.ts` | `updateRole()` / `toggleActive()` 改为调用 RPC（新增 `operatorId` 参数） |
+| `src/features/users/actions.ts` | 简化为 Auth + Zod + RPC 调用（移除冗余业务规则检查，已收口至 RPC） |
+| `src/features/users/p4-u1.test.ts` | 更新 13 项测试：Repository RPC 调用 + 业务规则检查迁移文件 |
+| `src/features/users/p4-u2.test.ts` | 更新 1 项：updateRole RPC |
+| `src/features/users/p4-u3.test.ts` | 更新 4 项：自保护/最后管理员 → RPC |
+| `src/features/users/p4-u4.test.ts` | 更新 3 项：自保护/最后管理员 → RPC |
+| `src/features/users/p5-u5-migration.test.ts` | 新建：25 项 Migration 静态契约测试 |
+| `docs/current-state.md` | 更新 Current Task / Completed Tasks / Current Task References / Next Step / Last Updated |
+
+### 访问控制矩阵
+
+| 操作 | Admin | Operator |
+|---|---|---|
+| 访问 `/dashboard/users` | ✅ | ❌ 显示无权限 |
+| `listUsers` | ✅ 全部用户 | ❌ |
+| `getUserById` | ✅ | ❌ |
+| `listRoles` | ✅ | ❌ |
+| `updateUserRole` | ✅ RPC 原子保护 | ❌ |
+| `toggleUserActive` | ✅ RPC 原子保护 | ❌ |
+
+### 质量门
+
+2150/2150 tests（57 文件），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass
+
+### Phase 4 完成
+
+Phase 4 用户管理全模块完成（P4-U1~P4-U5）。Admin 可管理用户列表、角色变更、启用禁用；所有写操作受数据库层原子保护。

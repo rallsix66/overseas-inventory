@@ -95,9 +95,9 @@ export async function listRoles(): Promise<ActionResult<{ id: string; name: stri
 // ─── 写操作 ─────────────────────────────────────────────────
 
 /** Admin 切换用户角色
- *  自保护规则：
+ *  自保护规则（在 update_user_role_protected RPC 中原子执行）：
  *  - 不允许将自己的角色改为非管理员
- *  - 不允许移除最后一个管理员 */
+ *  - 不允许移除最后一个活跃管理员 */
 export async function updateUserRole(
   userId: string,
   roleId: string,
@@ -114,34 +114,8 @@ export async function updateUserRole(
       return { success: false, error: parsed.error.issues[0]?.message ?? '参数校验失败' };
     }
 
-    // 查询目标角色名（用于自保护和最后管理员检查）
-    const targetRoleName = await userRepository.getRoleName(parsed.data.roleId);
-    if (!targetRoleName) {
-      return { success: false, error: '所选角色不存在' };
-    }
-
-    // ① 不允许将自己的角色改为非管理员
-    if (parsed.data.userId === currentUser.id && targetRoleName !== 'admin') {
-      return { success: false, error: '不允许将自己的角色改为非管理员' };
-    }
-
-    // ② 不允许移除最后一个管理员
-    if (targetRoleName !== 'admin') {
-      // 查询目标用户当前角色，判断是否为降级操作
-      const targetUser = await userRepository.getById(parsed.data.userId);
-      if (!targetUser) {
-        return { success: false, error: '用户不存在' };
-      }
-
-      if (targetUser.roleName === 'admin') {
-        const adminCount = await userRepository.countByRole('admin');
-        if (adminCount <= 1) {
-          return { success: false, error: '不允许移除最后一个管理员的角色' };
-        }
-      }
-    }
-
-    await userRepository.updateRole(parsed.data.userId, parsed.data.roleId);
+    // 自保护与最后管理员保护已收口至 RPC（原子化消除 TOCTOU 竞态）
+    await userRepository.updateRole(parsed.data.userId, parsed.data.roleId, currentUser.id);
 
     revalidatePath('/dashboard/users');
     return { success: true };
@@ -154,7 +128,7 @@ export async function updateUserRole(
 }
 
 /** Admin 启用/禁用用户
- *  自保护规则：
+ *  自保护规则（在 toggle_user_active_protected RPC 中原子执行）：
  *  - 不允许禁用自己
  *  - 不允许禁用最后一个活跃管理员 */
 export async function toggleUserActive(
@@ -173,27 +147,8 @@ export async function toggleUserActive(
       return { success: false, error: parsed.error.issues[0]?.message ?? '参数校验失败' };
     }
 
-    // ① 不允许禁用自己
-    if (!parsed.data.isActive && parsed.data.userId === currentUser.id) {
-      return { success: false, error: '不允许禁用自己的账号' };
-    }
-
-    // ② 不允许禁用最后一个活跃管理员
-    if (!parsed.data.isActive) {
-      const targetUser = await userRepository.getById(parsed.data.userId);
-      if (!targetUser) {
-        return { success: false, error: '用户不存在' };
-      }
-
-      if (targetUser.roleName === 'admin') {
-        const adminCount = await userRepository.countByRole('admin');
-        if (adminCount <= 1) {
-          return { success: false, error: '不允许禁用最后一个管理员' };
-        }
-      }
-    }
-
-    await userRepository.toggleActive(parsed.data.userId, parsed.data.isActive);
+    // 自保护与最后管理员保护已收口至 RPC（原子化消除 TOCTOU 竞态）
+    await userRepository.toggleActive(parsed.data.userId, parsed.data.isActive, currentUser.id);
 
     revalidatePath('/dashboard/users');
     return { success: true };

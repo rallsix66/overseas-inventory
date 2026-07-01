@@ -682,6 +682,22 @@ export type Database = {
         Args: Record<string, never>
         Returns: number
       }
+      update_user_role_protected: {
+        Args: {
+          p_target_user_id: string
+          p_new_role_id: string
+          p_operator_user_id: string
+        }
+        Returns: void
+      }
+      toggle_user_active_protected: {
+        Args: {
+          p_target_user_id: string
+          p_is_active: boolean
+          p_operator_user_id: string
+        }
+        Returns: void
+      }
     }
     Enums: {}
     CompositeTypes: {}

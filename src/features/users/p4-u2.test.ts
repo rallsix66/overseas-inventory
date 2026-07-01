@@ -409,11 +409,12 @@ describe('P4-U2 不破坏 P4-U1', () => {
     expect(body).not.toMatch(/if\s*\(\s*error\s*\|\|/);
   });
 
-  it('P4-U1 关键修复未被回退：updateRole 使用 .select(\'id\').single()', () => {
+  it('P4-U1 关键修复未被回退：updateRole 调用 RPC 原子保护', () => {
     const repo = readSrc('features/users/repository.ts');
     const body = extractFnBody(repo, 'updateRole');
-    expect(body).toContain(".select('id')");
-    expect(body).toContain('.single()');
+    // P4-U5 收口：updateRole 调用 update_user_role_protected RPC
+    expect(body).toContain('update_user_role_protected');
+    expect(body).toContain('p_operator_user_id');
   });
 
   it('P4-U1 关键修复未被回退：countByRole 两步查询', () => {

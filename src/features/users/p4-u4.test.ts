@@ -257,23 +257,20 @@ describe('P4-U4 权限控制', () => {
 // ─── 6. P4-U1 自保护逻辑回归 ─────────────────────────────────
 
 describe('P4-U4 不破坏 P4-U1 自保护', () => {
-  it('toggleUserActive 仍包含自禁用保护', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'toggleUserActive');
-    expect(body).toContain('不允许禁用自己的账号');
+  it('toggleUserActive 自禁用保护已收口至 Migration RPC', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    expect(migration).toContain('不允许禁用自己的账号');
   });
 
-  it('toggleUserActive 仍包含最后管理员保护', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'toggleUserActive');
-    expect(body).toContain('不允许禁用最后一个管理员');
+  it('toggleUserActive 最后管理员保护已收口至 Migration RPC', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    expect(migration).toContain('不允许禁用最后一个管理员');
   });
 
-  it('repository.ts toggleActive 仍使用 .select(\'id\').single()', () => {
+  it('repository.ts toggleActive 调用 toggle_user_active_protected RPC（P4-U5 收口）', () => {
     const repo = readSrc('features/users/repository.ts');
     const body = extractFnBody(repo, 'toggleActive');
-    expect(body).toContain(".select('id')");
-    expect(body).toContain('.single()');
+    expect(body).toContain('toggle_user_active_protected');
   });
 });
 

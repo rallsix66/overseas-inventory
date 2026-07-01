@@ -190,39 +190,31 @@ export const userRepository = {
     return count ?? 0;
   },
 
-  /** 切换用户角色（确认目标存在，0 行 → NOT_FOUND） */
-  async updateRole(userId: string, roleId: string): Promise<void> {
+  /** 切换用户角色（通过原子 RPC 保护，消除 TOCTOU 竞态） */
+  async updateRole(userId: string, roleId: string, operatorId: string): Promise<void> {
     const supabase = await createClient();
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role_id: roleId })
-      .eq('id', userId)
-      .select('id')
-      .single();
+    const { error } = await supabase.rpc('update_user_role_protected', {
+      p_target_user_id: userId,
+      p_new_role_id: roleId,
+      p_operator_user_id: operatorId,
+    });
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        throw new UserError('NOT_FOUND', '用户不存在');
-      }
-      throw new UserError('DB_ERROR', '更新角色失败，请稍后重试');
+      throw new UserError('DB_ERROR', error.message || '更新角色失败，请稍后重试');
     }
   },
 
-  /** 启用/禁用用户（确认目标存在，0 行 → NOT_FOUND） */
-  async toggleActive(userId: string, isActive: boolean): Promise<void> {
+  /** 启用/禁用用户（通过原子 RPC 保护，消除 TOCTOU 竞态） */
+  async toggleActive(userId: string, isActive: boolean, operatorId: string): Promise<void> {
     const supabase = await createClient();
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: isActive })
-      .eq('id', userId)
-      .select('id')
-      .single();
+    const { error } = await supabase.rpc('toggle_user_active_protected', {
+      p_target_user_id: userId,
+      p_is_active: isActive,
+      p_operator_user_id: operatorId,
+    });
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        throw new UserError('NOT_FOUND', '用户不存在');
-      }
-      throw new UserError('DB_ERROR', '操作失败，请稍后重试');
+      throw new UserError('DB_ERROR', error.message || '操作失败，请稍后重试');
     }
   },
 

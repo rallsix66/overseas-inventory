@@ -295,30 +295,25 @@ describe('P4-U3 权限控制', () => {
 // ─── 7. P4-U1 自保护逻辑回归 ─────────────────────────────────
 
 describe('P4-U3 不破坏 P4-U1 自保护', () => {
-  it('updateUserRole 仍包含自降级保护', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'updateUserRole');
-    expect(body).toContain('不允许将自己的角色改为非管理员');
+  it('自降级保护已收口至 Migration RPC', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    expect(migration).toContain('不允许将自己的角色改为非管理员');
   });
 
-  it('updateUserRole 仍包含最后管理员保护', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'updateUserRole');
-    expect(body).toContain('不允许移除最后一个管理员的角色');
+  it('最后管理员保护已收口至 Migration RPC', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    expect(migration).toContain('不允许移除最后一个管理员的角色');
   });
 
-  it('toggleUserActive action 未被修改（保持 P4-U1 行为）', () => {
-    const actions = readSrc('features/users/actions.ts');
-    const body = extractFnBody(actions, 'toggleUserActive');
-    expect(body).toContain('不允许禁用自己的账号');
-    expect(body).toContain('不允许禁用最后一个管理员');
+  it('toggleUserActive 自保护已收口至 Migration RPC', () => {
+    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    expect(migration).toContain('不允许禁用自己的账号');
   });
 
-  it('repository.ts updateRole 仍使用 .select(\'id\').single()', () => {
+  it('repository.ts updateRole 调用 update_user_role_protected RPC（P4-U5 收口）', () => {
     const repo = readSrc('features/users/repository.ts');
     const body = extractFnBody(repo, 'updateRole');
-    expect(body).toContain(".select('id')");
-    expect(body).toContain('.single()');
+    expect(body).toContain('update_user_role_protected');
   });
 });
 
