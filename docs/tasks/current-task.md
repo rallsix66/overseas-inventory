@@ -96,7 +96,7 @@ const roles = rolesResult.data ?? [];
 ### 9. 质量门
 
 - `npm run test -- src/features/users/` — **105/105**（63 P4-U1 + 42 P4-U2）
-- `npm run test` — **2060/2061**（56 文件，concurrency 与 best live 预存 env 依赖）
+- `npm run test` — **2060/2060**（54 文件，concurrency 与 best live 预存 env 依赖）
 - `npm run lint` — **0 errors / 24 warnings**（all pre-existing）
 - `npm run build` — **PASS**
 - `git diff --check` — **PASS**（LF/CRLF warning only）
