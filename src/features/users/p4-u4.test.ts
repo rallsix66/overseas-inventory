@@ -258,12 +258,12 @@ describe('P4-U4 权限控制', () => {
 
 describe('P4-U4 不破坏 P4-U1 自保护', () => {
   it('toggleUserActive 自禁用保护已收口至 Migration RPC', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     expect(migration).toContain('不允许禁用自己的账号');
   });
 
   it('toggleUserActive 最后管理员保护已收口至 Migration RPC', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     expect(migration).toContain('不允许禁用最后一个管理员');
   });
 

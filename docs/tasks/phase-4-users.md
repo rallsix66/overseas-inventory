@@ -8,7 +8,7 @@
 | P4-U2 | 用户列表只读页面 | P4-U1 | **DONE — 返工完成 (2026-07-01)** |
 | P4-U3 | 修改角色 | P4-U2 | **DONE (2026-07-01)** |
 | P4-U4 | 启用、禁用与认证链校验 | P4-U3 | **DONE (2026-07-01)** |
-| P4-U5 | 用户模块安全与流程验收 | P4-U4 | **DONE (2026-07-01)** |
+| P4-U5 | 用户模块安全与流程验收 | P4-U4 | **DONE — 返工完成 (2026-07-01)** |
 
 角色修改与账号启停必须拆分，分别验收防止锁死管理员和禁用绕过。
 
@@ -127,13 +127,13 @@
 
 ---
 
-## P4-U5 完成摘要（2026-07-01）
+## P4-U5 完成摘要（2026-07-01，返工 2026-07-01）
 
 ### 安全审计发现
 
 **TOCTOU 竞态条件**：`updateUserRole` 和 `toggleUserActive` 中的「最后活跃管理员保护」存在检查-使用竞态窗口。`countByRole('admin')` 检查与数据库写入非原子，两个管理员可同时互相禁用/降级，均通过 count 检查，导致系统失去所有活跃管理员。
 
-### 修复
+### 首次修复（Migration 00024）
 
 **Migration 00024** 新增两个 SECURITY INVOKER RPC：
 
@@ -148,19 +148,41 @@
 - SECURITY INVOKER（不绕过 RLS，仅 Admin 可执行）
 - 所有 RAISE EXCEPTION 使用中文错误消息
 
+### 返工修复（Migration 00025）
+
+**权限缺口**：00024 RPC 接受 `p_operator_user_id` 参数但未验证调用者身份：
+- 未校验 `auth.uid() IS NOT NULL`（未登录也可调用）
+- 未校验 `auth.uid() = p_operator_user_id`（可伪造操作者身份）
+- 未校验调用者是否为活跃 Admin（Operator 可调用 RPC）
+- 未 REVOKE EXECUTE FROM PUBLIC/anon（默认 PUBLIC 有 EXECUTE 权限）
+- `operator_update_own_profile` RLS policy 的 WITH CHECK 中 `get_user_role()` 读取已提交行，无法阻止 operator 在 NEW 行中修改 role_id/is_active
+
+**加固项**：
+
+| 加固项 | 实现 |
+|---|---|
+| 调用者身份绑定 | `auth.uid() IS NOT NULL` →「未登录，请先登录」 |
+| 操作者一致性 | `auth.uid() = p_operator_user_id` →「操作者身份校验失败」 |
+| 活跃 Admin 校验 | SELECT profiles JOIN role WHERE id = auth.uid() →「账号未启用或不存在」/「仅管理员可执行此操作」 |
+| 执行顺序 | auth.uid() 身份绑定在 `pg_advisory_xact_lock` 之前（锁前拦截） |
+| 权限加固 | REVOKE EXECUTE FROM PUBLIC, anon + GRANT EXECUTE TO authenticated |
+| Operator 自升保护 | `check_operator_profile_update` BEFORE UPDATE 触发器：比较 OLD vs NEW role_id / is_active →「不允许修改自己的角色」/「不允许修改自己的启用状态」 |
+
 ### 代码变更
 
 | 文件 | 变更 |
 |---|---|
-| `supabase/migrations/00024_atomic_user_admin_guard.sql` | 新建 |
+| `supabase/migrations/00024_atomic_user_admin_guard.sql` | 首次修复（不修改） |
+| `supabase/migrations/00025_rpc_caller_identity_binding.sql` | 新建：CREATE OR REPLACE 两个 RPC（叠加 auth.uid() 校验）+ REVOKE/GRANT + trigger |
 | `src/features/users/repository.ts` | `updateRole()` / `toggleActive()` 改为调用 RPC（新增 `operatorId` 参数） |
 | `src/features/users/actions.ts` | 简化为 Auth + Zod + RPC 调用（移除冗余业务规则检查，已收口至 RPC） |
-| `src/features/users/p4-u1.test.ts` | 更新 13 项测试：Repository RPC 调用 + 业务规则检查迁移文件 |
-| `src/features/users/p4-u2.test.ts` | 更新 1 项：updateRole RPC |
-| `src/features/users/p4-u3.test.ts` | 更新 4 项：自保护/最后管理员 → RPC |
-| `src/features/users/p4-u4.test.ts` | 更新 3 项：自保护/最后管理员 → RPC |
-| `src/features/users/p5-u5-migration.test.ts` | 新建：25 项 Migration 静态契约测试 |
-| `docs/current-state.md` | 更新 Current Task / Completed Tasks / Current Task References / Next Step / Last Updated |
+| `src/features/users/p4-u1.test.ts` | 更新 7 项 migration 引用：00024 → 00025 |
+| `src/features/users/p3-u3.test.ts` | 更新 3 项 migration 引用：00024 → 00025 |
+| `src/features/users/p4-u4.test.ts` | 更新 2 项 migration 引用：00024 → 00025 |
+| `src/features/users/p5-u5-migration.test.ts` | 重写：25 → 49 项测试（新增 auth.uid 绑定 / REVOKE/GRANT / trigger） |
+| `docs/current-state.md` | 更新 Current Task / Completed Tasks / Current Task References / Last Updated |
+| `docs/tasks/current-task.md` | 重写：完整返工描述 |
+| `docs/tasks/phase-4-users.md` | 更新 P4-U5 摘要
 
 ### 访问控制矩阵
 
@@ -170,13 +192,17 @@
 | `listUsers` | ✅ 全部用户 | ❌ |
 | `getUserById` | ✅ | ❌ |
 | `listRoles` | ✅ | ❌ |
-| `updateUserRole` | ✅ RPC 原子保护 | ❌ |
-| `toggleUserActive` | ✅ RPC 原子保护 | ❌ |
+| `updateUserRole` | ✅ RPC 原子保护 + auth.uid() 绑定 | ❌ |
+| `toggleUserActive` | ✅ RPC 原子保护 + auth.uid() 绑定 | ❌ |
+| 直接 UPDATE profiles.role_id | ✅ admin_all_profiles | ❌ trigger 拦截 |
+| 直接 UPDATE profiles.is_active | ✅ admin_all_profiles | ❌ trigger 拦截 |
+| 调用 update_user_role_protected | ✅ authenticated + RPC 内部 Admin 校验 | ❌ RPC 内部 Admin 校验拒绝 |
+| 调用 toggle_user_active_protected | ✅ authenticated + RPC 内部 Admin 校验 | ❌ RPC 内部 Admin 校验拒绝 |
 
 ### 质量门
 
-2150/2150 tests（57 文件），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass
+2174/2174 tests（57 文件），lint 0 errors / 24 warnings（all pre-existing），build pass，git diff --check pass
 
 ### Phase 4 完成
 
-Phase 4 用户管理全模块完成（P4-U1~P4-U5）。Admin 可管理用户列表、角色变更、启用禁用；所有写操作受数据库层原子保护。
+Phase 4 用户管理全模块完成（P4-U1~P4-U5）。Admin 可管理用户列表、角色变更、启用禁用；所有写操作受数据库层四层保护：`pg_advisory_xact_lock` + `auth.uid()` 身份绑定 + REVOKE/GRANT 权限加固 + `check_operator_profile_update` 触发器。

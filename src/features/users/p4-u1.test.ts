@@ -291,7 +291,7 @@ describe('P4-U1 Actions', () => {
   // 2d. 自保护 — 已收口至 RPC（原子化消除 TOCTOU 竞态）
 
   it('update_user_role_protected RPC 包含自降级保护', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     // RPC 函数体包含自降级检查
     const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION update_user_role_protected');
     const rpcEnd = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
@@ -303,7 +303,7 @@ describe('P4-U1 Actions', () => {
   // 2e. 自保护 — 已收口至 RPC
 
   it('toggle_user_active_protected RPC 包含自禁用保护', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
     const rpcBody = migration.slice(rpcStart);
     expect(rpcBody).toContain('不允许禁用自己的账号');
@@ -313,13 +313,13 @@ describe('P4-U1 Actions', () => {
   // 2f. 最后管理员保护 — 已收口至 RPC
 
   it('update_user_role_protected RPC 包含最后管理员保护', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     expect(migration).toContain('不允许移除最后一个管理员的角色');
     expect(migration).toContain("v_admin_count <= 1");
   });
 
   it('toggle_user_active_protected RPC 包含最后管理员保护', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     expect(migration).toContain('不允许禁用最后一个管理员');
   });
 
@@ -452,7 +452,7 @@ describe('P4-U1 权限行为（mock）', () => {
   // 这些测试验证 action 函数体中的权限逻辑，不连接 Supabase
 
   it('update_user_role_protected RPC 自降级检查先于最后管理员检查', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION update_user_role_protected');
     const rpcEnd = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
     const rpcBody = migration.slice(rpcStart, rpcEnd > 0 ? rpcEnd : undefined);
@@ -464,7 +464,7 @@ describe('P4-U1 权限行为（mock）', () => {
   });
 
   it('toggle_user_active_protected RPC 自禁用检查先于最后管理员检查', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
     const rpcBody = migration.slice(rpcStart);
     const selfIdx = rpcBody.indexOf('不允许禁用自己的账号');
@@ -475,7 +475,7 @@ describe('P4-U1 权限行为（mock）', () => {
   });
 
   it('update_user_role_protected RPC 先查 v_new_role_name 再做比较', () => {
-    const migration = readSrc('../supabase/migrations/00024_atomic_user_admin_guard.sql');
+    const migration = readSrc('../supabase/migrations/00025_rpc_caller_identity_binding.sql');
     const rpcStart = migration.indexOf('CREATE OR REPLACE FUNCTION update_user_role_protected');
     const rpcEnd = migration.indexOf('CREATE OR REPLACE FUNCTION toggle_user_active_protected');
     const rpcBody = migration.slice(rpcStart, rpcEnd > 0 ? rpcEnd : undefined);
