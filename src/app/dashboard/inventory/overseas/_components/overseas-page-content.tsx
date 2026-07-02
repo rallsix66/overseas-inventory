@@ -61,6 +61,8 @@ interface Props {
     pageSize: number;
   };
   syncStatus: Record<string, WarehouseSyncStatus>;
+  /** P3-S5B4: warehouseId → variantId → confirmedQuantity (DIS 已确认到仓，不含 BigSeller 吸收) */
+  confirmedMap: Record<string, Record<string, number>>;
   filters: Filters;
 }
 
@@ -191,7 +193,7 @@ function SyncStatusBadge({ status, failureReason }: { status: string; failureRea
   }
 }
 
-export function OverseasPageContent({ stats, warehouses, result, syncStatus, filters }: Props) {
+export function OverseasPageContent({ stats, warehouses, result, syncStatus, confirmedMap, filters }: Props) {
   const router = useRouter();
   const { data, total, page, pageSize } = result;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -446,6 +448,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                   <TableHead>产品名称</TableHead>
                   <TableHead className="text-right">当前库存</TableHead>
                   <TableHead className="text-right">在途</TableHead>
+                  <TableHead className="text-right">已确认到仓</TableHead>
                   <TableHead className="text-right">库存+在途</TableHead>
                   <TableHead className="text-right">安全库存</TableHead>
                   <TableHead>库存状态</TableHead>
@@ -504,6 +507,13 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                     <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                       {item.inTransitQuantity > 0 ? item.inTransitQuantity : '—'}
                     </TableCell>
+                    {/* P3-S5B4: DIS 已确认到仓数量（仅 customs 或 warehoused + bigseller_absorbed_at IS NULL 的 shipment） */}
+                    <TableCell className="text-right tabular-nums text-sm">
+                      {(() => {
+                        const qty = confirmedMap[item.warehouseId]?.[item.variantId] ?? 0;
+                        return qty > 0 ? qty.toLocaleString() : '—';
+                      })()}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums text-sm">
                       {item.inTransitQuantity > 0
                         ? (item.quantity + item.inTransitQuantity).toLocaleString()
@@ -529,7 +539,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                   {/* P3-S2E: 展开行 — 在途明细 */}
                   {isExpanded && (
                     <TableRow key={`${item.id}-expand`} className="hover:bg-transparent">
-                      <TableCell colSpan={13} className="p-0 border-t-0">
+                      <TableCell colSpan={14} className="p-0 border-t-0">
                         <InTransitDetailRow
                           variantId={item.variantId}
                           warehouseId={item.warehouseId}

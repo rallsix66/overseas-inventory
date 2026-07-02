@@ -14,12 +14,15 @@ export type { InventoryItem, OverseasStats, WarehouseOption } from './types';
 
 /**
  * 获取海外库存数据 — 统计、仓库列表、分页列表 + 当前用户关注状态 + P3-S2C 在途数量
+ * + P3-S5B4 已确认到仓数量
  * 查询失败时抛出错误，由页面 error.tsx 边界处理
  */
 export async function getOverseasInventory(filters: InventoryFilters): Promise<{
   stats: OverseasStats;
   warehouses: WarehouseOption[];
   result: { data: InventoryItem[]; total: number; page: number; pageSize: number };
+  /** P3-S5B4: warehouseId → variantId → confirmedQuantity */
+  confirmedMap: Record<string, Record<string, number>>;
 }> {
   const user = await requireAuth();
 
@@ -58,7 +61,31 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
     item.inTransitQuantity = whInTransitMap.get(item.variantId)?.get(item.warehouseId) ?? 0;
   }
 
-  return { stats, warehouses, result };
+  // P3-S5B4: 加载各仓库已确认到仓数量（并行查询所有出现过的仓库）
+  const confirmedMap: Record<string, Record<string, number>> = {};
+  const uniqueWarehouseIds = [...new Set(result.data.map((item) => item.warehouseId))];
+  if (uniqueWarehouseIds.length > 0) {
+    const confirmedResults = await Promise.all(
+      uniqueWarehouseIds.map(async (whId) => {
+        try {
+          const agg = await shipmentRepository.getConfirmedWarehousedByWarehouse(whId);
+          return { warehouseId: whId, agg };
+        } catch {
+          // 单仓查询失败不阻塞页面，返回空聚合
+          return { warehouseId: whId, agg: [] as { variantId: string; confirmedQuantity: number }[] };
+        }
+      }),
+    );
+    for (const { warehouseId, agg } of confirmedResults) {
+      const variantMap: Record<string, number> = {};
+      for (const { variantId, confirmedQuantity } of agg) {
+        variantMap[variantId] = confirmedQuantity;
+      }
+      confirmedMap[warehouseId] = variantMap;
+    }
+  }
+
+  return { stats, warehouses, result, confirmedMap };
 }
 
 export async function updateInventoryQuantity(

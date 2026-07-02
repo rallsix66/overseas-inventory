@@ -34,6 +34,8 @@ import type {
   PartialWarehouseResult,
   BatchWarehouseData,
   BatchWarehouseItemResult,
+  EligibleShipmentFilters,
+  EligibleShipmentItem,
 } from './types';
 
 export async function createShipment(
@@ -350,6 +352,31 @@ export async function partialWarehouseShipment(
       return { success: false, error: error.message };
     }
     return { success: false, error: '确认入仓失败，请稍后重试' };
+  }
+}
+
+/** P3-S5B4: 查询可批量入仓的 shipment 列表（分页）
+ *  Admin-only + Zod → repository.listEligibleForBatchWarehousing */
+export async function listEligibleForBatchWarehousingAction(
+  filters: EligibleShipmentFilters = {},
+): Promise<ActionResult<PaginatedResult<EligibleShipmentItem>>> {
+  try {
+    const user = await requireActiveAuth();
+
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可查看批量入仓列表' };
+    }
+
+    const result = await shipmentRepository.listEligibleForBatchWarehousing(
+      filters,
+      user.id,
+    );
+    return { success: true, data: result };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '查询批量入仓列表失败，请稍后重试' };
   }
 }
 

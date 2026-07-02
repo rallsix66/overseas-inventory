@@ -636,29 +636,30 @@ describe('P3-S6: 边界状态覆盖', () => {
 // ─── 6. 权限链路矩阵完整性 ──────────────────────────────────────────────
 
 describe('P3-S6: 权限链路矩阵', () => {
-  describe('Server Action 层 — 全部 12 个 Action 有显式校验', () => {
+  describe('Server Action 层 — 全部 13 个 Action 有显式校验', () => {
     const actionsSrc = readSrc('actions.ts');
 
-    it('全部 12 个 export async function 均含 requireActiveAuth', () => {
+    it('全部 13 个 export async function 均含 requireActiveAuth', () => {
       const fnCount = (actionsSrc.match(/export async function/g) || []).length;
       const authCount = (actionsSrc.match(/requireActiveAuth\(\)/g) || []).length;
-      // 12 exported functions: 11 call requireActiveAuth + 1 (warehouseShipment) is P3-S5B0 blocking stub
-      expect(fnCount).toBe(12);
-      expect(authCount).toBe(11); // warehouseShipment 阻断桩不调用 requireActiveAuth
+      // 13 exported functions: 12 call requireActiveAuth + 1 (warehouseShipment) is P3-S5B0 blocking stub
+      expect(fnCount).toBe(13);
+      expect(authCount).toBe(12); // warehouseShipment 阻断桩不调用 requireActiveAuth
     });
 
-    it('写操作 = 4 个 Admin-only（P3-S5B0: warehouseShipment 已改为阻断桩）', () => {
+    it('写操作 = 5 个 Admin-only（P3-S5B0: warehouseShipment 已改为阻断桩；P3-S5B4: 新增 listEligibleForBatchWarehousingAction Admin-only）', () => {
       // createShipment, updateShipment, changeShipmentStatus, advanceShipmentStatus,
-      // partialWarehouseShipment, batchWarehouseShipments, confirmBigsellerAbsorption
+      // partialWarehouseShipment, batchWarehouseShipments, confirmBigsellerAbsorption,
+      // listEligibleForBatchWarehousingAction (P3-S5B4)
       const adminOnlyCount = (actionsSrc.match(/roleName\s*!==\s*'admin'/g) || []).length;
-      expect(adminOnlyCount).toBe(7); // P3-S5B0: warehouseShipment no longer checks role; P3-S5B2: 3 new admin-only
+      expect(adminOnlyCount).toBe(8); // P3-S5B0: warehouseShipment no longer checks role; P3-S5B4: +1 admin-only
     });
 
-    it('4 读操作 + 7 写操作 + 1 阻断桩 = 12 总函数', () => {
+    it('4 读操作 + 8 写操作 + 1 阻断桩 = 13 总函数', () => {
       const readWithoutRoleCheck = 4; // listShipments, getShipmentDetail, searchVariants, getInTransitDetails
       const adminOnlyCount = (actionsSrc.match(/roleName\s*!==\s*'admin'/g) || []).length;
-      const total = 12;
-      // 7 admin-only write + 4 read-all + 1 blocking stub (warehouseShipment) = 12
+      const total = 13;
+      // 8 admin-only write + 4 read-all + 1 blocking stub (warehouseShipment) = 13
       expect(adminOnlyCount + readWithoutRoleCheck + 1).toBe(total);
     });
   });

@@ -36,6 +36,7 @@ export default async function OverseasInventoryPage({
       warehouses={data.warehouses}
       result={data.result}
       syncStatus={syncStatus}
+      confirmedMap={data.confirmedMap}
       filters={{
         search: sp.search ?? '',
         country: sp.country ?? '',

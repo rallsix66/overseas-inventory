@@ -17,6 +17,7 @@ import {
   ChevronDown,
   RefreshCw,
   Warehouse,
+  PackageCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -192,6 +193,13 @@ export function SidebarNav({ roleName }: { roleName: string }) {
               {expanded && (
                 <div className="ml-3 mt-0.5 space-y-0.5 border-l border-gray-200 pl-3">
                   {group.items.map(renderItem)}
+                  {/* P3-S5B4: 批量入仓 — Admin-only，物流组下 */}
+                  {group.label === '物流' && isAdmin && renderItem({
+                    href: '/dashboard/shipments/batch',
+                    label: '批量入仓',
+                    icon: PackageCheck,
+                    phase: '0',
+                  })}
                 </div>
               )}
             </div>

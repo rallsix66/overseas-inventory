@@ -48,8 +48,8 @@
 | **P3-S5B1** | Migration 00026 + types/schema | P3-S5B0 | **DONE (2026-07-02)** + **返修完成** | Migration 00026：`bigseller_absorbed_at` 列 + `partial_warehouse_shipment` RPC（173 行，SECURITY INVOKER，Admin-only）。返修：jsonb_typeof + 正则预检输入加固。93 项静态测试。Migration 00026 已手动执行并验证通过。 |
 | **P3-S5B2** | Repository + Server Actions | P3-S5B1 | **DONE (2026-07-02)** + **返修完成 (2026-07-02)** | Repository 5 方法（partialWarehouse/listEligibleForBatchWarehousing/getConfirmedWarehousedQuantity/getConfirmedWarehousedByWarehouse/confirmBigsellerAbsorption）+ Actions 3 函数（partialWarehouseShipment/batchWarehouseShipments/confirmBigsellerAbsorption）。snake_case→camelCase 映射。**返修**：getConfirmedWarehousedQuantity/getConfirmedWarehousedByWarehouse shipment 查询新增 `.or()` 过滤，仅纳入 customs 或 (warehoused + bigseller_absorbed_at IS NULL)，已吸收的 warehoused shipment 不再计入。87 项测试。不写 inventory，不调 00023。全量 2367/2367 测试（60 文件），lint 5/26，build pass。 |
 | **P3-S5B3** | 详情页双模式按钮 + PartialWarehouseDialog | P3-S5B2 | **DONE (2026-07-02)** + **收口返修完成** | 详情页双模式按钮（PartialWarehouseEntry 含 warehouse_id 条件收口）+ PartialWarehouseDialog（Zod 校验，无 parseInt 静默截断）+ BigsellerAbsorptionButton。11 项新增源码测试。全量 2381/2381 测试（60 文件），lint 5/26，build pass。 |
-| **P3-S5B4** | 批量 UI + 海外库存"已确认到仓"列 | P3-S5B3 | 待开始 | 批量确认到仓 UI + 海外库存页新增"已确认到仓"列（DIS 事实展示，不自动消失） |
-| **P3-S5B5** | 应用行为测试 + 文档同步 + 质量门 | P3-S5B4 | BLOCKED | 端到端测试 + docs 同步 + 全量质量门 |
+| **P3-S5B4** | 批量 UI + 海外库存"已确认到仓"列 | P3-S5B3 | **DONE (2026-07-02)** | 批量确认到仓 UI（/dashboard/shipments/batch 路由 + BatchWarehousePage 客户端组件：checkbox 选择/全选/展开行加载明细/数量校验/全额确认/批量提交结果汇总）+ 海外库存页新增"已确认到仓"列（confirmedMap，口径仅 customs 或 warehoused + bigseller_absorbed_at IS NULL）+ 侧边栏"批量入仓"Admin-only 入口 + listEligibleForBatchWarehousingAction Server Action。新增 61 项测试。全量 2443/2443（61 文件），lint 5/26（all pre-existing），build pass。 |
+| **P3-S5B5** | 应用行为测试 + 文档同步 + 质量门 | P3-S5B4 | 待开始 | 端到端测试 + docs 同步 + 全量质量门 |
 | **P3-S5** | 入仓事务与库存联动 | P3-S4 | 拆分进行中 | P3-S5A（全部入仓）DONE。P3-S5B（部分/批量入仓）拆分为 B0~B5。B0 已完成。当前业务口径：DIS 入仓是运营跟踪工具，inventory.quantity 唯一事实来源是 BigSeller 同步。 |
 | **P3-S6** | 在途模块权限、RLS 与端到端验收 | P3-S5A | **DONE (2026-06-30)** | 权限链路矩阵：9 Action 全 requireActiveAuth+Zod+中文错误，5 写 Admin-only，4 读 Admin/Operator 均可。Repository 13 方法 RLS session + ShipmentError。RLS 46 策略覆盖 shipment/shipment_item/tracking_event/inventory。页面/组件无直接 supabase。边界状态全覆盖。161 项新测试。1955/1955 测试（52 文件），lint 0/25，build pass。不做新功能/Migration/重构。 |
 
@@ -201,7 +201,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S5B3` — 详情页双模式按钮 + PartialWarehouseDialog + BigsellerAbsorptionButton（**DONE**，2026-07-02 + 收口返修完成）
+**当前任务**：`P3-S5B4` — 批量入仓 UI + 海外库存"已确认到仓"列（**DONE**，2026-07-02）
 
 **P3-S5B2 已完成**（2026-07-02 + 返修完成）：Repository 新增 5 个方法（partialWarehouse/listEligibleForBatchWarehousing/getConfirmedWarehousedQuantity/getConfirmedWarehousedByWarehouse/confirmBigsellerAbsorption）+ Actions 新增 3 个 Server Action（partialWarehouseShipment/batchWarehouseShipments/confirmBigsellerAbsorption）。snake_case→camelCase 映射 + Admin-only + Zod + ShipmentError 中文错误传播。**返修**：getConfirmedWarehousedQuantity/getConfirmedWarehousedByWarehouse 已按设计口径过滤，仅纳入 customs 或 warehoused + bigseller_absorbed_at IS NULL，已确认 BigSeller 吸收的 warehoused shipment 不再计入。87 项测试（10 组）。不写 inventory.quantity，不调 00023 RPC。全量 2367/2367 测试（60 文件），lint 5/26，build pass。
 
@@ -225,7 +225,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 **P3-S2A 完成**（被 P3-S2B 扩展）：`/dashboard/shipments` 列表页 + `/dashboard/shipments/[id]` 详情页就绪。仅读内部三表，不读外部在途三表。1491/1491 测试通过（45 文件，含 51 项 P3-S2A 行为测试），lint 0/26，build 通过。
 
-**下一步**：P3-S5B4（批量 UI + 海外库存"已确认到仓"列）待开始。P3-S5B3 DONE + 收口返修完成（详情页双模式按钮 + PartialWarehouseDialog + BigsellerAbsorptionButton，全量 2381/2381）。P3-S5B2 DONE + 返修完成（Repository + Actions + 87 项测试，聚合口径已修复：仅纳入 customs 或 warehoused + bigseller_absorbed_at IS NULL）。P3-S5B1 DONE（Migration 00026 + types/schema + 93 项静态测试，Migration 已执行）。P3-S5B0 DONE（旧 00023 应用层入口已封存）。Phase 3 内部路径（S2A~S6）全部 DONE。P3-S5B 拆分：B0 ✅ B1 ✅ B2 ✅ B3 ✅ B4~B5 待后续。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S1B（百世 API 恢复）待百世开通 API 权限。
+**下一步**：P3-S5B5（应用行为测试 + 文档同步 + 质量门）待开始。P3-S5B4 DONE（批量 UI + 海外库存"已确认到仓"列）（详情页双模式按钮 + PartialWarehouseDialog + BigsellerAbsorptionButton，全量 2381/2381）。P3-S5B2 DONE + 返修完成（Repository + Actions + 87 项测试，聚合口径已修复：仅纳入 customs 或 warehoused + bigseller_absorbed_at IS NULL）。P3-S5B1 DONE（Migration 00026 + types/schema + 93 项静态测试，Migration 已执行）。P3-S5B0 DONE（旧 00023 应用层入口已封存）。Phase 3 内部路径（S2A~S6）全部 DONE。P3-S5B 拆分：B0 ✅ B1 ✅ B2 ✅ B3 ✅ B4 ✅ B5 待后续。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S1B（百世 API 恢复）待百世开通 API 权限。
 
 ## 与现有代码的关系
 
