@@ -180,3 +180,43 @@ export const partialWarehouseShipmentSchema = z.object({
 export type PartialWarehouseShipmentValues = z.infer<
   typeof partialWarehouseShipmentSchema
 >;
+
+// ─── P3-S5B2: 批量入仓 / BigSeller 吸收确认 ──────────────────────────────────
+
+/** P3-S5B2: BigSeller 吸收确认 — 仅校验 shipmentId UUID */
+export const confirmBigsellerAbsorptionSchema = z.object({
+  shipmentId: z.string().uuid('无效的在途记录 ID'),
+});
+
+export type ConfirmBigsellerAbsorptionValues = z.infer<
+  typeof confirmBigsellerAbsorptionSchema
+>;
+
+/** P3-S5B2: 批量入仓 — 单条 entry Zod 校验 */
+const batchWarehouseEntrySchema = z.object({
+  shipmentId: z.string().uuid('无效的在途记录 ID'),
+  items: z
+    .array(partialWarehouseItemSchema)
+    .min(1, '至少指定一项入仓明细')
+    .max(50, '最多指定 50 项入仓明细')
+    .refine(
+      (items) => {
+        const ids = items.map((i) => i.variantId);
+        return new Set(ids).size === ids.length;
+      },
+      { message: '入仓明细中存在重复 SKU' },
+    ),
+  description: z.string().max(500, '备注最长 500 个字符').optional(),
+});
+
+/** P3-S5B2: 批量入仓 — 整体 Zod 校验 */
+export const batchWarehouseShipmentsSchema = z.object({
+  shipments: z
+    .array(batchWarehouseEntrySchema)
+    .min(1, '至少指定一条在途记录')
+    .max(20, '最多批量入仓 20 条在途记录'),
+});
+
+export type BatchWarehouseShipmentsValues = z.infer<
+  typeof batchWarehouseShipmentsSchema
+>;

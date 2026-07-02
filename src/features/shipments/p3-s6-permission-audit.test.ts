@@ -635,28 +635,29 @@ describe('P3-S6: 边界状态覆盖', () => {
 // ─── 6. 权限链路矩阵完整性 ──────────────────────────────────────────────
 
 describe('P3-S6: 权限链路矩阵', () => {
-  describe('Server Action 层 — 全部 9 个 Action 有显式校验', () => {
+  describe('Server Action 层 — 全部 12 个 Action 有显式校验', () => {
     const actionsSrc = readSrc('actions.ts');
 
-    it('全部 9 个 export async function 均含 requireActiveAuth', () => {
+    it('全部 12 个 export async function 均含 requireActiveAuth', () => {
       const fnCount = (actionsSrc.match(/export async function/g) || []).length;
       const authCount = (actionsSrc.match(/requireActiveAuth\(\)/g) || []).length;
-      // 9 exported functions: 8 call requireActiveAuth + 1 (warehouseShipment) is P3-S5B0 blocking stub
-      expect(fnCount).toBe(9);
-      expect(authCount).toBe(8); // warehouseShipment 阻断桩不调用 requireActiveAuth
+      // 12 exported functions: 11 call requireActiveAuth + 1 (warehouseShipment) is P3-S5B0 blocking stub
+      expect(fnCount).toBe(12);
+      expect(authCount).toBe(11); // warehouseShipment 阻断桩不调用 requireActiveAuth
     });
 
     it('写操作 = 4 个 Admin-only（P3-S5B0: warehouseShipment 已改为阻断桩）', () => {
-      // createShipment, updateShipment, changeShipmentStatus, advanceShipmentStatus
+      // createShipment, updateShipment, changeShipmentStatus, advanceShipmentStatus,
+      // partialWarehouseShipment, batchWarehouseShipments, confirmBigsellerAbsorption
       const adminOnlyCount = (actionsSrc.match(/roleName\s*!==\s*'admin'/g) || []).length;
-      expect(adminOnlyCount).toBe(4); // P3-S5B0: warehouseShipment no longer checks role
+      expect(adminOnlyCount).toBe(7); // P3-S5B0: warehouseShipment no longer checks role; P3-S5B2: 3 new admin-only
     });
 
-    it('4 读操作 + 4 写操作 + 1 阻断桩 = 9 总函数', () => {
+    it('4 读操作 + 7 写操作 + 1 阻断桩 = 12 总函数', () => {
       const readWithoutRoleCheck = 4; // listShipments, getShipmentDetail, searchVariants, getInTransitDetails
       const adminOnlyCount = (actionsSrc.match(/roleName\s*!==\s*'admin'/g) || []).length;
-      const total = 9;
-      // 4 admin-only write + 4 read-all + 1 blocking stub (warehouseShipment) = 9
+      const total = 12;
+      // 7 admin-only write + 4 read-all + 1 blocking stub (warehouseShipment) = 12
       expect(adminOnlyCount + readWithoutRoleCheck + 1).toBe(total);
     });
   });

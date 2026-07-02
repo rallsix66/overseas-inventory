@@ -2,52 +2,50 @@
 
 ## Task ID
 
-`P3-S5B2` — Repository 方法 + Server Actions
+`P3-S5B3` — 详情页双模式按钮 + PartialWarehouseDialog + BigsellerAbsorptionButton
 
 ## 状态
 
-**待开始**（2026-07-02，P3-S5B0、P3-S5B1 已完成。P3-S5B2 尚未实现）
+**待开始**（2026-07-02，P3-S5B0、P3-S5B1、P3-S5B2 已完成。P3-S5B3 尚未实现）
 
 ## 依赖
 
 - P3-S5B0 DONE（旧版 00023 入仓入口已封存）
-- P3-S5B1 DONE（Migration 00026 + types/schema + 93 项静态测试。Migration 00026 未执行）
+- P3-S5B1 DONE（Migration 00026 + types/schema + 93 项静态测试。Migration 00026 已执行并验证）
+- P3-S5B2 DONE（Repository 5 方法 + Actions 3 函数 + 79 项测试。全量 2359/2359）
 
 ## 范围（待实现）
 
-### 1. Repository 方法
+### 1. 详情页双模式按钮
 
-在 `src/features/shipments/repository.ts` 新增：
+在 `src/app/dashboard/shipments/[id]/page.tsx` 修改入仓按钮：
+- `status='customs'` → 显示"确认到仓"按钮 → 打开 `PartialWarehouseDialog`
+- `status='warehoused'` 且 `bigseller_absorbed_at IS NULL` → 显示"确认 BigSeller 吸收"按钮 → 打开确认 Dialog
+- 其他状态不显示入仓相关按钮
 
-- `partialWarehouse(shipmentId, items, userId)` — 调用 `partial_warehouse_shipment` RPC
-- `listEligibleForBatchWarehousing(filters, userId)` — 查询可批量入仓的 shipments（customs + 有仓库）
-- `getConfirmedWarehousedQuantity(variantId, warehouseId)` — 某 variant 在某仓库的已确认入仓总量
-- `getConfirmedWarehousedByWarehouse(warehouseId)` — 某仓库的已确认入仓聚合
-- `confirmBigsellerAbsorption(shipmentId, userId)` — 设置 `bigseller_absorbed_at = now()`
+### 2. PartialWarehouseDialog
 
-### 2. Server Actions
+新建 `src/features/shipments/components/partial-warehouse-dialog.tsx`：
+- shadcn/ui Dialog + 产品明细表格（variant/sku/品名/在途数量/本次入仓数量输入）
+- Zod 前端校验 + 调 `partialWarehouseShipment` action
+- 提交中 loading + 失败中文错误 + 成功关闭 + router.refresh
 
-在 `src/features/shipments/actions.ts` 新增：
+### 3. BigsellerAbsorptionButton
 
-- `partialWarehouseShipment(data: PartialWarehouseShipmentData)` — Admin-only + Zod + RPC
-- `batchWarehouseShipments(data: BatchWarehouseData)` — Admin-only + Zod + 逐条 RPC
-- `confirmBigsellerAbsorption(shipmentId: string)` — Admin-only + Zod + Repository
+新建 `src/features/shipments/components/bigseller-absorption-button.tsx`：
+- 确认 Dialog（"确认 BigSeller 已吸收该在途记录的全部货物？"）
+- 调 `confirmBigsellerAbsorption` action
+- 成功关闭 + router.refresh
 
-### 3. 不实现
+### 4. 不实现
 
-- 不实现 UI / Dialog / 按钮（P3-S5B3）
 - 不实现批量 UI / 海外库存列（P3-S5B4）
 - 不实现应用行为测试（P3-S5B5）
-- 不修改 Migration 00023
-
-## 待执行
-
-- Migration 00026 需在 P3-S5B2 实现前由用户在 Supabase SQL Editor 手动执行
-- 执行后验证：`bigseller_absorbed_at` 列存在 + `partial_warehouse_shipment` RPC 存在 + admin-only + REVOKE/GRANT 正确
+- 不修改 Migration
 
 ## 下一步
 
-P3-S5B3 — 详情页双模式按钮 + PartialWarehouseDialog + BigsellerAbsorptionButton（依赖 P3-S5B2）
+P3-S5B4 — 批量入仓 UI + 海外库存列（依赖 P3-S5B3）
 
 ## 当前业务口径
 

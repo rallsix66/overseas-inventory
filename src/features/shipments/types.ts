@@ -187,3 +187,61 @@ export interface InTransitDetailItem {
   /** 预计到货时间 */
   estimatedArrival: string | null;
 }
+
+// ─── P3-S5B2: 批量入仓 / BigSeller 吸收确认 ────────────────────────────────
+
+/** P3-S5B2: 批量入仓 — 单条 entry */
+export interface BatchWarehouseEntry {
+  shipmentId: string;
+  items: PartialWarehouseItem[];
+  description?: string;
+}
+
+/** P3-S5B2: 批量入仓 — 请求数据 */
+export interface BatchWarehouseData {
+  shipments: BatchWarehouseEntry[];
+}
+
+/** P3-S5B2: 批量入仓 — 单条结果 */
+export interface BatchWarehouseItemResult {
+  shipmentId: string;
+  success: boolean;
+  error?: string;
+  result?: PartialWarehouseResult;
+}
+
+/** P3-S5B2: 批量入仓可选筛选 */
+export interface EligibleShipmentFilters {
+  country?: string;
+  warehouseId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+/** P3-S5B2: 可批量入仓的 shipment 摘要 */
+export interface EligibleShipmentItem {
+  id: string;
+  shipmentNo: string;
+  purchaseOrderNo: string | null;
+  vesselName: string | null;
+  voyageNumber: string | null;
+  country: string;
+  warehouseId: string;
+  warehouseName: string | null;
+  status: string;
+  estimatedArrival: string | null;
+  /** shipment_item 数量 */
+  itemCount: number;
+  /** 各 shipment_item 的 quantity 总和 */
+  totalQuantity: number;
+  /** 剩余在途 = SUM(quantity - warehoused_quantity) */
+  remainingQuantity: number;
+  /** 聚合品名（最多 3 个） */
+  productNames: string | null;
+}
+
+/** P3-S5B2: 已确认到仓数量 — 按 warehouse 聚合 */
+export interface ConfirmedWarehousedAggregation {
+  variantId: string;
+  confirmedQuantity: number;
+}

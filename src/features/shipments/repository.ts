@@ -14,6 +14,11 @@ import type {
   WarehouseSelectorItem,
   InTransitDetailItem,
   TrackingEventDetail,
+  PartialWarehouseItem,
+  PartialWarehouseResult,
+  EligibleShipmentFilters,
+  EligibleShipmentItem,
+  ConfirmedWarehousedAggregation,
 } from './types';
 import type { PaginatedResult } from '@/types/common';
 
@@ -897,5 +902,294 @@ export const shipmentRepository = {
         throw new ShipmentError('产品国家与目的国不一致', 'VALIDATION');
       }
     }
+  },
+
+  // ─── P3-S5B2: 部分入仓 ─────────────────────────────────────────────────
+
+  /** P3-S5B2: 部分/批量确认入仓 — 调用 partial_warehouse_shipment RPC（Migration 00026）
+   *  items 映射为 [{ variant_id, quantity }] JSONB 传给 RPC
+   *  RPC 返回 { success, all_warehoused, items_updated } snake_case → camelCase
+   *  不写 inventory.quantity — inventory 唯一事实来源是 BigSeller */
+  async partialWarehouse(
+    shipmentId: string,
+    items: PartialWarehouseItem[],
+    description?: string,
+  ): Promise<PartialWarehouseResult> {
+    const supabase = await createClient();
+
+    const rpcItems = items.map((item) => ({
+      variant_id: item.variantId,
+      quantity: item.quantity,
+    }));
+
+    const { data: rpcResult, error } = await supabase.rpc(
+      'partial_warehouse_shipment',
+      {
+        p_shipment_id: shipmentId,
+        p_items: rpcItems,
+        p_description: description ?? null,
+      },
+    );
+
+    if (error) {
+      throw new ShipmentError(
+        error.message || '确认入仓失败，请稍后重试',
+        'DB_ERROR',
+      );
+    }
+
+    const result = rpcResult as Record<string, unknown> | null;
+    if (!result) {
+      throw new ShipmentError('确认入仓失败，请稍后重试', 'DB_ERROR');
+    }
+
+    return {
+      success: result.success === true,
+      allWarehoused: result.all_warehoused === true,
+      itemsUpdated: typeof result.items_updated === 'number' ? result.items_updated : 0,
+    };
+  },
+
+  /** P3-S5B2: 查询可批量入仓的 shipments（status='customs' + warehouse_id IS NOT NULL）
+   *  Admin 全量，Operator 按已分配仓库隔离 */
+  async listEligibleForBatchWarehousing(
+    filters: EligibleShipmentFilters = {},
+    userId?: string,
+  ): Promise<PaginatedResult<EligibleShipmentItem>> {
+    const supabase = await createClient();
+    const { country, warehouseId, page = 1, pageSize = PAGE_SIZE } = filters;
+
+    let query = supabase
+      .from('shipment')
+      .select(
+        `id, shipment_no, purchase_order_no, vessel_name, voyage_number, country, warehouse_id, status,
+         estimated_arrival, created_at,
+         warehouse:warehouse_id(name),
+         items:shipment_item (
+           quantity, warehoused_quantity,
+           variant:variant_id (product:product_id (name))
+         )`,
+        { count: 'exact' },
+      )
+      .eq('status', 'customs')
+      .not('warehouse_id', 'is', null);
+
+    // Warehouse isolation for operator
+    if (userId) {
+      const role = await getUserRole(userId);
+      if (role === 'operator') {
+        const accessibleIds = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+        if (accessibleIds.size === 0) {
+          return { data: [], total: 0, page, pageSize };
+        }
+        query = query.in('warehouse_id', [...accessibleIds]);
+      }
+    }
+
+    if (country) query = query.eq('country', country);
+    if (warehouseId) query = query.eq('warehouse_id', warehouseId);
+
+    const from = (page - 1) * pageSize;
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      throw new ShipmentError('查询可入仓在途列表失败', 'DB_ERROR');
+    }
+    if (!data) {
+      return { data: [], total: 0, page, pageSize };
+    }
+
+    const rows = data as unknown as Array<{
+      id: string;
+      shipment_no: string;
+      purchase_order_no: string | null;
+      vessel_name: string | null;
+      voyage_number: string | null;
+      country: string;
+      warehouse_id: string;
+      status: string;
+      estimated_arrival: string | null;
+      created_at: string;
+      warehouse: { name: string } | null;
+      items: Array<{
+        quantity: number;
+        warehoused_quantity: number;
+        variant: { product: { name: string } | null } | null;
+      }>;
+    }>;
+
+    return {
+      data: rows.map((row) => {
+        const items = row.items ?? [];
+        const wh = row.warehouse;
+
+        const productNames: string[] = [];
+        for (const item of items) {
+          const name = item.variant?.product?.name;
+          if (name && !productNames.includes(name)) {
+            productNames.push(name);
+            if (productNames.length >= 3) break;
+          }
+        }
+
+        return {
+          id: row.id,
+          shipmentNo: row.shipment_no,
+          purchaseOrderNo: row.purchase_order_no,
+          vesselName: row.vessel_name,
+          voyageNumber: row.voyage_number,
+          country: row.country,
+          warehouseId: row.warehouse_id,
+          warehouseName: wh?.name ?? null,
+          status: row.status,
+          estimatedArrival: row.estimated_arrival,
+          itemCount: items.length,
+          totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
+          remainingQuantity: items.reduce(
+            (sum, i) => sum + (i.quantity - i.warehoused_quantity),
+            0,
+          ),
+          productNames: productNames.length > 0 ? productNames.join('、') : null,
+        };
+      }),
+      total: count ?? 0,
+      page,
+      pageSize,
+    };
+  },
+
+  /** P3-S5B2: 查询某 variant 在某仓库的已确认入仓总量
+   *  聚合 shipment_item.warehoused_quantity，按 shipment.warehouse_id 过滤
+   *  不读取或写入 inventory.quantity */
+  async getConfirmedWarehousedQuantity(
+    variantId: string,
+    warehouseId: string,
+  ): Promise<number> {
+    const supabase = await createClient();
+
+    // Step 1: Get shipment IDs for this warehouse
+    const { data: shipments, error: shipErr } = await supabase
+      .from('shipment')
+      .select('id')
+      .eq('warehouse_id', warehouseId);
+
+    if (shipErr) {
+      throw new ShipmentError('查询已确认入仓数量失败', 'DB_ERROR');
+    }
+    if (!shipments || shipments.length === 0) return 0;
+
+    const shipmentIds = shipments.map((s) => s.id);
+
+    // Step 2: Sum warehoused_quantity for this variant across those shipments
+    const { data: items, error: itemErr } = await supabase
+      .from('shipment_item')
+      .select('warehoused_quantity')
+      .eq('variant_id', variantId)
+      .in('shipment_id', shipmentIds);
+
+    if (itemErr) {
+      throw new ShipmentError('查询已确认入仓数量失败', 'DB_ERROR');
+    }
+
+    let total = 0;
+    for (const row of items ?? []) {
+      total += row.warehoused_quantity;
+    }
+    return total;
+  },
+
+  /** P3-S5B2: 按 variant 聚合某仓库的已确认入仓数量
+   *  不读取或写入 inventory.quantity */
+  async getConfirmedWarehousedByWarehouse(
+    warehouseId: string,
+  ): Promise<ConfirmedWarehousedAggregation[]> {
+    const supabase = await createClient();
+
+    // Step 1: Get shipment IDs for this warehouse
+    const { data: shipments, error: shipErr } = await supabase
+      .from('shipment')
+      .select('id')
+      .eq('warehouse_id', warehouseId);
+
+    if (shipErr) {
+      throw new ShipmentError('查询仓库已确认入仓聚合失败', 'DB_ERROR');
+    }
+    if (!shipments || shipments.length === 0) return [];
+
+    const shipmentIds = shipments.map((s) => s.id);
+
+    // Step 2: Aggregate warehoused_quantity by variant_id across those shipments
+    const { data: items, error: itemErr } = await supabase
+      .from('shipment_item')
+      .select('variant_id, warehoused_quantity')
+      .in('shipment_id', shipmentIds);
+
+    if (itemErr) {
+      throw new ShipmentError('查询仓库已确认入仓聚合失败', 'DB_ERROR');
+    }
+
+    const map = new Map<string, number>();
+    for (const row of items ?? []) {
+      map.set(
+        row.variant_id,
+        (map.get(row.variant_id) ?? 0) + row.warehoused_quantity,
+      );
+    }
+
+    return [...map.entries()].map(([variantId, confirmedQuantity]) => ({
+      variantId,
+      confirmedQuantity,
+    }));
+  },
+
+  /** P3-S5B2: 确认 BigSeller 已吸收在途记录
+   *  UPDATE shipment SET bigseller_absorbed_at = now()
+   *  仅允许 status='warehoused' 且 bigseller_absorbed_at IS NULL
+   *  受 RLS + Admin-only action 双层保护 */
+  async confirmBigsellerAbsorption(
+    shipmentId: string,
+  ): Promise<boolean> {
+    const supabase = await createClient();
+
+    // 先查询当前状态，确认满足条件
+    const { data: current, error: fetchErr } = await supabase
+      .from('shipment')
+      .select('status, bigseller_absorbed_at')
+      .eq('id', shipmentId)
+      .single();
+
+    if (fetchErr) {
+      if (fetchErr.code === 'PGRST116') {
+        throw new ShipmentError('在途记录不存在或无权访问', 'NOT_FOUND');
+      }
+      throw new ShipmentError('查询在途记录失败', 'DB_ERROR');
+    }
+
+    if (!current) {
+      throw new ShipmentError('在途记录不存在或无权访问', 'NOT_FOUND');
+    }
+
+    if (current.status !== 'warehoused') {
+      throw new ShipmentError('仅已入仓的在途记录可确认 BigSeller 吸收', 'VALIDATION');
+    }
+
+    if (current.bigseller_absorbed_at) {
+      throw new ShipmentError('该在途记录已确认 BigSeller 吸收，不可重复操作', 'VALIDATION');
+    }
+
+    const { error: updateErr } = await supabase
+      .from('shipment')
+      .update({ bigseller_absorbed_at: new Date().toISOString() })
+      .eq('id', shipmentId)
+      .eq('status', 'warehoused')
+      .is('bigseller_absorbed_at', null);
+
+    if (updateErr) {
+      throw new ShipmentError('确认 BigSeller 吸收失败，请稍后重试', 'DB_ERROR');
+    }
+
+    return true;
   },
 };

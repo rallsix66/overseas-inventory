@@ -14,6 +14,9 @@ import {
   shipmentFiltersSchema,
   shipmentDetailParamsSchema,
   inTransitDetailsSchema,
+  partialWarehouseShipmentSchema,
+  confirmBigsellerAbsorptionSchema,
+  batchWarehouseShipmentsSchema,
   // warehouseShipmentSchema — P3-S5B0 移除引用，旧 warehouseShipment action 已改为阻断桩
 } from './schema';
 import type { ActionResult } from '@/types/common';
@@ -27,6 +30,10 @@ import type {
   ShipmentListFilters,
   InTransitDetailItem,
   WarehouseShipmentData,
+  PartialWarehouseShipmentData,
+  PartialWarehouseResult,
+  BatchWarehouseData,
+  BatchWarehouseItemResult,
 } from './types';
 
 export async function createShipment(
@@ -303,5 +310,139 @@ export async function getInTransitDetails(
       return { success: false, error: error.message };
     }
     return { success: false, error: '查询在途明细失败，请稍后重试' };
+  }
+}
+
+// ─── P3-S5B2: 部分确认入仓 Server Action ────────────────────────────────────
+
+/** P3-S5B2: 部分/批量确认入仓
+ *  Admin-only + Zod 校验 → repository.partialWarehouse → revalidate
+ *  不写 inventory.quantity — inventory 唯一事实来源是 BigSeller */
+export async function partialWarehouseShipment(
+  data: PartialWarehouseShipmentData,
+): Promise<ActionResult<PartialWarehouseResult>> {
+  try {
+    const user = await requireActiveAuth();
+
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可确认入仓' };
+    }
+
+    const parsed = partialWarehouseShipmentSchema.safeParse(data);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? '入仓参数校验失败',
+      };
+    }
+
+    const result = await shipmentRepository.partialWarehouse(
+      parsed.data.shipmentId,
+      parsed.data.items,
+      parsed.data.description,
+    );
+
+    revalidatePath('/dashboard/shipments');
+    revalidatePath(`/dashboard/shipments/${parsed.data.shipmentId}`);
+    return { success: true, data: result };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '确认入仓失败，请稍后重试' };
+  }
+}
+
+/** P3-S5B2: 批量确认入仓（多条 shipment 逐笔串行调用 partialWarehouse）
+ *  Admin-only + Zod 校验 → 逐笔 RPC → 单笔失败不影响后续 → 返回逐笔结果 */
+export async function batchWarehouseShipments(
+  data: BatchWarehouseData,
+): Promise<ActionResult<BatchWarehouseItemResult[]>> {
+  try {
+    const user = await requireActiveAuth();
+
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可批量确认入仓' };
+    }
+
+    const parsed = batchWarehouseShipmentsSchema.safeParse(data);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? '批量入仓参数校验失败',
+      };
+    }
+
+    const results: BatchWarehouseItemResult[] = [];
+
+    for (const entry of parsed.data.shipments) {
+      try {
+        const result = await shipmentRepository.partialWarehouse(
+          entry.shipmentId,
+          entry.items,
+          entry.description,
+        );
+        results.push({
+          shipmentId: entry.shipmentId,
+          success: true,
+          result,
+        });
+      } catch (error) {
+        results.push({
+          shipmentId: entry.shipmentId,
+          success: false,
+          error:
+            error instanceof Error && error.name === 'ShipmentError'
+              ? error.message
+              : '确认入仓失败，请稍后重试',
+        });
+      }
+    }
+
+    revalidatePath('/dashboard/shipments');
+    // Revalidate each shipment detail page
+    for (const entry of parsed.data.shipments) {
+      revalidatePath(`/dashboard/shipments/${entry.shipmentId}`);
+    }
+
+    return { success: true, data: results };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '批量确认入仓失败，请稍后重试' };
+  }
+}
+
+/** P3-S5B2: 确认 BigSeller 已吸收在途记录
+ *  Admin-only + UUID Zod 校验 → repository.confirmBigsellerAbsorption → revalidate */
+export async function confirmBigsellerAbsorption(
+  shipmentId: string,
+): Promise<ActionResult> {
+  try {
+    const user = await requireActiveAuth();
+
+    if (user.roleName !== 'admin') {
+      return { success: false, error: '仅管理员可确认 BigSeller 吸收' };
+    }
+
+    const parsed = confirmBigsellerAbsorptionSchema.safeParse({ shipmentId });
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? '参数校验失败',
+      };
+    }
+
+    await shipmentRepository.confirmBigsellerAbsorption(parsed.data.shipmentId);
+
+    revalidatePath('/dashboard/shipments');
+    revalidatePath(`/dashboard/shipments/${parsed.data.shipmentId}`);
+    return { success: true };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ShipmentError') {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: '确认 BigSeller 吸收失败，请稍后重试' };
   }
 }
