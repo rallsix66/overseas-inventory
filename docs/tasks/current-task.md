@@ -6,13 +6,13 @@
 
 ## 状态
 
-**待开始**（2026-07-02，P3-S5B0、P3-S5B1、P3-S5B2 已完成。P3-S5B3 尚未实现）
+**DONE**（2026-07-02，P3-S5B0/B1/B2/B3 全部完成。2026-07-02 收口返修完成）
 
 ## 依赖
 
 - P3-S5B0 DONE（旧版 00023 入仓入口已封存）
 - P3-S5B1 DONE（Migration 00026 + types/schema + 93 项静态测试。Migration 00026 已执行并验证）
-- P3-S5B2 DONE（Repository 5 方法 + Actions 3 函数 + 79 项测试。全量 2359/2359）
+- P3-S5B2 DONE（Repository 5 方法 + Actions 3 函数 + 87 项测试。全量 2367/2367。2026-07-02 返修：聚合口径过滤已修复 — 仅纳入 customs 或 warehoused + bigseller_absorbed_at IS NULL）
 
 ## 范围（待实现）
 
@@ -45,7 +45,16 @@
 
 ## 下一步
 
-P3-S5B4 — 批量入仓 UI + 海外库存列（依赖 P3-S5B3）
+P3-S5B4 — 批量入仓 UI + 海外库存列（依赖 P3-S5B3 ✅）
+
+## 质量门
+
+P3-S5B3 收口返修通过：
+- shipments 819/819（13 files）
+- 全量 2381/2381（60 files）
+- build pass
+- lint 5 errors / 26 warnings（all pre-existing, smoke-test-00025.ts）
+- git diff --check pass
 
 ## 当前业务口径
 

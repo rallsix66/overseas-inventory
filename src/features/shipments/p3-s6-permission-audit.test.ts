@@ -568,8 +568,9 @@ describe('P3-S6: 边界状态覆盖', () => {
       expect(detailSrc).toMatch(/!isWarehoused/);
     });
 
-    it('canWarehouseShipment — customs + warehouse_id + admin + !warehoused', () => {
-      expect(detailSrc).toMatch(/canWarehouseShipment/);
+    it('P3-S5B3: status=customs 时渲染 PartialWarehouseEntry', () => {
+      expect(detailSrc).toMatch(/status\s*===\s*'customs'/);
+      expect(detailSrc).toMatch(/PartialWarehouseEntry/);
     });
 
     it('warehouseBlockReason — 未指定仓库文案', () => {
@@ -752,14 +753,19 @@ describe('P3-S6: 创建页面权限校验', () => {
   });
 });
 
-// ─── 8. 详情页 — canWarehouseShipment / warehouseBlockReason 收口验证 ────
+// ─── 8. 详情页 — P3-S5B3 双模式按钮收口验证 ────
 
 describe('P3-S6: 详情页入仓条件收口', () => {
   const detailSrc = readPage('[id]/page.tsx');
 
-  it('canWarehouseShipment — admin+!warehoused+customs+warehouse_id', () => {
-    const pattern = /canWarehouseShipment\s*=\s*isAdmin\s*&&\s*!isWarehoused[\s\S]{0,200}customs[\s\S]{0,100}warehouse_id/;
-    expect(detailSrc).toMatch(pattern);
+  it('P3-S5B3: PartialWarehouseEntry 在 customs 时渲染', () => {
+    expect(detailSrc).toMatch(/status\s*===\s*'customs'/);
+    expect(detailSrc).toMatch(/PartialWarehouseEntry/);
+  });
+
+  it('P3-S5B3: BigsellerAbsorptionButton 在 warehoused + 未吸收时渲染', () => {
+    expect(detailSrc).toMatch(/status\s*===\s*'warehoused'.*bigseller_absorbed_at/);
+    expect(detailSrc).toMatch(/BigsellerAbsorptionButton/);
   });
 
   it('warehouseBlockReason — 仅 Admin+!warehoused 时返回原因', () => {

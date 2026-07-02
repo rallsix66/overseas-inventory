@@ -291,13 +291,39 @@ const DETAIL_PAGE = readFileSync(
   'utf-8',
 );
 
-describe('P3-S5A: 详情页 — canWarehouseShipment / warehouseBlockReason', () => {
-  it('定义 canWarehouseShipment 变量', () => {
-    expect(DETAIL_PAGE).toMatch(/canWarehouseShipment/);
+describe('P3-S5B3: 详情页 — 双模式按钮 / warehouseBlockReason', () => {
+  it('导入 PartialWarehouseEntry（确认到仓入口）', () => {
+    expect(DETAIL_PAGE).toMatch(/PartialWarehouseEntry/);
   });
 
-  it('canWarehouseShipment 包含 isAdmin + !isWarehoused + customs + warehouse_id', () => {
-    expect(DETAIL_PAGE).toMatch(/canWarehouseShipment\s*=\s*isAdmin/);
+  it('导入 BigsellerAbsorptionButton（BigSeller 吸收确认）', () => {
+    expect(DETAIL_PAGE).toMatch(/BigsellerAbsorptionButton/);
+  });
+
+  it('status=customs 时渲染 PartialWarehouseEntry', () => {
+    expect(DETAIL_PAGE).toMatch(/status\s*===\s*'customs'/);
+    expect(DETAIL_PAGE).toMatch(/PartialWarehouseEntry/);
+  });
+
+  it('P3-S5B3: PartialWarehouseEntry 渲染条件包含 warehouse_id', () => {
+    // PartialWarehouseEntry 仅在 shipment.warehouse_id 存在时渲染
+    // 源码应包含：status === 'customs' && shipment.warehouse_id
+    expect(DETAIL_PAGE).toMatch(/shipment\.warehouse_id/);
+    // 确认 PartialWarehouseEntry 在 JSX 中使用时，前一行含 warehouse_id 条件
+    const partialEntryFirstIdx = DETAIL_PAGE.indexOf('PartialWarehouseEntry');
+    // 跳过 import 行，找到 JSX 中的 <PartialWarehouseEntry
+    const jsxIdx = DETAIL_PAGE.indexOf('<PartialWarehouseEntry', partialEntryFirstIdx);
+    expect(jsxIdx).toBeGreaterThan(0);
+    // 在 JSX 标签之前应出现 shipment.warehouse_id（条件链）
+    const warehouseIdIdx = DETAIL_PAGE.lastIndexOf('shipment.warehouse_id', jsxIdx);
+    expect(warehouseIdIdx).toBeGreaterThan(0);
+    expect(warehouseIdIdx).toBeLessThan(jsxIdx);
+  });
+
+  it('status=warehoused + bigseller_absorbed_at 为空时渲染 BigsellerAbsorptionButton', () => {
+    expect(DETAIL_PAGE).toMatch(/status\s*===\s*'warehoused'/);
+    expect(DETAIL_PAGE).toMatch(/bigseller_absorbed_at/);
+    expect(DETAIL_PAGE).toMatch(/BigsellerAbsorptionButton/);
   });
 
   it('定义 warehouseBlockReason 变量', () => {
@@ -317,9 +343,8 @@ describe('P3-S5A: 详情页 — canWarehouseShipment / warehouseBlockReason', ()
     expect(DETAIL_PAGE).toMatch(/!isAdmin.*isWarehoused/);
   });
 
-  it('P3-S5B0: WarehouseShipmentButton 已隐藏，保留 canWarehouseShipment 变量', () => {
-    // canWarehouseShipment variable preserved for P3-S5B3, but button not rendered
-    expect(DETAIL_PAGE).toMatch(/canWarehouseShipment/);
+  it('P3-S5B3: WarehouseShipmentButton 不渲染（旧 00023 入口已封存）', () => {
+    // Old WarehouseShipmentButton removed; new P3-S5B3 buttons handle warehousing
     expect(DETAIL_PAGE).not.toMatch(/<WarehouseShipmentButton/);
   });
 
@@ -670,5 +695,55 @@ describe('P3-S5B0: warehouseShipment 阻断桩源码检查', () => {
     expect(stripped).toMatch(/success:\s*false/);
     expect(stripped).not.toMatch(/requireActiveAuth/);
     expect(stripped).not.toMatch(/mockRpc/);
+  });
+});
+
+// ─── 9. P3-S5B3: PartialWarehouseDialog 前端校验源码检查 ─────────────────────
+
+const DIALOG_SRC = readFileSync(
+  resolve(process.cwd(), 'src/features/shipments/components/partial-warehouse-dialog.tsx'),
+  'utf-8',
+);
+
+describe('P3-S5B3: PartialWarehouseDialog — 前端校验', () => {
+  it('导入 partialWarehouseItemSchema（Zod 校验）', () => {
+    expect(DIALOG_SRC).toMatch(/partialWarehouseItemSchema/);
+  });
+
+  it('不使用 parseInt 静默截断小数', () => {
+    expect(DIALOG_SRC).not.toMatch(/parseInt/);
+  });
+
+  it('校验小数输入（"不支持小数"）', () => {
+    expect(DIALOG_SRC).toMatch(/不支持小数/);
+  });
+
+  it('校验负数输入（"不能为负数"）', () => {
+    expect(DIALOG_SRC).toMatch(/不能为负数/);
+  });
+
+  it('校验零值输入（"必须大于 0"）', () => {
+    expect(DIALOG_SRC).toMatch(/必须大于 0/);
+  });
+
+  it('校验超过在途余量（"超过在途余量"）', () => {
+    expect(DIALOG_SRC).toMatch(/超过在途余量/);
+  });
+
+  it('使用 fieldErrors 逐字段展示错误', () => {
+    expect(DIALOG_SRC).toMatch(/fieldErrors/);
+  });
+
+  it('handleSubmit 中调用 Zod safeParse 双重校验', () => {
+    expect(DIALOG_SRC).toMatch(/partialWarehouseItemSchema/);
+    expect(DIALOG_SRC).toMatch(/safeParse/);
+  });
+
+  it('quantities 状态类型为 Record<string, string>（原始字符串）', () => {
+    expect(DIALOG_SRC).toMatch(/Record<string,\s*string>/);
+  });
+
+  it('fillAllRemaining 使用 String(remaining) 填入整数', () => {
+    expect(DIALOG_SRC).toMatch(/String\(remaining\)/);
   });
 });

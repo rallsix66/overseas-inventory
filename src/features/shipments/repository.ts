@@ -1061,8 +1061,9 @@ export const shipmentRepository = {
   },
 
   /** P3-S5B2: 查询某 variant 在某仓库的已确认入仓总量
-   *  聚合 shipment_item.warehoused_quantity，按 shipment.warehouse_id 过滤
-   *  不读取或写入 inventory.quantity */
+   *  仅统计 status='customs' 或 (status='warehoused' 且 bigseller_absorbed_at IS NULL) 的 shipment
+   *  排除已 warehoused 且 bigseller_absorbed_at IS NOT NULL 的 shipment
+   *  聚合 shipment_item.warehoused_quantity，不读取或写入 inventory.quantity */
   async getConfirmedWarehousedQuantity(
     variantId: string,
     warehouseId: string,
@@ -1070,10 +1071,14 @@ export const shipmentRepository = {
     const supabase = await createClient();
 
     // Step 1: Get shipment IDs for this warehouse
+    // Only include: customs OR (warehoused + not yet absorbed by BigSeller)
     const { data: shipments, error: shipErr } = await supabase
       .from('shipment')
       .select('id')
-      .eq('warehouse_id', warehouseId);
+      .eq('warehouse_id', warehouseId)
+      .or(
+        'status.eq.customs,and(status.eq.warehoused,bigseller_absorbed_at.is.null)',
+      );
 
     if (shipErr) {
       throw new ShipmentError('查询已确认入仓数量失败', 'DB_ERROR');
@@ -1101,6 +1106,8 @@ export const shipmentRepository = {
   },
 
   /** P3-S5B2: 按 variant 聚合某仓库的已确认入仓数量
+   *  仅统计 status='customs' 或 (status='warehoused' 且 bigseller_absorbed_at IS NULL) 的 shipment
+   *  排除已 warehoused 且 bigseller_absorbed_at IS NOT NULL 的 shipment
    *  不读取或写入 inventory.quantity */
   async getConfirmedWarehousedByWarehouse(
     warehouseId: string,
@@ -1108,10 +1115,14 @@ export const shipmentRepository = {
     const supabase = await createClient();
 
     // Step 1: Get shipment IDs for this warehouse
+    // Only include: customs OR (warehoused + not yet absorbed by BigSeller)
     const { data: shipments, error: shipErr } = await supabase
       .from('shipment')
       .select('id')
-      .eq('warehouse_id', warehouseId);
+      .eq('warehouse_id', warehouseId)
+      .or(
+        'status.eq.customs,and(status.eq.warehoused,bigseller_absorbed_at.is.null)',
+      );
 
     if (shipErr) {
       throw new ShipmentError('查询仓库已确认入仓聚合失败', 'DB_ERROR');

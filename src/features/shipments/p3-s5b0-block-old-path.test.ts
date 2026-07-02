@@ -132,8 +132,9 @@ describe('P3-S5B0: 详情页不渲染旧版 WarehouseShipmentButton', () => {
     expect(DETAIL_PAGE).toMatch(/P3-S5B0/);
   });
 
-  it('canWarehouseShipment 变量保留供 P3-S5B3 使用', () => {
-    expect(DETAIL_PAGE).toMatch(/canWarehouseShipment/);
+  it('P3-S5B3: 导入 PartialWarehouseEntry 和 BigsellerAbsorptionButton', () => {
+    expect(DETAIL_PAGE).toMatch(/PartialWarehouseEntry/);
+    expect(DETAIL_PAGE).toMatch(/BigsellerAbsorptionButton/);
   });
 
   it('warehouseBlockReason 信息区块保留', () => {

@@ -99,7 +99,7 @@ function createQueryMock(result: { data?: unknown; error?: unknown }) {
 
   for (const method of [
     'select', 'eq', 'neq', 'not', 'is', 'ilike', 'order',
-    'notIn', 'in', 'limit', 'range', 'single', 'maybeSingle', 'update',
+    'notIn', 'in', 'limit', 'range', 'single', 'maybeSingle', 'update', 'or',
   ]) {
     self[method] = vi.fn(() => self);
   }
@@ -436,6 +436,56 @@ describe('P3-S5B2: getConfirmedWarehousedQuantity()', () => {
     const fromCalls = mockFrom.mock.calls.map((c: string[]) => c[0]);
     expect(fromCalls).toEqual(['shipment', 'shipment_item']);
   });
+
+  // ── P3-S5B2 聚合口径：仅纳入 customs 或 warehoused+未吸收 ──
+
+  it('源码中 shipment 查询包含 .or() — 仅 customs 或 warehoused+未吸收', () => {
+    const src = readSrc('src/features/shipments/repository.ts');
+    const fnStart = src.indexOf('async getConfirmedWarehousedQuantity(');
+    const fnEnd = src.indexOf('async getConfirmedWarehousedByWarehouse(');
+    const fnBody = src.slice(fnStart, fnEnd);
+
+    expect(fnBody).toContain("status.eq.customs,and(status.eq.warehoused,bigseller_absorbed_at.is.null)");
+    expect(fnBody).toContain('.or(');
+  });
+
+  it('customs 状态 → 计入（shipment 查询返回数据则参与聚合）', async () => {
+    // mock 不过滤数据，但验证 customs 路径不报错且正确聚合
+    pushFromResults(
+      { data: [{ id: 'ship-customs-1' }] },
+      { data: [{ warehoused_quantity: 8 }] },
+    );
+
+    const total = await shipmentRepository.getConfirmedWarehousedQuantity(
+      VARIANT_ID,
+      WAREHOUSE_ID,
+    );
+    expect(total).toBe(8);
+  });
+
+  it('warehoused + bigseller_absorbed_at=NULL → 计入', async () => {
+    pushFromResults(
+      { data: [{ id: 'ship-wh-1' }] },
+      { data: [{ warehoused_quantity: 12 }] },
+    );
+
+    const total = await shipmentRepository.getConfirmedWarehousedQuantity(
+      VARIANT_ID,
+      WAREHOUSE_ID,
+    );
+    expect(total).toBe(12);
+  });
+
+  it('warehoused + bigseller_absorbed_at 非 NULL → 不计入（shipment 查询返回空）', async () => {
+    // .or() 过滤 absorbed shipments → 数据库层排除，返回空数组 → 结果 0
+    pushFromResults({ data: [] });
+
+    const total = await shipmentRepository.getConfirmedWarehousedQuantity(
+      VARIANT_ID,
+      WAREHOUSE_ID,
+    );
+    expect(total).toBe(0);
+  });
 });
 
 // ============================================================================
@@ -518,6 +568,47 @@ describe('P3-S5B2: getConfirmedWarehousedByWarehouse()', () => {
     expect(mockRpc).not.toHaveBeenCalled();
     const fromCalls = mockFrom.mock.calls.map((c: string[]) => c[0]);
     expect(fromCalls).toEqual(['shipment', 'shipment_item']);
+  });
+
+  // ── P3-S5B2 聚合口径：仅纳入 customs 或 warehoused+未吸收 ──
+
+  it('源码中 shipment 查询包含 .or() — 仅 customs 或 warehoused+未吸收', () => {
+    const src = readSrc('src/features/shipments/repository.ts');
+    const fnStart = src.indexOf('async getConfirmedWarehousedByWarehouse(');
+    const fnEnd = src.indexOf('async confirmBigsellerAbsorption(');
+    const fnBody = src.slice(fnStart, fnEnd);
+
+    expect(fnBody).toContain("status.eq.customs,and(status.eq.warehoused,bigseller_absorbed_at.is.null)");
+    expect(fnBody).toContain('.or(');
+  });
+
+  it('customs 状态 → 计入聚合', async () => {
+    pushFromResults(
+      { data: [{ id: 'ship-customs-1' }] },
+      { data: [{ variant_id: VARIANT_ID, warehoused_quantity: 7 }] },
+    );
+
+    const results = await shipmentRepository.getConfirmedWarehousedByWarehouse(WAREHOUSE_ID);
+    expect(results).toHaveLength(1);
+    expect(results[0].confirmedQuantity).toBe(7);
+  });
+
+  it('warehoused + bigseller_absorbed_at=NULL → 计入聚合', async () => {
+    pushFromResults(
+      { data: [{ id: 'ship-wh-1' }] },
+      { data: [{ variant_id: VARIANT_ID, warehoused_quantity: 15 }] },
+    );
+
+    const results = await shipmentRepository.getConfirmedWarehousedByWarehouse(WAREHOUSE_ID);
+    expect(results).toHaveLength(1);
+    expect(results[0].confirmedQuantity).toBe(15);
+  });
+
+  it('warehoused + bigseller_absorbed_at 非 NULL → 不计入聚合（返回空数组）', async () => {
+    pushFromResults({ data: [] });
+
+    const results = await shipmentRepository.getConfirmedWarehousedByWarehouse(WAREHOUSE_ID);
+    expect(results).toEqual([]);
   });
 });
 

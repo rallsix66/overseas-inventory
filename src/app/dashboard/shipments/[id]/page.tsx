@@ -16,8 +16,10 @@ import {
 } from '@/components/ui/table';
 import { ShipmentEditForm } from '@/features/shipments/components/shipment-edit-form';
 import { ShipmentStatusChange } from '@/features/shipments/components/shipment-status-change';
+import { PartialWarehouseEntry } from '@/features/shipments/components/partial-warehouse-entry';
+import { BigsellerAbsorptionButton } from '@/features/shipments/components/bigseller-absorption-button';
 // P3-S5B0: WarehouseShipmentButton 已隐藏（旧版 00023 入口封存）
-// P3-S5B3 将新增双模式确认到仓按钮（全额/部分，走 00026 RPC）
+// P3-S5B3: 新增双模式确认到仓按钮（全额/部分，走 00026 RPC）+ BigSeller 吸收确认
 import Link from 'next/link';
 import type { Metadata } from 'next';
 
@@ -84,9 +86,7 @@ export default async function ShipmentDetailPage({
 
   const isWarehoused = shipment.status === 'warehoused';
 
-  // P3-S5B0: 入仓条件变量保留供 P3-S5B3 使用（当前按钮已隐藏）
-  const canWarehouseShipment = isAdmin && !isWarehoused && shipment.status === 'customs' && !!shipment.warehouse_id;
-  void canWarehouseShipment; // P3-S5B3 恢复双模式按钮时移除本行
+  // P3-S5B3: 确认到仓仅 Admin + customs + 已分配仓库
   const warehouseBlockReason = ((): string | null => {
     if (!isAdmin || isWarehoused) return null;
     if (!shipment.warehouse_id) return '该在途记录未指定仓库，无法入仓';
@@ -138,8 +138,20 @@ export default async function ShipmentDetailPage({
             shipmentId={shipment.id}
             currentStatus={shipment.status}
           />
-          {/* P3-S5B0: WarehouseShipmentButton 已隐藏，旧版 00023 入仓入口封存 */}
-          {/* P3-S5B3 将在此处新增双模式确认到仓按钮 */}
+          {/* P3-S5B3: 双模式确认到仓按钮（Admin + customs + 已分配仓库 → 全额/部分） */}
+          {shipment.status === 'customs' && shipment.warehouse_id && (
+            <PartialWarehouseEntry
+              shipmentId={shipment.id}
+              items={shipment.items}
+            />
+          )}
+        </div>
+      )}
+
+      {/* P3-S5B3: BigSeller 吸收确认 — warehoused + 未确认吸收 */}
+      {user && isAdmin && shipment.status === 'warehoused' && !shipment.bigseller_absorbed_at && (
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <BigsellerAbsorptionButton shipmentId={shipment.id} />
         </div>
       )}
 
