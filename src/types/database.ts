@@ -224,6 +224,7 @@ export type Database = {
           note: string | null
           created_at: string
           updated_at: string
+          bigseller_absorbed_at: string | null
         }
         Insert: {
           id?: string
@@ -241,6 +242,7 @@ export type Database = {
           note?: string | null
           created_at?: string
           updated_at?: string
+          bigseller_absorbed_at?: string | null
         }
         Update: {
           id?: string
@@ -258,6 +260,7 @@ export type Database = {
           note?: string | null
           created_at?: string
           updated_at?: string
+          bigseller_absorbed_at?: string | null
         }
         Relationships: []
       }
@@ -625,6 +628,14 @@ export type Database = {
           p_description: string | null
         }
         Returns: boolean
+      }
+      partial_warehouse_shipment: {
+        Args: {
+          p_shipment_id: string
+          p_items: Record<string, unknown>[]
+          p_description?: string | null
+        }
+        Returns: Record<string, unknown>
       }
       claim_sync_run: {
         Args: {

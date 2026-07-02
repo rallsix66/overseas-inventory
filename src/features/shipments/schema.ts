@@ -151,3 +151,32 @@ export const warehouseShipmentSchema = z.object({
 });
 
 export type WarehouseShipmentValues = z.infer<typeof warehouseShipmentSchema>;
+
+// ─── P3-S5B1: 部分入仓 ─────────────────────────────────────────────────────
+
+/** P3-S5B1: 部分入仓 — 单项明细 Zod 校验 */
+export const partialWarehouseItemSchema = z.object({
+  variantId: z.string().uuid('无效的 SKU ID'),
+  quantity: z.number().int('数量必须为整数').min(1, '数量最少为 1'),
+});
+
+/** P3-S5B1: 部分/批量确认入仓 Zod 校验 */
+export const partialWarehouseShipmentSchema = z.object({
+  shipmentId: z.string().uuid('无效的在途记录 ID'),
+  items: z
+    .array(partialWarehouseItemSchema)
+    .min(1, '至少指定一项入仓明细')
+    .max(50, '最多指定 50 项入仓明细')
+    .refine(
+      (items) => {
+        const ids = items.map((i) => i.variantId);
+        return new Set(ids).size === ids.length;
+      },
+      { message: '入仓明细中存在重复 SKU' },
+    ),
+  description: z.string().max(500, '备注最长 500 个字符').optional(),
+});
+
+export type PartialWarehouseShipmentValues = z.infer<
+  typeof partialWarehouseShipmentSchema
+>;

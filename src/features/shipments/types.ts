@@ -157,6 +157,26 @@ export interface WarehouseShipmentData {
   description?: string;
 }
 
+/** P3-S5B1: 部分入仓 — 单项明细 */
+export interface PartialWarehouseItem {
+  variantId: string;
+  quantity: number;
+}
+
+/** P3-S5B1: 部分/批量确认入仓参数 */
+export interface PartialWarehouseShipmentData {
+  shipmentId: string;
+  items: PartialWarehouseItem[];
+  description?: string;
+}
+
+/** P3-S5B1: 部分入仓 RPC 返回结果 */
+export interface PartialWarehouseResult {
+  success: boolean;
+  allWarehoused: boolean;
+  itemsUpdated: number;
+}
+
 /** P3-S2E: 海外库存行展开 — 内部在途明细项 */
 export interface InTransitDetailItem {
   shipmentId: string;

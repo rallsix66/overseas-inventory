@@ -14,7 +14,7 @@ import {
   shipmentFiltersSchema,
   shipmentDetailParamsSchema,
   inTransitDetailsSchema,
-  warehouseShipmentSchema,
+  // warehouseShipmentSchema — P3-S5B0 移除引用，旧 warehouseShipment action 已改为阻断桩
 } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { PaginatedResult } from '@/types/common';
@@ -258,41 +258,20 @@ export async function getShipmentDetail(
 
 // ─── P3-S5A: 确认入仓 Server Action ─────────────────────────────────────────
 
-/** P3-S5A: 确认入仓 — Admin 将 customs 状态在途单事务性入仓
- *  同一事务完成：shipment.status→warehoused + shipment_item.warehoused_quantity→quantity
- *    + inventory.quantity 增加 + tracking_event 插入
- *  禁止重复入仓、超量入仓、非 customs 状态入仓、无仓库入仓 */
+/** P3-S5B0: 旧版入仓入口已封存。
+ *  此函数不再调用 repository 或 RPC 00023（warehouse_shipment_transactional）。
+ *  inventory.quantity 的唯一事实来源是 BigSeller 同步链路，
+ *  DIS 入仓是运营跟踪工具，不等同于库存入账。
+ *  请使用 P3-S5B3 新增的确认到仓流程。 */
 export async function warehouseShipment(
-  formData: WarehouseShipmentData,
+  _formData: WarehouseShipmentData,
 ): Promise<ActionResult> {
-  try {
-    const user = await requireActiveAuth();
-
-    // 仅 Admin 可确认入仓
-    if (user.roleName !== 'admin') {
-      return { success: false, error: '仅管理员可确认入仓' };
-    }
-
-    const parsed = warehouseShipmentSchema.safeParse(formData);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues[0]?.message ?? '参数校验失败' };
-    }
-
-    await shipmentRepository.warehouseShipment(
-      parsed.data.shipmentId,
-      user.id,
-      parsed.data.description,
-    );
-
-    revalidatePath('/dashboard/shipments');
-    revalidatePath(`/dashboard/shipments/${parsed.data.shipmentId}`);
-    return { success: true };
-  } catch (error) {
-    if (error instanceof Error && error.name === 'ShipmentError') {
-      return { success: false, error: error.message };
-    }
-    return { success: false, error: '确认入仓失败，请稍后重试' };
-  }
+  // 阻断桩：不调用 requireActiveAuth，不调用 shipmentRepository，不调用任何 RPC
+  void _formData;
+  return {
+    success: false,
+    error: '旧版入仓入口已停用。请使用新的确认到仓流程。',
+  };
 }
 
 // ─── P3-S2E: 海外库存行展开 — 在途明细查询 ────────────────────────────────

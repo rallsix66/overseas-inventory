@@ -2,108 +2,88 @@
 
 ## Task ID
 
-`P4-U5` — 用户模块安全与流程验收
+`P3-S5B1` — Migration 00026 + types/schema + migration tests
 
 ## 状态
 
-**DONE — 返工完成，Migration 00024/00025 已执行并 smoke test 通过**（2026-07-01）
+**待开始**（2026-07-02，P3-S5B0 已完成并收口返修通过）
 
 ## 依赖
 
-- P4-U4 DONE（启用/禁用用户账号）
+- P3-S5B0 DONE（旧版 00023 入仓入口已封存）
 
 ## 范围
 
-### 1. 文档清理
+### 1. Migration 00026
 
-- 清理 `docs/current-state.md` Current Task References：P5-SY11/P5-SY12/P5-SY9/P5-SY10 → Phase 4 用户模块核心文件 + P4-U5 验收关注点 ✅
-- 清理尾部重复旧 Last Updated（仍写 P4-U1 的段落） ✅
+新建 `supabase/migrations/00026_partial_warehouse_shipment.sql`：
 
-### 2. 安全审计
+- 新增 `shipment.bigseller_absorbed_at TIMESTAMPTZ NULL` 列（Admin 手动确认 BigSeller 已吸收，NULL = 未确认）
+- 新增 `partial_warehouse_shipment` RPC（SECURITY INVOKER，Admin-only）
+  - 参数：`p_shipment_id UUID, p_items JSONB`（`[{variant_id, quantity}]`）
+  - 校验：shipment 存在、非 warehoused、有 warehouse_id、status=customs
+  - `FOR UPDATE` 锁定 shipment + shipment_item
+  - 逐行校验 `quantity <= remaining`（quantity - warehoused_quantity）
+  - `UPDATE shipment_item.warehoused_quantity += quantity`
+  - 全部入仓时 `UPDATE shipment.status = 'warehoused'`
+  - `INSERT tracking_event`（status='warehoused' 或 'partial_warehoused'）
+  - **不写入 inventory.quantity**（inventory 唯一事实来源是 BigSeller）
+  - 返回 JSONB：`{success, all_warehoused, items_updated}`
+- REVOKE EXECUTE FROM PUBLIC, anon + GRANT EXECUTE TO authenticated
 
-对用户模块执行全链路安全与流程验收：
+### 2. database.ts 类型同步
 
-| 审计项 | 项目 | 结果 |
-|---|---|---|
-| 访问控制 | `/dashboard/users` page.tsx → `getCurrentActiveUser()` → `roleName !== 'admin'` → 无权限提示 | ✅ |
-| 读操作 | `listUsers` / `getUserById` / `listRoles` — `requireActiveAuth()` + Admin-only + Zod safeParse | ✅ |
-| 写操作 | `updateUserRole` / `toggleUserActive` — Admin-only + Zod + RPC 原子保护 | ✅ P4-U5 强化 |
-| 客户端组件 | `UserDetailSheet` / `UserRoleChangeDialog` / `UserActiveToggleDialog` — 不直接访问 Supabase/service_role/auth.admin | ✅ |
-| RLS | role 表 admin_all + operator_select；profiles 表 admin_all + operator_select + operator_update_own + user_read_own | ✅ |
-| 错误处理 | 所有 action 捕获 UserError → ActionResult；所有 RPC RAISE EXCEPTION 中文消息 | ✅ |
+- `src/types/database.ts`：`Shipment` 表新增 `bigseller_absorbed_at: string | null`
+- `Database.Functions` 新增 `partial_warehouse_shipment` 返回类型
 
-### 3. 竞态修复（首次）
+### 3. Feature 类型与 Schema
 
-**发现**：`updateUserRole` 和 `toggleUserActive` 存在 TOCTOU 竞态条件：
-- `countByRole('admin')` 检查与数据库写入非原子
-- 两个管理员可同时互相禁用/降级 → 均通过 count 检查 → 0 管理员
+- `src/features/shipments/types.ts`：
+  - `PartialWarehouseItem`：`{ variantId: string; quantity: number }`
+  - `PartialWarehouseShipmentData`：`{ shipmentId: string; items: PartialWarehouseItem[]; description?: string }`
+  - `PartialWarehouseResult`：`{ success: boolean; allWarehoused: boolean; itemsUpdated: number }`
+- `src/features/shipments/schema.ts`：
+  - `partialWarehouseItemSchema`：Zod 校验 `variantId` UUID + `quantity` positive int
+  - `partialWarehouseShipmentSchema`：Zod 校验数组非空 + 每项 quantity > 0
 
-**修复**：新增 Migration 00024（`update_user_role_protected` / `toggle_user_active_protected` RPC）：
-- `pg_advisory_xact_lock(987654321)` 序列化所有 Admin 写操作
-- `FOR UPDATE` 锁定目标 profile 行
-- SECURITY INVOKER（不绕过 RLS）
-- 所有业务规则（自保护 + 最后管理员保护）收口至 RPC 原子执行
+### 4. Migration 静态契约测试
 
-### 4. 返工：RPC 权限缺口修复（Migration 00025）
+`src/features/shipments/p3-s5b-migration.test.ts`：
 
-**发现**：00024 RPC 接受 `p_operator_user_id` 参数但未验证调用者身份：
-- 未校验 `auth.uid() IS NOT NULL`（未登录也可调用）
-- 未校验 `auth.uid() = p_operator_user_id`（可伪造操作者身份）
-- 未校验调用者是否为活跃 Admin（Operator 可调用 RPC）
-- 未 REVOKE EXECUTE FROM PUBLIC/anon（默认 PUBLIC 有 EXECUTE 权限）
-- `operator_update_own_profile` RLS policy 的 WITH CHECK 中 `get_user_role()` 读取已提交行，无法阻止 operator 在 NEW 行中修改 role_id/is_active
-
-**修复**：新增 Migration 00025（不修改 00024，CREATE OR REPLACE 叠加）：
-
-| 加固项 | 实现 |
+| 分组 | 内容 |
 |---|---|
-| 调用者身份绑定 | `auth.uid() IS NOT NULL` → 未登录拒绝「未登录，请先登录」 |
-| 操作者一致性 | `auth.uid() = p_operator_user_id` → 不一致拒绝「操作者身份校验失败」 |
-| 活跃 Admin 校验 | SELECT profiles JOIN role WHERE id = auth.uid() → 不存在/未启用拒绝「账号未启用或不存在」；非 admin 拒绝「仅管理员可执行此操作」 |
-| 执行顺序 | auth.uid() 身份绑定在 `pg_advisory_xact_lock` 之前执行（锁前拦截无权限调用） |
-| 权限加固 | REVOKE EXECUTE FROM PUBLIC, anon + GRANT EXECUTE TO authenticated |
-| Operator 自升保护 | `check_operator_profile_update` BEFORE UPDATE 触发器：比较 OLD vs NEW role_id / is_active，operator 修改 → RAISE EXCEPTION |
+| RPC 存在性 | `partial_warehouse_shipment` 函数定义 |
+| 权限模型 | SECURITY INVOKER、不含 SECURITY DEFINER |
+| REVOKE/GRANT | REVOKE FROM PUBLIC, anon + GRANT TO authenticated |
+| Admin-only | `v_role != 'admin'` 校验 + 中文错误消息 |
+| 业务规则 | FOR UPDATE × 2（shipment/shipment_item）、非 warehoused、warehouse_id NOT NULL、customs only、remaining > 0 |
+| 不写 inventory | 不含 `INSERT INTO public.inventory`、不含 `ON CONFLICT`、不含 `EXCLUDED.quantity` |
+| 原子写入 | `warehoused_quantity += quantity`、全部入仓 `status = 'warehoused'`、tracking_event 插入 |
+| bigseller_absorbed_at | ALTER TABLE shipment ADD COLUMN bigseller_absorbed_at |
+| 返回类型 | RETURNS JSONB、success/all_warehoused/items_updated 字段 |
+| 中文错误 | RAISE EXCEPTION 含中文消息 |
 
-### 5. 测试
+### 5. 不实现
 
-`src/features/users/p5-u5-migration.test.ts` — 从 25 → 49 项测试（返工新增 24 项）：
+- **不实现** `partialWarehouseShipment` / `batchWarehouseShipments` / `confirmBigsellerAbsorption` Server Actions
+- **不实现** Repository 方法（P3-S5B2）
+- **不实现** 详情页双模式按钮 / PartialWarehouseDialog / BigsellerAbsorptionButton（P3-S5B3）
+- **不实现** 批量 UI / 海外库存列（P3-S5B4）
+- **不实现** 应用行为测试（P3-S5B5）
+- **不修改** Migration 00023
 
-| 分组 | 测试数 | 内容 |
-|---|---|---|
-| RPC 存在性 | 2 | update_user_role_protected / toggle_user_active_protected 定义 |
-| 权限模型 | 2 | SECURITY INVOKER × 4+；不含 SECURITY DEFINER |
-| REVOKE/GRANT | 4 | REVOKE FROM PUBLIC, anon × 2 + GRANT TO authenticated × 2 |
-| auth.uid() 绑定（update RPC） | 6 | IS NOT NULL / = p_operator_user_id / 活跃 Admin 查询 / NOT FOUND 拒绝 / 非 admin 拒绝 / 锁前执行顺序 |
-| auth.uid() 绑定（toggle RPC） | 6 | 同上 6 项 |
-| 原子锁 | 2 | pg_advisory_xact_lock × 2；共用同一 lock ID |
-| update RPC 业务规则 | 10 | 角色校验、自降级、FOR UPDATE、用户不存在、最后管理员保护、is_active count、原子写入、参数签名 |
-| toggle RPC 业务规则 | 8 | 自禁用、FOR UPDATE、用户不存在、最后管理员保护、原子写入、参数签名 |
-| operator trigger | 7 | 函数存在、SECURITY INVOKER、仅拦截 operator、禁止改 role_id、禁止改 is_active、BEFORE UPDATE 触发器、admin 不受限 |
-| 中文错误 | 1 | 所有 RAISE EXCEPTION ≥ 10 条中文消息 |
-| SQL 质量 | 3 | 不硬编码 role ID；不修改表结构；不修改 00024 |
+## 质量门
 
-### 6. 质量门
-
-- `npm run test -- src/features/users/` — **219/219**（63 P4-U1 + 42 P4-U2 + 36 P4-U3 + 29 P4-U4 + 49 P4-U5 Migration）
-- `npm run test` — **2174/2174**（57 文件，concurrency 与 best live 预存 env 依赖）
-- `npm run lint` — **0 errors / 24 warnings**（all pre-existing）
-- `npm run build` — **PASS**
-- `git diff --check` — **PASS**（LF/CRLF warning only）
-
-## 禁止
-
-- 不实现仓库分配
-- 不新增权限模型
-- 不修改 Product/ProductVariant/Inventory 结构
-- 不修改已执行 Migration（00001~00024）
-- 不新增业务功能
+- `npm run test -- src/features/shipments/` — 全部通过
+- `npm run test` — 全部通过（concurrency 与 best live 预存 env 依赖除外）
+- `npm run lint` — 0 new errors
+- `npm run build` — PASS
+- `git diff --check` — PASS
 
 ## 下一步
 
-Phase 4 用户管理全模块完成（P4-U1~P4-U5）。后续：
-- **P3-S5B**（Admin 部分入仓 / Admin 批量入仓）
-- **P3-S1B**：CODE COMPLETE / BLOCKED_EXTERNAL
+P3-S5B2 — Repository 方法 + Server Actions（依赖 P3-S5B1）
 
 ## 当前业务口径
 
-Admin 维护在途和入仓、管理用户账号（列表 + 角色变更 + 启用禁用）；Operator 只读查看已分配仓库数据，不可访问用户管理。Admin 写操作受数据库层 `pg_advisory_xact_lock` + `auth.uid()` 身份绑定 + REVOKE/GRANT 权限加固 + operator trigger 四层保护。
+P3-S5B0 已封存旧版 00023 入仓入口。P3-S5B1 创建 Migration 00026（RPC + `bigseller_absorbed_at` 列），这是 P3-S5B2~B5 的数据层基础。inventory.quantity 的唯一事实来源是 BigSeller 同步链路，DIS 入仓是运营跟踪工具，不写入 inventory。

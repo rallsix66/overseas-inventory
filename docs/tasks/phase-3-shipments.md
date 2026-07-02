@@ -44,7 +44,13 @@
 | **P3-S4A** | 内部手动在途状态轨迹收口（含返工） | P3-S2E、P3-S3 | **DONE (2026-06-30)** | Migration 00022：RPC SELECT 当前状态 → 校验流转规则（booking→loading→departed→arrived→customs，禁止倒退/跳步/warehoused）→ UPDATE + INSERT。`SHIPMENT_STATUS_FLOW` + `isValidStatusTransition()` + `getNextValidStatus()` 纯函数。Repository `changeStatus()` 预读 status 校验 + `advanceStatus()` 委托 `changeStatus()` → RPC（不再直接 `from('shipment').update` + `from('tracking_event').insert`）+ `getById()` tracking_event join profiles 升序 + `TrackingEventDetail` 含 creatorName。Actions `advanceShipmentStatus()` Admin-only + 使用 `parsed.data.*`。`ShipmentStatusChange` 仅展示下一合法状态。详情页轨迹升序时间线 + 创建人 + 首个节点蓝色高亮。79 项 P3-S4A 源码检查 + 7 项追加行为测试。1688/1688 测试（50 文件），lint 0/25，build pass。Migration 00022 已手动执行并验证。不做百世映射/入仓联动。 |
 | **P3-S4** | 状态推进与物流轨迹映射（百世路径） | P3-S2、P3-S3 | BLOCKED | 百世状态保守映射 + 未识别状态只记录 tracking_event 不自动推进 shipment.status（P3-S4A 已将内部状态流转收口；百世映射待 P3-S1B 解除阻塞后实施） |
 | **P3-S5A** | 手动确认入仓事务与库存联动（含返工） | P3-S4A | **DONE (2026-06-30)** + **返工完成 (2026-06-30)** + **Migration 00023 已执行并验证 (2026-06-30)** | Migration 00023 新增 `warehouse_shipment_transactional` RPC。返工修复：v_shipment record + IF NOT FOUND + `INSERT ... ON CONFLICT DO UPDATE` 原子 UPSERT（替代 select-then-insert）。详情页 `canWarehouseShipment` / `warehouseBlockReason` 统一判断。104 项测试。1793/1793 测试（51 文件），lint 0/25，build pass。Migration 00023 已在 Supabase SQL Editor 手动执行并验证通过（no_duplicate_into / has_not_found_check / has_atomic_upsert / checks_warehouse_id / checks_customs_only / admin_only 全部 true）。不做百世映射/批量入仓/部分入仓。 |
-| **P3-S5** | 入仓事务与库存联动 | P3-S4 | 阶段 A 完成，阶段 B 待定 | P3-S5A 完成 Admin 手动确认入仓（仅 customs、仅全部入仓）。后续可补充：Admin 部分入仓 / Admin 批量入仓（按需拆分）。当前业务口径：Admin 维护在途和入仓，Operator 只读查看已分配仓库数据。 |
+| **P3-S5B0** | 封存旧版 00023 入仓入口 | P3-S5A | **DONE (2026-07-02)** | `warehouseShipment()` Server Action 改为阻断桩。详情页隐藏 WarehouseShipmentButton。新增 20 项测试 + P3-S5A/P3-S6 测试适配。2026-07-02 收口返修：消除 lint warning + 修正测试断言（非注释匹配）。 |
+| **P3-S5B1** | Migration 00026 + types/schema | P3-S5B0 | **待开始** | RPC `partial_warehouse_shipment` + `bigseller_absorbed_at` 列 + database.ts 类型 + feature types/schema + migration 静态契约测试。不实现 Repository/Actions/UI。 |
+| **P3-S5B2** | Repository + Server Actions | P3-S5B1 | BLOCKED | `partialWarehouse` / `batchWarehouseShipments` / `confirmBigsellerAbsorption` 等 Repository 方法 + Server Actions |
+| **P3-S5B3** | 详情页双模式按钮 + PartialWarehouseDialog | P3-S5B2 | BLOCKED | 详情页恢复确认到仓按钮（双模式：全额/部分）+ PartialWarehouseDialog + BigsellerAbsorptionButton |
+| **P3-S5B4** | 批量 UI + 海外库存"已确认到仓"列 | P3-S5B3 | BLOCKED | 批量确认到仓 UI + 海外库存页新增"已确认到仓"列（DIS 事实展示，不自动消失） |
+| **P3-S5B5** | 应用行为测试 + 文档同步 + 质量门 | P3-S5B4 | BLOCKED | 端到端测试 + docs 同步 + 全量质量门 |
+| **P3-S5** | 入仓事务与库存联动 | P3-S4 | 拆分进行中 | P3-S5A（全部入仓）DONE。P3-S5B（部分/批量入仓）拆分为 B0~B5。B0 已完成。当前业务口径：DIS 入仓是运营跟踪工具，inventory.quantity 唯一事实来源是 BigSeller 同步。 |
 | **P3-S6** | 在途模块权限、RLS 与端到端验收 | P3-S5A | **DONE (2026-06-30)** | 权限链路矩阵：9 Action 全 requireActiveAuth+Zod+中文错误，5 写 Admin-only，4 读 Admin/Operator 均可。Repository 13 方法 RLS session + ShipmentError。RLS 46 策略覆盖 shipment/shipment_item/tracking_event/inventory。页面/组件无直接 supabase。边界状态全覆盖。161 项新测试。1955/1955 测试（52 文件），lint 0/25，build pass。不做新功能/Migration/重构。 |
 
 ---
@@ -195,7 +201,9 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S6` — 在途模块权限、RLS 与端到端验收（**DONE**，2026-06-30）
+**当前任务**：`P3-S5B1` — Migration 00026 + types/schema + migration tests（**待开始**，2026-07-02）
+
+**P3-S5B0 已完成**（2026-07-02）：旧版 00023 入仓入口已封存。`warehouseShipment()` Action 阻断桩 + 详情页按钮隐藏 + 20 项新测试 + P3-S5A/P3-S6 测试适配。收口返修通过。
 
 **P3-S5A 已执行**：Migration 00023 已在 Supabase SQL Editor 手动执行并验证通过（2026-06-30）。入仓事务 RPC 全部 6 项验证指标通过（no_duplicate_into / has_not_found_check / has_atomic_upsert / checks_warehouse_id / checks_customs_only / admin_only）。
 
@@ -213,7 +221,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 **P3-S2A 完成**（被 P3-S2B 扩展）：`/dashboard/shipments` 列表页 + `/dashboard/shipments/[id]` 详情页就绪。仅读内部三表，不读外部在途三表。1491/1491 测试通过（45 文件，含 51 项 P3-S2A 行为测试），lint 0/26，build 通过。
 
-**下一步**：P3-S6 DONE（在途模块权限、RLS 与端到端验收完成）。Phase 3 内部路径（S2A~S6）全部 DONE。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S5B 待后续拆分（Admin 部分入仓 / Admin 批量入仓）。下一步可选：P3-S5B、P3-S1B 恢复（百世 API 授权后）、Phase 4（用户管理）、Phase 6（国内库存）。
+**下一步**：P3-S5B1（Migration 00026 + types/schema + migration tests）待开始。P3-S5B0 DONE（旧 00023 应用层入口已封存）。Phase 3 内部路径（S2A~S6）全部 DONE。P3-S5B 拆分：B0 ✅ B1 待开始 B2~B5 待后续。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S1B（百世 API 恢复）待百世开通 API 权限。
 
 ## 与现有代码的关系
 

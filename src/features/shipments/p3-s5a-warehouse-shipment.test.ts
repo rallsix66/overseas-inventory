@@ -317,16 +317,23 @@ describe('P3-S5A: 详情页 — canWarehouseShipment / warehouseBlockReason', ()
     expect(DETAIL_PAGE).toMatch(/!isAdmin.*isWarehoused/);
   });
 
-  it('渲染 WarehouseShipmentButton 使用 canWarehouseShipment 条件', () => {
-    expect(DETAIL_PAGE).toMatch(/\{canWarehouseShipment\s*&&/);
+  it('P3-S5B0: WarehouseShipmentButton 已隐藏，保留 canWarehouseShipment 变量', () => {
+    // canWarehouseShipment variable preserved for P3-S5B3, but button not rendered
+    expect(DETAIL_PAGE).toMatch(/canWarehouseShipment/);
+    expect(DETAIL_PAGE).not.toMatch(/<WarehouseShipmentButton/);
   });
 
   it('渲染阻止原因使用 warehouseBlockReason 条件', () => {
     expect(DETAIL_PAGE).toMatch(/\{warehouseBlockReason\s*&&/);
   });
 
-  it('导入 WarehouseShipmentButton', () => {
-    expect(DETAIL_PAGE).toMatch(/WarehouseShipmentButton/);
+  it('P3-S5B0: 不导入 WarehouseShipmentButton，不渲染按钮（非注释匹配）', () => {
+    // 确认详情页不 import WarehouseShipmentButton 组件
+    expect(DETAIL_PAGE).not.toMatch(
+      /import\s+\{\s*WarehouseShipmentButton\s*\}/,
+    );
+    // 确认不渲染 <WarehouseShipmentButton（JSX 标签，非注释）
+    expect(DETAIL_PAGE).not.toMatch(/<WarehouseShipmentButton/);
   });
 
   it('Admin 可见确认入口', () => {
@@ -518,162 +525,63 @@ describe('P3-S5A: shipmentRepository.warehouseShipment() 行为测试', () => {
   });
 });
 
-// ─── 6. Actions 测试 — warehouseShipment Server Action ──────────────────────
+// ─── 6. P3-S5B0: warehouseShipment 阻断桩行为测试 ────────────────────────
 
-describe('P3-S5A: warehouseShipment Server Action', () => {
-  const ADMIN_USER = {
-    id: 'admin-id',
-    roleName: 'admin' as const,
-    isActive: true as const,
-    email: 'admin@test.com',
-    displayName: 'Admin',
-  };
-  const OPERATOR_USER = {
-    id: 'op-id',
-    roleName: 'operator' as const,
-    isActive: true as const,
-    email: 'op@test.com',
-    displayName: 'Operator',
-  };
-
+describe('P3-S5B0: warehouseShipment 阻断桩', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRpc.mockReset();
     mockRequireActiveAuth.mockReset();
   });
 
-  it('未登录用户返回失败', async () => {
-    mockRequireActiveAuth.mockRejectedValue(new Error('未登录'));
+  it('始终返回 success:false', async () => {
     const { warehouseShipment } = await import('./actions');
     const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
     expect(r.success).toBe(false);
-    expect(r.error).toContain('失败');
   });
 
-  it('Operator 返回权限拒绝', async () => {
-    mockRequireActiveAuth.mockResolvedValue(OPERATOR_USER);
+  it('返回中文错误"旧版入仓入口已停用"', async () => {
     const { warehouseShipment } = await import('./actions');
     const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
-    expect(r.success).toBe(false);
-    expect(r.error).toContain('仅管理员');
+    expect(r.error).toContain('旧版入仓入口已停用');
   });
 
-  it('无效 UUID 返回 Zod 校验失败', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
+  it('不调用 requireActiveAuth', async () => {
+    const { warehouseShipment } = await import('./actions');
+    await warehouseShipment({ shipmentId: SHIPMENT_ID });
+    expect(mockRequireActiveAuth).not.toHaveBeenCalled();
+  });
+
+  it('不调用 RPC（不产生数据库调用）', async () => {
+    const { warehouseShipment } = await import('./actions');
+    await warehouseShipment({ shipmentId: SHIPMENT_ID });
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('无效 UUID 仍返回阻断错误（不经过 Zod）', async () => {
     const { warehouseShipment } = await import('./actions');
     const r = await warehouseShipment({ shipmentId: 'not-a-uuid' });
     expect(r.success).toBe(false);
-    expect(r.error).toContain('无效');
+    expect(r.error).toContain('已停用');
+    expect(mockRequireActiveAuth).not.toHaveBeenCalled();
   });
 
-  it('Admin 成功调用 RPC 并返回成功', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    mockRpc.mockResolvedValue({ data: true, error: null });
+  it('空对象参数仍返回阻断错误', async () => {
+    const { warehouseShipment } = await import('./actions');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing edge case with invalid input
+    const r = await warehouseShipment({} as any);
+    expect(r.success).toBe(false);
+    expect(r.error).toContain('已停用');
+  });
 
+  it('有 description 参数仍返回阻断错误', async () => {
     const { warehouseShipment } = await import('./actions');
     const r = await warehouseShipment({
       shipmentId: SHIPMENT_ID,
-      description: '入仓',
+      description: '测试备注',
     });
-
-    expect(r.success).toBe(true);
-    expect(mockRpc).toHaveBeenCalledWith('warehouse_shipment_transactional', {
-      p_shipment_id: SHIPMENT_ID,
-      p_description: '入仓',
-    });
-  });
-
-  it('RPC 错误（重复入仓）返回中文错误', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { message: '该在途记录已完成入仓，不可重复操作', code: 'P0001' },
-    });
-
-    const { warehouseShipment } = await import('./actions');
-    const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
-
     expect(r.success).toBe(false);
-    expect(r.error).toContain('已完成入仓，不可重复操作');
-  });
-
-  it('RPC 错误（非 customs）返回中文错误', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { message: '当前状态为 booking，仅清关后可确认入仓', code: 'P0001' },
-    });
-
-    const { warehouseShipment } = await import('./actions');
-    const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
-
-    expect(r.success).toBe(false);
-    expect(r.error).toContain('仅清关后可确认入仓');
-  });
-
-  it('RPC 错误（无仓库）返回中文错误', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { message: '该在途记录未指定仓库，无法入仓', code: 'P0001' },
-    });
-
-    const { warehouseShipment } = await import('./actions');
-    const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
-
-    expect(r.success).toBe(false);
-    expect(r.error).toContain('未指定仓库');
-  });
-
-  it('RPC 错误（无权限）返回中文错误', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { message: '无权限：需要管理员角色', code: 'P0001' },
-    });
-
-    const { warehouseShipment } = await import('./actions');
-    const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
-
-    expect(r.success).toBe(false);
-    expect(r.error).toContain('需要管理员角色');
-  });
-
-  it('未知异常返回通用中文错误', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    mockRpc.mockRejectedValue(new Error('network down'));
-
-    const { warehouseShipment } = await import('./actions');
-    const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
-
-    expect(r.success).toBe(false);
-    expect(r.error).toContain('失败');
-  });
-
-  it('description 超过 500 字符 Zod 拒绝', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    const { warehouseShipment } = await import('./actions');
-    const r = await warehouseShipment({
-      shipmentId: SHIPMENT_ID,
-      description: 'x'.repeat(501),
-    });
-
-    expect(r.success).toBe(false);
-    expect(r.error).toContain('500');
-  });
-
-  it('空 description 允许（传 null）', async () => {
-    mockRequireActiveAuth.mockResolvedValue(ADMIN_USER);
-    mockRpc.mockResolvedValue({ data: true, error: null });
-
-    const { warehouseShipment } = await import('./actions');
-    const r = await warehouseShipment({ shipmentId: SHIPMENT_ID });
-
-    expect(r.success).toBe(true);
-    expect(mockRpc).toHaveBeenCalledWith('warehouse_shipment_transactional', {
-      p_shipment_id: SHIPMENT_ID,
-      p_description: null,
-    });
+    expect(r.error).toContain('已停用');
   });
 });
 
@@ -714,55 +622,53 @@ describe('P3-S5A: repository warehouseShipment 源码检查', () => {
   });
 });
 
-// ─── 8. Actions 源码检查 — warehouseShipment ────────────────────────────────
+// ─── 8. P3-S5B0: warehouseShipment 阻断桩源码检查 ────────────────────────────
 
 const ACTIONS_SRC = readFileSync(
   resolve(process.cwd(), 'src/features/shipments/actions.ts'),
   'utf-8',
 );
 
-describe('P3-S5A: actions warehouseShipment 源码检查', () => {
+// Extract warehouseShipment function body for precise checks
+const whFnMatch = ACTIONS_SRC.match(
+  /export async function warehouseShipment[\s\S]*?\n\}/,
+);
+const whFnBody = whFnMatch?.[0] ?? '';
+
+describe('P3-S5B0: warehouseShipment 阻断桩源码检查', () => {
   it('包含 warehouseShipment export', () => {
     expect(ACTIONS_SRC).toMatch(/export async function warehouseShipment/);
   });
 
-  it('调用 requireActiveAuth', () => {
-    expect(ACTIONS_SRC).toMatch(/requireActiveAuth/);
+  it('返回"旧版入仓入口已停用"阻断错误', () => {
+    expect(whFnBody).toMatch(/旧版入仓入口已停用/);
   });
 
-  it('Admin-only: roleName !== admin 返回错误', () => {
-    expect(ACTIONS_SRC).toMatch(/仅管理员可确认入仓/);
+  it('不调用 requireActiveAuth（注释提及除外）', () => {
+    expect(whFnBody).not.toMatch(/requireActiveAuth\(/);
   });
 
-  it('Zod 校验通过 warehouseShipmentSchema.safeParse', () => {
-    expect(ACTIONS_SRC).toMatch(/warehouseShipmentSchema\.safeParse/);
+  it('不使用 warehouseShipmentSchema.safeParse', () => {
+    expect(whFnBody).not.toMatch(/warehouseShipmentSchema\.safeParse/);
   });
 
-  it('调用 shipmentRepository.warehouseShipment', () => {
-    expect(ACTIONS_SRC).toMatch(/shipmentRepository\.warehouseShipment/);
+  it('不调用 shipmentRepository.warehouseShipment', () => {
+    expect(whFnBody).not.toMatch(/shipmentRepository\.warehouseShipment/);
   });
 
-  it('使用 parsed.data.shipmentId', () => {
-    expect(ACTIONS_SRC).toMatch(/parsed\.data\.shipmentId/);
+  it('不调用 revalidatePath', () => {
+    expect(whFnBody).not.toMatch(/revalidatePath/);
   });
 
-  it('使用 parsed.data.description', () => {
-    expect(ACTIONS_SRC).toMatch(/parsed\.data\.description/);
+  it('无 try/catch（无数据库操作，无需异常处理）', () => {
+    expect(whFnBody).not.toMatch(/try\s*\{/);
   });
 
-  it('revalidatePath shipments 列表', () => {
-    expect(ACTIONS_SRC).toMatch(/revalidatePath\('\/dashboard\/shipments'\)/);
-  });
-
-  it('revalidatePath shipments 详情', () => {
-    expect(ACTIONS_SRC).toMatch(/revalidatePath\(`\/dashboard\/shipments\/\$\{parsed\.data\.shipmentId\}`\)/);
-  });
-
-  it('捕获 ShipmentError 返回中文错误', () => {
-    expect(ACTIONS_SRC).toMatch(/ShipmentError/);
-  });
-
-  it('未知异常返回通用中文错误', () => {
-    expect(ACTIONS_SRC).toMatch(/确认入仓失败，请稍后重试/);
+  it('函数体仅包含注释和 return { success: false, error: ... }', () => {
+    // After removing comments, the function body should be minimal
+    const stripped = whFnBody.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(stripped).toMatch(/success:\s*false/);
+    expect(stripped).not.toMatch(/requireActiveAuth/);
+    expect(stripped).not.toMatch(/mockRpc/);
   });
 });

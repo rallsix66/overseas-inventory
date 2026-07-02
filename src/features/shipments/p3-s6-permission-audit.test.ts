@@ -86,7 +86,7 @@ describe('P3-S6: Actions 权限链路', () => {
       'updateShipment',
       'changeShipmentStatus',
       'advanceShipmentStatus',
-      'warehouseShipment',
+      // P3-S5B0: warehouseShipment 已改为阻断桩，不再调用 requireActiveAuth
       'listShipments',
       'getShipmentDetail',
       'searchVariants',
@@ -110,7 +110,7 @@ describe('P3-S6: Actions 权限链路', () => {
       'updateShipment',
       'changeShipmentStatus',
       'advanceShipmentStatus',
-      'warehouseShipment',
+      // P3-S5B0: warehouseShipment 已改为阻断桩，不校验角色
     ];
 
     for (const fn of adminOnlyActions) {
@@ -138,8 +138,8 @@ describe('P3-S6: Actions 权限链路', () => {
       expect(actionsSrc).toMatch(/仅管理员可推进物流状态/);
     });
 
-    it('warehouseShipment 仅管理员可确认入仓文案', () => {
-      expect(actionsSrc).toMatch(/仅管理员可确认入仓/);
+    it('warehouseShipment P3-S5B0 阻断桩 — 返回已停用中文错误', () => {
+      expect(actionsSrc).toMatch(/旧版入仓入口已停用/);
     });
   });
 
@@ -165,7 +165,7 @@ describe('P3-S6: Actions 权限链路', () => {
       updateShipment: 'updateShipmentSchema',
       changeShipmentStatus: 'changeStatusSchema',
       advanceShipmentStatus: 'advanceStatusSchema',
-      warehouseShipment: 'warehouseShipmentSchema',
+      // P3-S5B0: warehouseShipment 阻断桩不使用 Zod
       listShipments: 'shipmentFiltersSchema',
       getShipmentDetail: 'shipmentDetailParamsSchema',
       searchVariants: 'searchVariantsSchema',
@@ -195,8 +195,8 @@ describe('P3-S6: Actions 权限链路', () => {
     it('advanceShipmentStatus — 中文错误消息', () => {
       expect(actionsSrc).toMatch(/状态推进失败，请稍后重试/);
     });
-    it('warehouseShipment — 中文错误消息', () => {
-      expect(actionsSrc).toMatch(/确认入仓失败，请稍后重试/);
+    it('warehouseShipment — 中文错误消息（P3-S5B0 阻断桩）', () => {
+      expect(actionsSrc).toMatch(/旧版入仓入口已停用/);
     });
     it('listShipments — 中文错误消息', () => {
       expect(actionsSrc).toMatch(/查询在途列表失败，请稍后重试/);
@@ -641,25 +641,23 @@ describe('P3-S6: 权限链路矩阵', () => {
     it('全部 9 个 export async function 均含 requireActiveAuth', () => {
       const fnCount = (actionsSrc.match(/export async function/g) || []).length;
       const authCount = (actionsSrc.match(/requireActiveAuth\(\)/g) || []).length;
-      // Currently 9 exported functions, all must call requireActiveAuth
+      // 9 exported functions: 8 call requireActiveAuth + 1 (warehouseShipment) is P3-S5B0 blocking stub
       expect(fnCount).toBe(9);
-      expect(authCount).toBe(9);
+      expect(authCount).toBe(8); // warehouseShipment 阻断桩不调用 requireActiveAuth
     });
 
-    it('写操作 = 5 个 Admin-only', () => {
-      // createShipment, updateShipment, changeShipmentStatus, advanceShipmentStatus, warehouseShipment
+    it('写操作 = 4 个 Admin-only（P3-S5B0: warehouseShipment 已改为阻断桩）', () => {
+      // createShipment, updateShipment, changeShipmentStatus, advanceShipmentStatus
       const adminOnlyCount = (actionsSrc.match(/roleName\s*!==\s*'admin'/g) || []).length;
-      expect(adminOnlyCount).toBe(5);
+      expect(adminOnlyCount).toBe(4); // P3-S5B0: warehouseShipment no longer checks role
     });
 
-    it('读操作 = 4 个 Admin/Operator 均可', () => {
-      // listShipments, getShipmentDetail, searchVariants, getInTransitDetails
-      // Read-only actions have requireActiveAuth but no role check
-      const readWithoutRoleCheck = 4;
+    it('4 读操作 + 4 写操作 + 1 阻断桩 = 9 总函数', () => {
+      const readWithoutRoleCheck = 4; // listShipments, getShipmentDetail, searchVariants, getInTransitDetails
       const adminOnlyCount = (actionsSrc.match(/roleName\s*!==\s*'admin'/g) || []).length;
       const total = 9;
-      // 5 admin-only write + 4 read-all = 9
-      expect(adminOnlyCount + readWithoutRoleCheck).toBe(total);
+      // 4 admin-only write + 4 read-all + 1 blocking stub (warehouseShipment) = 9
+      expect(adminOnlyCount + readWithoutRoleCheck + 1).toBe(total);
     });
   });
 
@@ -710,9 +708,10 @@ describe('P3-S6: 权限链路矩阵', () => {
   });
 
   describe('入仓权限 — 仅 Admin 三层一致', () => {
-    it('Action: warehouseShipment → Admin-only', () => {
+    it('Action: warehouseShipment → P3-S5B0 阻断桩（不校验角色）', () => {
       const actionsSrc = readSrc('actions.ts');
-      expect(actionsSrc).toMatch(/warehouseShipment[\s\S]{0,300}roleName !== 'admin'/);
+      // blocking stub: no longer checks role name
+      expect(actionsSrc).toMatch(/旧版入仓入口已停用/);
     });
 
     it('RPC: warehouse_shipment_transactional → get_user_role() = admin', () => {
@@ -778,8 +777,9 @@ describe('P3-S6: 详情页入仓条件收口', () => {
     expect(detailSrc).toMatch(/\{warehouseBlockReason\s*&&/);
   });
 
-  it('canWarehouseShipment 为 true 时渲染 WarehouseShipmentButton', () => {
-    expect(detailSrc).toMatch(/\{canWarehouseShipment\s*&&/);
+  it('P3-S5B0: WarehouseShipmentButton 已隐藏（含注释标记）', () => {
+    expect(detailSrc).toMatch(/P3-S5B0/);
+    expect(detailSrc).not.toMatch(/<WarehouseShipmentButton/);
   });
 });
 
