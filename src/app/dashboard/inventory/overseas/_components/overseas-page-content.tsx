@@ -539,7 +539,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                   {/* P3-S2E: 展开行 — 在途明细 */}
                   {isExpanded && (
                     <TableRow key={`${item.id}-expand`} className="hover:bg-transparent">
-                      <TableCell colSpan={14} className="p-0 border-t-0">
+                      <TableCell colSpan={13} className="p-0 border-t-0">
                         <InTransitDetailRow
                           variantId={item.variantId}
                           warehouseId={item.warehouseId}

@@ -220,3 +220,17 @@ export const batchWarehouseShipmentsSchema = z.object({
 export type BatchWarehouseShipmentsValues = z.infer<
   typeof batchWarehouseShipmentsSchema
 >;
+
+// ─── P3-S5B4: 批量入仓列表筛选 ────────────────────────────────────────────────
+
+/** P3-S5B4: 可批量入仓 shipment 列表筛选参数 Zod 校验 */
+export const eligibleShipmentFiltersSchema = z.object({
+  country: z.enum(['TH', 'ID', 'MY', 'PH', 'VN', 'CN']).optional(),
+  warehouseId: z.string().uuid('无效的仓库 ID').optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type EligibleShipmentFiltersValues = z.infer<
+  typeof eligibleShipmentFiltersSchema
+>;

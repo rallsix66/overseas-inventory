@@ -17,6 +17,7 @@ import {
   partialWarehouseShipmentSchema,
   confirmBigsellerAbsorptionSchema,
   batchWarehouseShipmentsSchema,
+  eligibleShipmentFiltersSchema,
   // warehouseShipmentSchema — P3-S5B0 移除引用，旧 warehouseShipment action 已改为阻断桩
 } from './schema';
 import type { ActionResult } from '@/types/common';
@@ -367,8 +368,13 @@ export async function listEligibleForBatchWarehousingAction(
       return { success: false, error: '仅管理员可查看批量入仓列表' };
     }
 
+    const parsed = eligibleShipmentFiltersSchema.safeParse(filters);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '筛选参数无效' };
+    }
+
     const result = await shipmentRepository.listEligibleForBatchWarehousing(
-      filters,
+      parsed.data,
       user.id,
     );
     return { success: true, data: result };

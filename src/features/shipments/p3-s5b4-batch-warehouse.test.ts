@@ -60,8 +60,16 @@ describe('P3-S5B4: 海外库存"已确认到仓"列 — 数据层', () => {
     expect(contentSrc).toMatch(/qty > 0 \? qty\.toLocaleString\(\) : '—'/);
   });
 
-  it('展开行 colSpan 更新为 14（新增已确认到仓列）', () => {
-    expect(contentSrc).toMatch(/colSpan=\{14\}/);
+  it('展开行 colSpan 与表头列数一致为 13', () => {
+    // 表头列：展开箭头 + 关注 + 国家 + 仓库 + SKU + 产品名称 + 当前库存 + 在途 + 已确认到仓 + 库存+在途 + 安全库存 + 库存状态 + 同步状态 = 13
+    expect(contentSrc).toMatch(/colSpan=\{13\}/);
+  });
+
+  it('表头实际列数为 13（colSpan 不得与列数不一致）', () => {
+    // 统计 <TableHead> 标签数量（排除 <TableHeader>）
+    const headMatches = contentSrc.match(/<TableHead[\s>]/g);
+    expect(headMatches).not.toBeNull();
+    expect(headMatches!.length).toBe(13);
   });
 
   it('confirmedMap 注释说明口径（不含 BigSeller 吸收）', () => {
@@ -245,6 +253,10 @@ describe('P3-S5B4: 批量入仓 UI — Client Component', () => {
 describe('P3-S5B4: listEligibleForBatchWarehousingAction', () => {
   const actionsSrc = readSrc('src/features/shipments/actions.ts');
 
+  it('actions.ts 导入 eligibleShipmentFiltersSchema', () => {
+    expect(actionsSrc).toMatch(/eligibleShipmentFiltersSchema/);
+  });
+
   it('listEligibleForBatchWarehousingAction 函数存在', () => {
     expect(actionsSrc).toMatch(/export async function listEligibleForBatchWarehousingAction/);
   });
@@ -262,10 +274,13 @@ describe('P3-S5B4: listEligibleForBatchWarehousingAction', () => {
     expect(fnBody).toMatch(/requireActiveAuth\(\)/);
   });
 
-  it('调用 repository.listEligibleForBatchWarehousing', () => {
+  it('调用 repository.listEligibleForBatchWarehousing 并传入 parsed.data', () => {
     const fnStart = actionsSrc.indexOf('listEligibleForBatchWarehousingAction');
-    const fnBody = actionsSrc.slice(fnStart, fnStart + 800);
+    const fnBody = actionsSrc.slice(fnStart, fnStart + 1000);
     expect(fnBody).toMatch(/listEligibleForBatchWarehousing\(/);
+    // P3-S5B4 返修：safeParse 后使用 parsed.data 而非原始 filters
+    expect(fnBody).toMatch(/safeParse/);
+    expect(fnBody).toMatch(/parsed\.data/);
   });
 
   it('传递 userId 实现仓库隔离', () => {
@@ -280,9 +295,49 @@ describe('P3-S5B4: listEligibleForBatchWarehousingAction', () => {
 
   it('catch ShipmentError 返回中文错误', () => {
     const fnStart = actionsSrc.indexOf('listEligibleForBatchWarehousingAction');
-    const fnBody = actionsSrc.slice(fnStart, fnStart + 800);
+    const fnBody = actionsSrc.slice(fnStart, fnStart + 1000);
     expect(fnBody).toMatch(/ShipmentError/);
     expect(fnBody).toMatch(/查询批量入仓列表失败/);
+  });
+
+  it('Zod 校验失败返回中文错误不进入 repository', () => {
+    const fnStart = actionsSrc.indexOf('listEligibleForBatchWarehousingAction');
+    const fnBody = actionsSrc.slice(fnStart, fnStart + 1000);
+    // safeParse 失败 → 返回中文错误
+    expect(fnBody).toMatch(/!parsed\.success/);
+    expect(fnBody).toMatch(/筛选参数无效/);
+    // safeParse 失败路径不调用 repository（在 return 之后）
+  });
+});
+
+// ─── 4B. eligibleShipmentFiltersSchema — Zod 校验 ─────────────────────────────
+
+describe('P3-S5B4: eligibleShipmentFiltersSchema — Zod 校验', () => {
+  const schemaSrc = readSrc('src/features/shipments/schema.ts');
+
+  it('eligibleShipmentFiltersSchema 已定义并导出', () => {
+    expect(schemaSrc).toMatch(/export const eligibleShipmentFiltersSchema/);
+  });
+
+  it('country 字段为可选 enum', () => {
+    expect(schemaSrc).toMatch(/country:\s*z\.enum\(\[.*'TH'.*'ID'.*'MY'.*'PH'.*'VN'.*'CN'.*\]\)\.optional\(\)/);
+  });
+
+  it('warehouseId 字段为可选 uuid', () => {
+    expect(schemaSrc).toMatch(/warehouseId:\s*z\.string\(\)\.uuid\(/);
+    expect(schemaSrc).toMatch(/warehouseId.*optional\(\)/);
+  });
+
+  it('page 字段为 coerce int min(1) default(1)', () => {
+    expect(schemaSrc).toMatch(/page:\s*z\.coerce\.number\(\)\.int\(\)\.min\(1\)\.default\(1\)/);
+  });
+
+  it('pageSize 字段为 coerce int min(1) max(100) default(20)', () => {
+    expect(schemaSrc).toMatch(/pageSize:\s*z\.coerce\.number\(\)\.int\(\)\.min\(1\)\.max\(100\)\.default\(20\)/);
+  });
+
+  it('EligibleShipmentFiltersValues 类型已导出', () => {
+    expect(schemaSrc).toMatch(/export type EligibleShipmentFiltersValues/);
   });
 });
 
