@@ -45,8 +45,8 @@
 | **P3-S4** | 状态推进与物流轨迹映射（百世路径） | P3-S2、P3-S3 | BLOCKED | 百世状态保守映射 + 未识别状态只记录 tracking_event 不自动推进 shipment.status（P3-S4A 已将内部状态流转收口；百世映射待 P3-S1B 解除阻塞后实施） |
 | **P3-S5A** | 手动确认入仓事务与库存联动（含返工） | P3-S4A | **DONE (2026-06-30)** + **返工完成 (2026-06-30)** + **Migration 00023 已执行并验证 (2026-06-30)** | Migration 00023 新增 `warehouse_shipment_transactional` RPC。返工修复：v_shipment record + IF NOT FOUND + `INSERT ... ON CONFLICT DO UPDATE` 原子 UPSERT（替代 select-then-insert）。详情页 `canWarehouseShipment` / `warehouseBlockReason` 统一判断。104 项测试。1793/1793 测试（51 文件），lint 0/25，build pass。Migration 00023 已在 Supabase SQL Editor 手动执行并验证通过（no_duplicate_into / has_not_found_check / has_atomic_upsert / checks_warehouse_id / checks_customs_only / admin_only 全部 true）。不做百世映射/批量入仓/部分入仓。 |
 | **P3-S5B0** | 封存旧版 00023 入仓入口 | P3-S5A | **DONE (2026-07-02)** | `warehouseShipment()` Server Action 改为阻断桩。详情页隐藏 WarehouseShipmentButton。新增 20 项测试 + P3-S5A/P3-S6 测试适配。2026-07-02 收口返修：消除 lint warning + 修正测试断言（非注释匹配）。 |
-| **P3-S5B1** | Migration 00026 + types/schema | P3-S5B0 | **待开始** | RPC `partial_warehouse_shipment` + `bigseller_absorbed_at` 列 + database.ts 类型 + feature types/schema + migration 静态契约测试。不实现 Repository/Actions/UI。 |
-| **P3-S5B2** | Repository + Server Actions | P3-S5B1 | BLOCKED | `partialWarehouse` / `batchWarehouseShipments` / `confirmBigsellerAbsorption` 等 Repository 方法 + Server Actions |
+| **P3-S5B1** | Migration 00026 + types/schema | P3-S5B0 | **DONE (2026-07-02)** + **返修完成** | Migration 00026：`bigseller_absorbed_at` 列 + `partial_warehouse_shipment` RPC（173 行，SECURITY INVOKER，Admin-only）。返修：jsonb_typeof + 正则预检输入加固。93 项静态测试。Migration 未执行。 |
+| **P3-S5B2** | Repository + Server Actions | P3-S5B1 | **待开始** | `partialWarehouse` / `batchWarehouseShipments` / `confirmBigsellerAbsorption` 等 Repository 方法 + Server Actions。尚未实现。 |
 | **P3-S5B3** | 详情页双模式按钮 + PartialWarehouseDialog | P3-S5B2 | BLOCKED | 详情页恢复确认到仓按钮（双模式：全额/部分）+ PartialWarehouseDialog + BigsellerAbsorptionButton |
 | **P3-S5B4** | 批量 UI + 海外库存"已确认到仓"列 | P3-S5B3 | BLOCKED | 批量确认到仓 UI + 海外库存页新增"已确认到仓"列（DIS 事实展示，不自动消失） |
 | **P3-S5B5** | 应用行为测试 + 文档同步 + 质量门 | P3-S5B4 | BLOCKED | 端到端测试 + docs 同步 + 全量质量门 |
@@ -201,9 +201,11 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 ## 当前状态
 
-**当前任务**：`P3-S5B1` — Migration 00026 + types/schema + migration tests（**待开始**，2026-07-02）
+**当前任务**：`P3-S5B2` — Repository 方法 + Server Actions（**待开始**，2026-07-02）
 
-**P3-S5B0 已完成**（2026-07-02）：旧版 00023 入仓入口已封存。`warehouseShipment()` Action 阻断桩 + 详情页按钮隐藏 + 20 项新测试 + P3-S5A/P3-S6 测试适配。收口返修通过。
+**P3-S5B1 已完成**（2026-07-02 + 返修完成）：Migration 00026（`bigseller_absorbed_at` 列 + `partial_warehouse_shipment` RPC）+ database.ts 类型同步 + feature types/schema + 93 项静态契约测试。返修：jsonb_typeof + 正则预检输入加固（防止 PG 英文 cast 错误泄漏）。Migration 00026 **未执行**，待 P3-S5B2 实现前手动执行。
+
+**P3-S5B0 已完成**（2026-07-02）：旧版 00023 入仓入口已封存。收口返修通过。
 
 **P3-S5A 已执行**：Migration 00023 已在 Supabase SQL Editor 手动执行并验证通过（2026-06-30）。入仓事务 RPC 全部 6 项验证指标通过（no_duplicate_into / has_not_found_check / has_atomic_upsert / checks_warehouse_id / checks_customs_only / admin_only）。
 
@@ -221,7 +223,7 @@ P3-S1B/C/D 形成百世只读同步管线；P3-S3 为独立手动补录分支，
 
 **P3-S2A 完成**（被 P3-S2B 扩展）：`/dashboard/shipments` 列表页 + `/dashboard/shipments/[id]` 详情页就绪。仅读内部三表，不读外部在途三表。1491/1491 测试通过（45 文件，含 51 项 P3-S2A 行为测试），lint 0/26，build 通过。
 
-**下一步**：P3-S5B1（Migration 00026 + types/schema + migration tests）待开始。P3-S5B0 DONE（旧 00023 应用层入口已封存）。Phase 3 内部路径（S2A~S6）全部 DONE。P3-S5B 拆分：B0 ✅ B1 待开始 B2~B5 待后续。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S1B（百世 API 恢复）待百世开通 API 权限。
+**下一步**：P3-S5B2（Repository 方法 + Server Actions）待开始。P3-S5B1 DONE（Migration 00026 + types/schema + 93 项静态测试，Migration 未执行）。P3-S5B0 DONE（旧 00023 应用层入口已封存）。Phase 3 内部路径（S2A~S6）全部 DONE。P3-S5B 拆分：B0 ✅ B1 ✅ B2 待开始 B3~B5 待后续。P3-S4（百世路径）依赖 P3-S1B 解除阻塞。P3-S1B（百世 API 恢复）待百世开通 API 权限。
 
 ## 与现有代码的关系
 

@@ -10,6 +10,9 @@
 --    同一事务内完成：
 --      a. SELECT shipment FOR UPDATE（校验存在/非 warehoused/有仓库/customs）
 --      b. 遍历 p_items JSONB 数组，逐行 FOR UPDATE shipment_item
+--         - jsonb_typeof 预检 p_items array + elem object
+--         - 正则预检 variant_id UUID / quantity 正整数，再 cast
+--         - 所有校验失败 → 中文 RAISE EXCEPTION（不泄漏 PG cast 错误）
 --         - 校验 variant_id 存在于此 shipment
 --         - 校验 quantity > 0 且 <= remaining
 --         - UPDATE warehoused_quantity += quantity
@@ -58,9 +61,14 @@ BEGIN
   END IF;
 
   -- ============================================
-  -- 1. 校验 p_items 非空
+  -- 1. 校验 p_items 类型与非空
+  --    jsonb_typeof 预检，避免 PostgreSQL 原生 cast 泄漏英文错误
   -- ============================================
-  IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
+  IF p_items IS NULL OR jsonb_typeof(p_items) != 'array' THEN
+    RAISE EXCEPTION '入仓明细格式错误：需要 JSON 数组' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF jsonb_array_length(p_items) = 0 THEN
     RAISE EXCEPTION '入仓明细不能为空' USING ERRCODE = 'P0001';
   END IF;
 
@@ -95,35 +103,61 @@ BEGIN
 
   -- ============================================
   -- 3. 遍历 p_items JSONB 数组，逐行处理
+  --    jsonb_typeof 预检 elem → 正则预检 variant_id / quantity → 安全 cast
   -- ============================================
   FOR v_request IN
     SELECT
-      (elem->>'variant_id')::uuid   AS variant_id,
-      (elem->>'quantity')::integer  AS quantity
+      elem->>'variant_id' AS raw_variant_id,
+      elem->>'quantity'   AS raw_quantity,
+      elem                AS elem_json
     FROM jsonb_array_elements(p_items) AS elem
   LOOP
-    v_requested_qty := v_request.quantity;
+    -- 3a. 校验 elem 是 JSON 对象
+    IF jsonb_typeof(v_request.elem_json) != 'object' THEN
+      RAISE EXCEPTION '入仓明细每项必须是 JSON 对象' USING ERRCODE = 'P0001';
+    END IF;
 
-    -- 校验请求数量 > 0
-    IF v_requested_qty IS NULL OR v_requested_qty <= 0 THEN
-      RAISE EXCEPTION '入仓数量必须大于 0，variant_id: %', v_request.variant_id
+    -- 3b. 校验 variant_id 存在
+    IF v_request.raw_variant_id IS NULL OR v_request.raw_variant_id = '' THEN
+      RAISE EXCEPTION '入仓明细缺少 variant_id' USING ERRCODE = 'P0001';
+    END IF;
+
+    -- 3c. 校验 variant_id 是合法 UUID（正则预检，避免 PG cast 英文错误泄漏）
+    IF v_request.raw_variant_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      RAISE EXCEPTION '入仓明细 variant_id 格式无效: %', v_request.raw_variant_id
         USING ERRCODE = 'P0001';
     END IF;
 
-    -- FOR UPDATE 锁定 shipment_item 行
+    -- 3d. 校验 quantity 存在
+    IF v_request.raw_quantity IS NULL OR v_request.raw_quantity = '' THEN
+      RAISE EXCEPTION '入仓明细缺少 quantity，variant_id: %', v_request.raw_variant_id
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    -- 3e. 校验 quantity 是正整数（正则预检，避免 PG cast 英文错误泄漏）
+    IF v_request.raw_quantity !~ '^[1-9]\d*$' THEN
+      RAISE EXCEPTION '入仓明细 quantity 必须是正整数，当前值: %，variant_id: %',
+        v_request.raw_quantity, v_request.raw_variant_id
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    -- 安全 cast（已通过上述预检）
+    v_requested_qty := v_request.raw_quantity::integer;
+
+    -- 3f. FOR UPDATE 锁定 shipment_item 行
     SELECT id, variant_id, quantity, warehoused_quantity
     INTO v_item
     FROM public.shipment_item
     WHERE shipment_id = p_shipment_id
-      AND variant_id = v_request.variant_id
+      AND variant_id = v_request.raw_variant_id::uuid
     FOR UPDATE;
 
     IF NOT FOUND THEN
-      RAISE EXCEPTION '在途记录中未找到 variant_id: %', v_request.variant_id
+      RAISE EXCEPTION '在途记录中未找到 variant_id: %', v_request.raw_variant_id
         USING ERRCODE = 'P0001';
     END IF;
 
-    -- 超量保护
+    -- 3g. 超量保护
     v_remaining := v_item.quantity - v_item.warehoused_quantity;
     IF v_remaining < 0 THEN
       RAISE EXCEPTION '数据异常：产品明细 % 已入仓数量超过总数', v_item.id
@@ -132,11 +166,11 @@ BEGIN
 
     IF v_requested_qty > v_remaining THEN
       RAISE EXCEPTION '入仓数量 (%) 超过在途余量 (%)，variant_id: %',
-        v_requested_qty, v_remaining, v_request.variant_id
+        v_requested_qty, v_remaining, v_request.raw_variant_id
         USING ERRCODE = 'P0001';
     END IF;
 
-    -- 更新 warehoused_quantity（原子累加）
+    -- 3h. 更新 warehoused_quantity（原子累加）
     UPDATE public.shipment_item
     SET warehoused_quantity = warehoused_quantity + v_requested_qty
     WHERE id = v_item.id;

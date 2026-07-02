@@ -1,4 +1,4 @@
-// P3-S5B1: Migration 00026 静态契约测试
+// P3-S5B1: Migration 00026 静态契约测试（含返修：输入预检加固）
 // 覆盖：
 // 1. bigseller_absorbed_at 列定义
 // 2. partial_warehouse_shipment RPC 结构
@@ -8,7 +8,9 @@
 // 6. 不写 inventory.quantity
 // 7. 原子写入（warehoused_quantity 累加 + status 更新 + tracking_event）
 // 8. 返回 JSONB 结构
-// 9. 中文错误消息
+// 9. 中文错误消息（含 P3-S5B1 返修新增的 jsonb_typeof / 正则预检错误）
+// 10. jsonb_typeof 输入预检（p_items array + elem object）
+// 11. UUID / quantity 正则预检（cast 前校验，防止 PG 英文错误泄漏）
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -59,7 +61,6 @@ describe('P3-S5B1: Migration 00026 — 权限模型', () => {
   });
 
   it('SECURITY INVOKER（不绕过 RLS）', () => {
-    // 头注释 + RPC 声明 = 至少 2 处
     const invokerCount = (migration.match(/SECURITY INVOKER/g) || []).length;
     expect(invokerCount).toBeGreaterThanOrEqual(2);
   });
@@ -183,41 +184,84 @@ describe('P3-S5B1: Migration 00026 — shipment 校验', () => {
   });
 });
 
-// ─── 6. 业务规则：p_items 校验 ───────────────────────────────────────────────
+// ─── 6. p_items JSON 类型预检（P3-S5B1 返修：jsonb_typeof） ──────────────────
 
-describe('P3-S5B1: Migration 00026 — p_items 校验', () => {
+describe('P3-S5B1: Migration 00026 — p_items jsonb_typeof 预检', () => {
   let migration: string;
 
   beforeAll(() => {
     migration = readSrc(MIGRATION_PATH);
   });
 
-  it('p_items NULL 或空数组拒绝', () => {
+  it('p_items IS NULL 或非 array 拒绝', () => {
+    expect(migration).toContain("jsonb_typeof(p_items) != 'array'");
+    expect(migration).toContain('入仓明细格式错误：需要 JSON 数组');
+  });
+
+  it('空数组拒绝（jsonb_array_length = 0）', () => {
+    expect(migration).toContain('jsonb_array_length(p_items) = 0');
     expect(migration).toContain('入仓明细不能为空');
   });
 
-  it('使用 jsonb_array_length 校验非空', () => {
-    expect(migration).toContain('jsonb_array_length');
-  });
-
-  it('使用 jsonb_array_elements 遍历 p_items', () => {
-    expect(migration).toContain('jsonb_array_elements');
-  });
-
-  it('解析 elem->>variant_id 为 uuid', () => {
-    expect(migration).toMatch(/variant_id.*::uuid/);
-  });
-
-  it('解析 elem->>quantity 为 integer', () => {
-    expect(migration).toMatch(/quantity.*::integer/);
-  });
-
-  it('quantity <= 0 拒绝（含中文错误）', () => {
-    expect(migration).toContain('入仓数量必须大于 0');
+  it('jsonb_typeof 在 jsonb_array_length 之前执行', () => {
+    const typeOfIdx = migration.indexOf("jsonb_typeof(p_items)");
+    const arrayLenIdx = migration.indexOf("jsonb_array_length(p_items)");
+    expect(typeOfIdx).toBeLessThan(arrayLenIdx);
   });
 });
 
-// ─── 7. 业务规则：shipment_item 校验 ──────────────────────────────────────────
+// ─── 7. elem 结构预检（P3-S5B1 返修） ────────────────────────────────────────
+
+describe('P3-S5B1: Migration 00026 — elem 结构与字段预检', () => {
+  let migration: string;
+
+  beforeAll(() => {
+    migration = readSrc(MIGRATION_PATH);
+  });
+
+  it('elem jsonb_typeof != object 拒绝', () => {
+    expect(migration).toContain("jsonb_typeof(v_request.elem_json) != 'object'");
+    expect(migration).toContain('入仓明细每项必须是 JSON 对象');
+  });
+
+  it('variant_id 缺失拒绝（NULL 或空字符串）', () => {
+    expect(migration).toContain("raw_variant_id IS NULL OR v_request.raw_variant_id = ''");
+    expect(migration).toContain('入仓明细缺少 variant_id');
+  });
+
+  it('variant_id 非 UUID 格式拒绝（正则预检 !~*）', () => {
+    expect(migration).toMatch(/raw_variant_id\s*!~\*\s*'\^\[0-9a-f\]\{8\}/);
+    expect(migration).toContain('入仓明细 variant_id 格式无效');
+  });
+
+  it('variant_id 正则匹配标准 UUID 格式（8-4-4-4-12）', () => {
+    expect(migration).toMatch(/\^\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}-\[0-9a-f\]\{4\}-\[0-9a-f\]\{4\}-\[0-9a-f\]\{12\}\$/);
+  });
+
+  it('quantity 缺失拒绝（NULL 或空字符串）', () => {
+    expect(migration).toContain("raw_quantity IS NULL OR v_request.raw_quantity = ''");
+    expect(migration).toContain('入仓明细缺少 quantity');
+  });
+
+  it('quantity 非正整数拒绝（正则预检 !~）', () => {
+    expect(migration).toMatch(/raw_quantity\s*!~\s*'\^\[1-9\]\\d\*\$'/);
+    expect(migration).toContain('入仓明细 quantity 必须是正整数');
+  });
+
+  it('variant_id cast to uuid 仅在正则预检通过后执行', () => {
+    const lastRegexCheck = migration.lastIndexOf("raw_variant_id !~*");
+    const variantCast = migration.indexOf("raw_variant_id::uuid");
+    expect(lastRegexCheck).toBeLessThan(variantCast);
+  });
+
+  it('quantity cast to integer 仅在正则预检通过后执行', () => {
+    const quantityRegexCheck = migration.lastIndexOf("raw_quantity !~");
+    const quantityCast = migration.indexOf("raw_quantity::integer");
+    expect(quantityRegexCheck).toBeLessThan(quantityCast);
+  });
+});
+
+// ─── 8. 业务规则：shipment_item 校验 ──────────────────────────────────────────
 
 describe('P3-S5B1: Migration 00026 — shipment_item 校验', () => {
   let migration: string;
@@ -248,7 +292,7 @@ describe('P3-S5B1: Migration 00026 — shipment_item 校验', () => {
   });
 });
 
-// ─── 8. 原子写入：warehoused_quantity 累加 ──────────────────────────────────
+// ─── 9. 原子写入：warehoused_quantity 累加 ──────────────────────────────────
 
 describe('P3-S5B1: Migration 00026 — 原子写入', () => {
   let migration: string;
@@ -294,14 +338,13 @@ describe('P3-S5B1: Migration 00026 — 原子写入', () => {
   });
 });
 
-// ─── 9. 不写 inventory ──────────────────────────────────────────────────────
+// ─── 10. 不写 inventory ──────────────────────────────────────────────────────
 
 describe('P3-S5B1: Migration 00026 — 不写 inventory', () => {
   let rpcBody: string;
 
   beforeAll(() => {
     const migration = readSrc(MIGRATION_PATH);
-    // 提取 RPC 函数体
     const start = migration.indexOf('CREATE OR REPLACE FUNCTION public.partial_warehouse_shipment');
     const end = migration.indexOf('REVOKE EXECUTE ON FUNCTION public.partial_warehouse_shipment');
     rpcBody = migration.slice(start, end > 0 ? end : undefined);
@@ -328,7 +371,7 @@ describe('P3-S5B1: Migration 00026 — 不写 inventory', () => {
   });
 });
 
-// ─── 10. 中文错误消息清单 ────────────────────────────────────────────────────
+// ─── 11. 中文错误消息清单（含返修新增） ──────────────────────────────────────
 
 describe('P3-S5B1: Migration 00026 — 中文错误消息', () => {
   let migration: string;
@@ -339,12 +382,17 @@ describe('P3-S5B1: Migration 00026 — 中文错误消息', () => {
 
   const expectedErrors = [
     '无权限：需要管理员角色',
+    '入仓明细格式错误：需要 JSON 数组',
     '入仓明细不能为空',
     '在途记录不存在或无权访问',
     '该在途记录已完成入仓，不可重复操作',
     '该在途记录未指定仓库，无法入仓',
     '仅清关后可确认入仓',
-    '入仓数量必须大于 0',
+    '入仓明细每项必须是 JSON 对象',
+    '入仓明细缺少 variant_id',
+    '入仓明细 variant_id 格式无效',
+    '入仓明细缺少 quantity',
+    '入仓明细 quantity 必须是正整数',
     '在途记录中未找到 variant_id',
     '已入仓数量超过总数',
     '超过在途余量',
@@ -356,17 +404,23 @@ describe('P3-S5B1: Migration 00026 — 中文错误消息', () => {
     });
   });
 
-  it('所有 RAISE EXCEPTION 均为中文错误', () => {
+  it('所有 RAISE EXCEPTION 均为中文错误（≥15 条）', () => {
     const raises = migration.match(/RAISE EXCEPTION\s+'([^']+)'/g) || [];
-    expect(raises.length).toBeGreaterThanOrEqual(10);
+    expect(raises.length).toBeGreaterThanOrEqual(15);
     raises.forEach((r) => {
-      // 每条错误消息应包含中文字符
       expect(r).toMatch(/[一-鿿]/);
     });
   });
+
+  it('不含 PostgreSQL 原生英文 cast 错误关键词', () => {
+    // 确保没有泄漏 PG 原生错误消息
+    expect(migration).not.toMatch(/invalid input syntax for type uuid/i);
+    expect(migration).not.toMatch(/invalid input syntax for type integer/i);
+    expect(migration).not.toMatch(/cannot cast type/i);
+  });
 });
 
-// ─── 11. JSONB 返回结构 ──────────────────────────────────────────────────────
+// ─── 12. JSONB 返回结构 ──────────────────────────────────────────────────────
 
 describe('P3-S5B1: Migration 00026 — JSONB 返回结构', () => {
   let migration: string;
@@ -392,7 +446,7 @@ describe('P3-S5B1: Migration 00026 — JSONB 返回结构', () => {
   });
 });
 
-// ─── 12. 类型定义校验 ─────────────────────────────────────────────────────────
+// ─── 13. 类型定义校验 ─────────────────────────────────────────────────────────
 
 describe('P3-S5B1: types.ts — partial warehouse 类型', () => {
   const typesSrc = readSrc('src/features/shipments/types.ts');
@@ -428,7 +482,7 @@ describe('P3-S5B1: types.ts — partial warehouse 类型', () => {
   });
 });
 
-// ─── 13. Schema 定义校验 ──────────────────────────────────────────────────────
+// ─── 14. Schema 定义校验 ──────────────────────────────────────────────────────
 
 describe('P3-S5B1: schema.ts — partial warehouse Zod schema', () => {
   const schemaSrc = readSrc('src/features/shipments/schema.ts');
@@ -463,7 +517,7 @@ describe('P3-S5B1: schema.ts — partial warehouse Zod schema', () => {
   });
 });
 
-// ─── 14. database.ts 类型同步 ─────────────────────────────────────────────────
+// ─── 15. database.ts 类型同步 ─────────────────────────────────────────────────
 
 describe('P3-S5B1: database.ts — 类型同步', () => {
   const dbSrc = readSrc('src/types/database.ts');
