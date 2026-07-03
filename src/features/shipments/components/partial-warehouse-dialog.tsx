@@ -4,7 +4,6 @@
 // status='customs' 时 Admin 可打开，输入每个 item 本次入仓数量
 // 调 partialWarehouseShipment Server Action（走 00026 RPC，不写 inventory）
 import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -26,6 +25,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   shipmentId: string;
   items: ShipmentItemDetail[];
+  /** PERF-S1D: 操作成功后的回调，用于父组件局部更新（替代 router.refresh()） */
+  onSuccess?: () => void;
 }
 
 interface ItemEntry {
@@ -38,8 +39,8 @@ export function PartialWarehouseDialog({
   onOpenChange,
   shipmentId,
   items,
+  onSuccess,
 }: Props) {
-  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -194,7 +195,7 @@ export function PartialWarehouseDialog({
 
       onOpenChange(false);
       resetForm();
-      router.refresh();
+      onSuccess?.();
     } catch {
       toast.error('确认入仓失败，请稍后重试');
     } finally {

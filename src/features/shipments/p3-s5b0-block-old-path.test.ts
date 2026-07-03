@@ -117,6 +117,13 @@ const DETAIL_PAGE = readFileSync(
   'utf-8',
 );
 
+// PERF-S1D: PartialWarehouseEntry / BigsellerAbsorptionButton / warehouseBlockReason
+// 已从 page.tsx 移至 ShipmentDetailClient
+const DETAIL_CLIENT = readFileSync(
+  resolve(process.cwd(), 'src/features/shipments/components/shipment-detail-client.tsx'),
+  'utf-8',
+);
+
 describe('P3-S5B0: 详情页不渲染旧版 WarehouseShipmentButton', () => {
   it('不导入 WarehouseShipmentButton', () => {
     expect(DETAIL_PAGE).not.toMatch(
@@ -129,16 +136,16 @@ describe('P3-S5B0: 详情页不渲染旧版 WarehouseShipmentButton', () => {
   });
 
   it('含 P3-S5B0 注释标记（旧入口封存说明）', () => {
-    expect(DETAIL_PAGE).toMatch(/P3-S5B0/);
+    expect(DETAIL_CLIENT).toMatch(/P3-S5B0/);
   });
 
   it('P3-S5B3: 导入 PartialWarehouseEntry 和 BigsellerAbsorptionButton', () => {
-    expect(DETAIL_PAGE).toMatch(/PartialWarehouseEntry/);
-    expect(DETAIL_PAGE).toMatch(/BigsellerAbsorptionButton/);
+    expect(DETAIL_CLIENT).toMatch(/PartialWarehouseEntry/);
+    expect(DETAIL_CLIENT).toMatch(/BigsellerAbsorptionButton/);
   });
 
   it('warehouseBlockReason 信息区块保留', () => {
-    expect(DETAIL_PAGE).toMatch(/warehouseBlockReason/);
+    expect(DETAIL_CLIENT).toMatch(/warehouseBlockReason/);
   });
 });
 

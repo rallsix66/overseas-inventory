@@ -3,8 +3,8 @@
 // P3-S5B3: 确认 BigSeller 吸收按钮
 // status='warehoused' 且 bigseller_absorbed_at IS NULL 时 Admin 可见
 // 二次确认后调用 confirmBigsellerAbsorption Server Action
+// PERF-S1D: 成功后通过本地状态隐藏自身 + onSuccess 回调触发父组件局部更新，不再 router.refresh()
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { confirmBigsellerAbsorption } from '@/features/shipments/actions';
@@ -20,13 +20,16 @@ import {
 
 interface Props {
   shipmentId: string;
+  /** PERF-S1D: 操作成功后的回调，用于父组件局部更新 */
+  onSuccess?: () => void;
 }
 
-export function BigsellerAbsorptionButton({ shipmentId }: Props) {
-  const router = useRouter();
+export function BigsellerAbsorptionButton({ shipmentId, onSuccess }: Props) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** PERF-S1D: 吸收确认后隐藏自身 */
+  const [absorbed, setAbsorbed] = useState(false);
 
   const handleConfirm = async () => {
     setError(null);
@@ -44,13 +47,17 @@ export function BigsellerAbsorptionButton({ shipmentId }: Props) {
 
       toast.success('已确认 BigSeller 吸收');
       setOpen(false);
-      router.refresh();
+      setAbsorbed(true);
+      onSuccess?.();
     } catch {
       toast.error('确认 BigSeller 吸收失败，请稍后重试');
     } finally {
       setSubmitting(false);
     }
   };
+
+  // PERF-S1D: 已确认吸收后不渲染按钮
+  if (absorbed) return null;
 
   return (
     <>

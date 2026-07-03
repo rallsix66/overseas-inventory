@@ -286,8 +286,10 @@ describe('P3-S5A: Migration 00023 — 入库操作', () => {
 
 // ─── 3. 详情页源码检查 ──────────────────────────────────────────────────────
 
+// PERF-S1D: PartialWarehouseEntry / BigsellerAbsorptionButton / warehouseBlockReason
+// 已从 page.tsx 移至 ShipmentDetailClient
 const DETAIL_PAGE = readFileSync(
-  resolve(process.cwd(), 'src/app/dashboard/shipments/[id]/page.tsx'),
+  resolve(process.cwd(), 'src/features/shipments/components/shipment-detail-client.tsx'),
   'utf-8',
 );
 

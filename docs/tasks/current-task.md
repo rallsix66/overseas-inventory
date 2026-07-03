@@ -2,11 +2,18 @@
 
 ## Task ID
 
-`PERF-S1B` — Repository / Server Action 接入 RPC
+`PERF-S1D` — 关键按钮局部更新，减少 router.refresh()
 
 ## 状态
 
-**DONE**（2026-07-03）。Repository（getOverseasList / getOverseasStats / getInTransitConfirmedAggregate）和 Actions（getOverseasInventory）已接入 Migration 00027 三个 RPC（`get_overseas_inventory` / `get_overseas_stats` / `get_in_transit_confirmed_aggregate`）。列表、统计、在途+已确认聚合三条 RPC 均已接入，N+1 按仓循环查询已消除。Migration 00027 已于 2026-07-03 执行并通过数据库侧 smoke 验证（三个 RPC 存在、SECURITY INVOKER、anon 拒绝、auth.uid() 绑定正确）。PERF-S1C 的聚合内容已并入本任务完成。下一步：PERF-S1D（关键按钮局部更新，减少 router.refresh()）或 PERF-S1E（质量门/文档收口），以设计文档最终调整为准。
+**DONE**（2026-07-03）。PERF-S1A/B/C 全部完成。PERF-S1D 已完成关键按钮局部更新：
+- **关注按钮**：移除 `router.refresh()`，仅乐观更新（`useOptimistic`），关注状态不改变库存数量/统计
+- **确认到仓**：`PartialWarehouseDialog` → `PartialWarehouseEntry` → `ShipmentDetailClient` 通过 `onSuccess` 回调链触发局部 `getShipmentDetail()` 刷新
+- **BigSeller 吸收**：本地 `absorbed` 状态隐藏按钮 + `onSuccess` 回调触发 `ShipmentDetailClient` 局部刷新
+- **批量入仓页**：已在 PERF-S1B 使用 `loadPage()` 局部刷新，无需修改
+- 新增 `ShipmentDetailClient` Client Component：管理在途详情页交互区（header + action buttons + items table）本地状态
+全量 2639/2639（63 文件），build pass，lint 5 errors / 25 warnings（all pre-existing），git diff --check pass。
+下一步：**PERF-S1E**（质量门/文档收口/性能验收）。
 
 ## 依赖
 
@@ -52,7 +59,7 @@
 ### 6. 不实现
 
 - 不修改 Migration 00027 内容
-- 不执行生产 Supabase Migration
+- 不再次执行 Migration（00027 已于 2026-07-03 在 Supabase 执行并通过数据库侧 smoke 验证）
 - 不修改页面 UI / Client Component
 - 不改变 inventory.quantity 业务口径
 - 不让 DIS 入仓流程写 inventory.quantity

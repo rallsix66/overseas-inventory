@@ -11,9 +11,11 @@ import type { ShipmentItemDetail } from '@/features/shipments/types';
 interface Props {
   shipmentId: string;
   items: ShipmentItemDetail[];
+  /** PERF-S1D: 操作成功后的回调，用于父组件局部更新 */
+  onSuccess?: () => void;
 }
 
-export function PartialWarehouseEntry({ shipmentId, items }: Props) {
+export function PartialWarehouseEntry({ shipmentId, items, onSuccess }: Props) {
   const [open, setOpen] = useState(false);
 
   const hasRemaining = items.some(
@@ -39,6 +41,7 @@ export function PartialWarehouseEntry({ shipmentId, items }: Props) {
         onOpenChange={setOpen}
         shipmentId={shipmentId}
         items={items}
+        onSuccess={onSuccess}
       />
     </>
   );

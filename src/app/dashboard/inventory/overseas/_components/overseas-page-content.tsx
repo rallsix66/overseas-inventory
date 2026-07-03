@@ -100,10 +100,11 @@ function StatCard({
 /**
  * P5-SY12: 星标关注按钮 — 乐观更新
  *
- * 阶段 B 不做仓库权限校验（阶段 D 才引入 user_warehouses）。
- * 点击切换关注/取消关注：
- * - 乐观更新即时切换 UI
- * - 成功：以服务端返回的 isFavorited 为准 + router.refresh()
+ * PERF-S1D: 移除 router.refresh()，仅乐观更新。关注状态不改变库存数量/统计/已确认到仓。
+ * toggleFavoriteAction 内 revalidatePath 已处理缓存失效，下次导航自动获取最新数据。
+ *
+ * - 乐观更新即时切换星标 UI
+ * - 成功：以服务端返回的 isFavorited 为准
  * - 失败：回滚乐观状态 + toast.error 提示
  */
 function FavoriteStar({
@@ -113,7 +114,6 @@ function FavoriteStar({
   variantId: string;
   initialFavorited: boolean;
 }) {
-  const router = useRouter();
   const [optimisticFavorited, setOptimisticFavorited] = useOptimistic(
     initialFavorited,
     (_state: boolean, next: boolean) => next
@@ -131,9 +131,8 @@ function FavoriteStar({
           toast.error(result.error ?? '关注操作失败');
           return;
         }
-        // 成功：以服务端返回为准更新本地状态，并刷新页面保证一致性
+        // 成功：以服务端返回为准更新本地状态
         setOptimisticFavorited(result.data!.isFavorited);
-        router.refresh();
       } catch {
         // 异常：回滚 + toast
         setOptimisticFavorited(!next);

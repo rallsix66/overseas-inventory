@@ -553,6 +553,11 @@ describe('P3-S6: 边界状态覆盖', () => {
 
   describe('详情页 — 边界状态', () => {
     const detailSrc = readPage('[id]/page.tsx');
+    // PERF-S1D: PartialWarehouseEntry / BigsellerAbsorptionButton / warehouseBlockReason
+    // 已从 page.tsx 移至 ShipmentDetailClient
+    const detailClientSrc = readPage(
+      '../../../features/shipments/components/shipment-detail-client.tsx',
+    );
 
     it('notFound 处理 — "在途记录不存在或无权访问"', () => {
       expect(detailSrc).toMatch(/在途记录不存在或无权访问/);
@@ -564,21 +569,21 @@ describe('P3-S6: 边界状态覆盖', () => {
     });
 
     it('已入仓 → 操作区隐藏', () => {
-      expect(detailSrc).toMatch(/isWarehoused/);
-      expect(detailSrc).toMatch(/!isWarehoused/);
+      expect(detailClientSrc).toMatch(/isWarehoused/);
+      expect(detailClientSrc).toMatch(/!isWarehoused/);
     });
 
     it('P3-S5B3: status=customs 时渲染 PartialWarehouseEntry', () => {
-      expect(detailSrc).toMatch(/status\s*===\s*'customs'/);
-      expect(detailSrc).toMatch(/PartialWarehouseEntry/);
+      expect(detailClientSrc).toMatch(/status\s*===\s*'customs'/);
+      expect(detailClientSrc).toMatch(/PartialWarehouseEntry/);
     });
 
     it('warehouseBlockReason — 未指定仓库文案', () => {
-      expect(detailSrc).toMatch(/该在途记录未指定仓库，无法入仓/);
+      expect(detailClientSrc).toMatch(/该在途记录未指定仓库，无法入仓/);
     });
 
     it('warehouseBlockReason — 非 customs 文案', () => {
-      expect(detailSrc).toMatch(/清关后方可确认入仓/);
+      expect(detailClientSrc).toMatch(/清关后方可确认入仓/);
     });
 
     it('error.tsx 存在', () => {
@@ -757,7 +762,11 @@ describe('P3-S6: 创建页面权限校验', () => {
 // ─── 8. 详情页 — P3-S5B3 双模式按钮收口验证 ────
 
 describe('P3-S6: 详情页入仓条件收口', () => {
-  const detailSrc = readPage('[id]/page.tsx');
+  // PERF-S1D: PartialWarehouseEntry / BigsellerAbsorptionButton / warehouseBlockReason
+  // 已从 page.tsx 移至 ShipmentDetailClient
+  const detailSrc = readPage(
+    '../../../features/shipments/components/shipment-detail-client.tsx',
+  );
 
   it('P3-S5B3: PartialWarehouseEntry 在 customs 时渲染', () => {
     expect(detailSrc).toMatch(/status\s*===\s*'customs'/);

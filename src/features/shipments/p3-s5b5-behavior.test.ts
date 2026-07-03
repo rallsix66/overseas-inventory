@@ -122,7 +122,9 @@ import { eligibleShipmentFiltersSchema } from '@/features/shipments/schema';
 // ============================================================================
 
 describe('P3-S5B5: 详情页双模式 — warehouseBlockReason', () => {
-  const detailSrc = readSrc('src/app/dashboard/shipments/[id]/page.tsx');
+  // PERF-S1D: warehouseBlockReason / PartialWarehouseEntry / BigsellerAbsorptionButton
+  // 已从 page.tsx 移至 ShipmentDetailClient
+  const detailSrc = readSrc('src/features/shipments/components/shipment-detail-client.tsx');
 
   describe('warehouseBlockReason 闭包逻辑', () => {
     it('!isAdmin → 返回 null（不显示阻止原因，也不渲染按钮）', () => {
