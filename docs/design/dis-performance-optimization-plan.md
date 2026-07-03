@@ -245,4 +245,5 @@ git diff --check
 
 - **2026-07-03**：计划创建。所有优化仅限于第一阶段（PERF-S1），第二阶段（PERF-S2）和第三阶段（PERF-S3）仅记录不实现。
 - **2026-07-03**：PERF-S1A 完成（两次返修）。Migration 00027 创建了三个 RPC（`get_overseas_inventory` / `get_overseas_stats` / `get_in_transit_confirmed_aggregate`）+ 79 项静态契约测试通过。未执行生产 Supabase Migration。存储于 `supabase/migrations/00027_overseas_inventory_performance_rpc.sql`。测试文件 `src/features/inventory/perf-s1a-migration.test.ts`。全量 2640/2640（63 文件），build pass，lint 5/26。
+- **2026-07-03**：PERF-S1B 完成。Repository（`getOverseasList` / `getOverseasStats` / `getInTransitConfirmedAggregate`）+ Actions（`getOverseasInventory`）已接入 00027 三个 RPC。`getOverseasList` 从 ~110 行 JS 全量过滤分页简化为 ~30 行 RPC 调用 + snake_case→camelCase 映射。`getOverseasStats` 从 JS 循环聚合改为 RPC 调用。`getOverseasInventory` 消除 `uniqueWarehouseIds.map(whId => getConfirmedWarehousedByWarehouse(whId))` N+1 循环，改为单次 `get_in_transit_confirmed_aggregate` RPC。`database.ts` 新增三个 RPC 函数签名。Migration 00027 未执行生产 Supabase。全量 2639/2639（63 文件），build pass，lint 5/26。
 - **第一阶段推荐从 PERF-S1A 开始**：先设计 RPC 并编写静态契约测试，确认 SQL 层正确后再接入 Repository。

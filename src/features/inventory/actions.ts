@@ -4,7 +4,6 @@
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { inventoryRepository } from './repository';
-import { shipmentRepository } from '@/features/shipments/repository';
 import { inventoryUpdateSchema, inventorySearchSchema } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } from './types';
@@ -13,8 +12,10 @@ import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } 
 export type { InventoryItem, OverseasStats, WarehouseOption } from './types';
 
 /**
- * 获取海外库存数据 — 统计、仓库列表、分页列表 + 当前用户关注状态 + P3-S2C 在途数量
- * + P3-S5B4 已确认到仓数量
+ * 获取海外库存数据 — PERF-S1B: 统计、仓库列表、分页列表 + 在途/已确认聚合
+ *
+ * 在途与已确认到仓由单次 RPC（get_in_transit_confirmed_aggregate）一次性聚合返回，
+ * 消除 N+1 按仓循环查询模式。
  * 查询失败时抛出错误，由页面 error.tsx 边界处理
  */
 export async function getOverseasInventory(filters: InventoryFilters): Promise<{
@@ -36,53 +37,52 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
 
   const userId = user.id;
 
-  // P3-S2D: 加载按仓库维度的在途聚合数据（与库存查询并行）
-  const whInTransitMap = await shipmentRepository.getInTransitByVariantAndWarehouse(userId);
+  // PERF-S1B: 单次 RPC 获取所有仓库的在途 + 已确认到仓聚合
+  const aggregateRows = await inventoryRepository.getInTransitConfirmedAggregate(userId);
 
-  // 从仓库维度在途 Map 计算 variant 总在途（供统计卡片使用）
+  // 从聚合结果构建三个数据结构
+  // whInTransitMap: variantId → Map<warehouseId, inTransitQty>（用于每行 inTransitQuantity）
+  const whInTransitMap = new Map<string, Map<string, number>>();
+  // variantTotalMap: variantId → totalInTransit（用于统计卡片）
   const variantTotalMap = new Map<string, number>();
-  for (const [variantId, whMap] of whInTransitMap) {
-    let total = 0;
-    for (const [, qty] of whMap) {
-      total += qty;
+  // confirmedMap: warehouseId → { variantId: confirmedQuantity }
+  const confirmedMap: Record<string, Record<string, number>> = {};
+
+  for (const row of aggregateRows) {
+    // 在途数据
+    if (row.in_transit_quantity > 0) {
+      let whMap = whInTransitMap.get(row.variant_id);
+      if (!whMap) {
+        whMap = new Map();
+        whInTransitMap.set(row.variant_id, whMap);
+      }
+      whMap.set(row.warehouse_id, row.in_transit_quantity);
+
+      variantTotalMap.set(
+        row.variant_id,
+        (variantTotalMap.get(row.variant_id) ?? 0) + row.in_transit_quantity,
+      );
     }
-    if (total > 0) variantTotalMap.set(variantId, total);
+
+    // 已确认到仓数据
+    if (row.confirmed_quantity > 0) {
+      if (!confirmedMap[row.warehouse_id]) {
+        confirmedMap[row.warehouse_id] = {};
+      }
+      confirmedMap[row.warehouse_id][row.variant_id] = row.confirmed_quantity;
+    }
   }
 
-  // getOverseasList 内部已完成：归档过滤 → 关注标记 → 排序（关注置顶）→ 分页
+  // getOverseasList 内部调用 get_overseas_inventory RPC（SQL 层过滤/排序/分页）
   const [stats, warehouses, result] = await Promise.all([
     inventoryRepository.getOverseasStats(userId, variantTotalMap),
     inventoryRepository.getOverseasWarehouses(),
     inventoryRepository.getOverseasList({ ...parsed.data, userId }),
   ]);
 
-  // P3-S2D: 按仓库维度合并在途数量到每个分页项
+  // 按仓库维度合并在途数量到每个分页项
   for (const item of result.data) {
     item.inTransitQuantity = whInTransitMap.get(item.variantId)?.get(item.warehouseId) ?? 0;
-  }
-
-  // P3-S5B4: 加载各仓库已确认到仓数量（并行查询所有出现过的仓库）
-  const confirmedMap: Record<string, Record<string, number>> = {};
-  const uniqueWarehouseIds = [...new Set(result.data.map((item) => item.warehouseId))];
-  if (uniqueWarehouseIds.length > 0) {
-    const confirmedResults = await Promise.all(
-      uniqueWarehouseIds.map(async (whId) => {
-        try {
-          const agg = await shipmentRepository.getConfirmedWarehousedByWarehouse(whId);
-          return { warehouseId: whId, agg };
-        } catch {
-          // 单仓查询失败不阻塞页面，返回空聚合
-          return { warehouseId: whId, agg: [] as { variantId: string; confirmedQuantity: number }[] };
-        }
-      }),
-    );
-    for (const { warehouseId, agg } of confirmedResults) {
-      const variantMap: Record<string, number> = {};
-      for (const { variantId, confirmedQuantity } of agg) {
-        variantMap[variantId] = confirmedQuantity;
-      }
-      confirmedMap[warehouseId] = variantMap;
-    }
   }
 
   return { stats, warehouses, result, confirmedMap };

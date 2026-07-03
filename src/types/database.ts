@@ -693,6 +693,37 @@ export type Database = {
         Args: Record<string, never>
         Returns: number
       }
+      /** PERF-S1A: 海外库存分页列表 RPC */
+      get_overseas_inventory: {
+        Args: {
+          p_user_id: string
+          p_country?: string | null
+          p_warehouse_id?: string | null
+          p_search?: string | null
+          p_stock_status?: string | null
+          p_favorited_only?: boolean
+          p_page?: number
+          p_page_size?: number
+        }
+        Returns: Record<string, unknown>
+      }
+      /** PERF-S1A: 海外库存统计 RPC */
+      get_overseas_stats: {
+        Args: {
+          p_user_id: string
+          p_country?: string | null
+          p_warehouse_id?: string | null
+        }
+        Returns: Record<string, unknown>
+      }
+      /** PERF-S1A: 在途 + 已确认到仓聚合 RPC */
+      get_in_transit_confirmed_aggregate: {
+        Args: {
+          p_user_id: string
+          p_warehouse_ids?: string[] | null
+        }
+        Returns: unknown[]
+      }
       update_user_role_protected: {
         Args: {
           p_target_user_id: string

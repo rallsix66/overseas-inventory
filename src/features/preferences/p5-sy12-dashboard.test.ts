@@ -299,18 +299,20 @@ describe('P5-SY12D — 海外库存关注排序', () => {
   const invRepoPath = path.resolve(process.cwd(), 'src/features/inventory/repository.ts');
   const invRepoSrc = fs.readFileSync(invRepoPath, 'utf-8');
 
-  it('getOverseasList 排序在分页前执行', () => {
+  it('getOverseasList — PERF-S1B: 排序/分页由 RPC SQL 层完成', () => {
     const fnBodyMatch = invRepoSrc.match(/async getOverseasList\([\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBodyMatch).not.toBeNull();
     const fnBody = fnBodyMatch![0];
-    const sortIdx = fnBody.indexOf('items.sort');
-    const sliceIdx = fnBody.indexOf('items.slice');
-    expect(sortIdx).toBeGreaterThan(0);
-    expect(sliceIdx).toBeGreaterThan(0);
-    expect(sortIdx).toBeLessThan(sliceIdx);
+    // 不再有 JS items.sort() 和 items.slice()
+    expect(fnBody).not.toMatch(/items\.sort/);
+    expect(fnBody).not.toMatch(/items\.slice/);
   });
 
-  it('getOverseasList 关注项排在最前', () => {
-    expect(invRepoSrc).toMatch(/items\.sort\([\s\S]*isFavorited[\s\S]*quantity/);
+  it('getOverseasList — 关注置顶排序由 RPC ORDER BY 保障', () => {
+    // 迁移 00027 RPC 内置 ORDER BY is_favorited DESC, quantity ASC
+    const fnBodyMatch = invRepoSrc.match(/async getOverseasList\([\s\S]*?^\s{2}\},?\s*$/m);
+    expect(fnBodyMatch).not.toBeNull();
+    const fnBody = fnBodyMatch![0];
+    expect(fnBody).toMatch(/\.rpc\(['"]get_overseas_inventory['"]/);
   });
 });

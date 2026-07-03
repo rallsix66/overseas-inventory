@@ -92,28 +92,29 @@ describe('P5-SY13A — inventoryRepository 仓库过滤', () => {
     expect(src).toMatch(/from ['"]@\/features\/warehouse-access\/repository['"]/);
   });
 
-  it('getOverseasList 调用 getAccessibleWarehouseIds', () => {
-    expect(src).toMatch(/getAccessibleWarehouseIds/);
+  it('getOverseasList — PERF-S1B: 仓库隔离由 RPC SQL 层完成（get_user_role + get_assigned_warehouse_ids）', () => {
+    // getOverseasList 调用 RPC，仓库隔离在 SQL 层完成，不再 JS 层过滤
+    expect(src).toMatch(/\.rpc\(['"]get_overseas_inventory['"]/);
+    // 不再出现 JS 层 accessibleWhIds 过滤
+    const fnBody = src.match(/async getOverseasList[\s\S]*?^\s{2}\},?\s*$/m);
+    if (fnBody) {
+      expect(fnBody[0]).not.toMatch(/accessibleWhIds/);
+    }
   });
 
-  it('getOverseasList 按 warehouseId 过滤（空分配→空结果）', () => {
-    expect(src).toMatch(/accessibleWhIds\.has\(.*warehouseId\)/);
-    // P5-SY13A rework: 禁止 size > 0 守卫模式
-    expect(src).not.toMatch(/accessibleWhIds\.size\s*>\s*0\s*&&\s*!accessibleWhIds\.has/);
-  });
-
-  it('getLowStock 调用 getAccessibleWarehouseIds', () => {
-    // Count occurrences — should appear at least twice (once in getOverseasList, once in getLowStock or getOverseasStats)
+  it('getLowStock 仍调用 getAccessibleWarehouseIds（未接入 RPC）', () => {
+    // getLowStock 保持 JS 层仓库过滤，getAccessibleWarehouseIds 仍被使用
     const matches = src.match(/getAccessibleWarehouseIds/g);
     expect(matches).not.toBeNull();
-    expect(matches!.length).toBeGreaterThanOrEqual(2);
+    expect(matches!.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('getOverseasStats 调用 getAccessibleWarehouseIds + 排除不可访问仓库（空分配→跳过所有行）', () => {
-    expect(src).toMatch(/accessibleWhIds.*getAccessibleWarehouseIds/);
-    expect(src).toMatch(/!accessibleWhIds\.has\(.*warehouse_id\)/);
-    // P5-SY13A rework: 禁止 size > 0 守卫模式
-    expect(src).not.toMatch(/accessibleWhIds\.size\s*>\s*0\s*&&/);
+  it('getOverseasStats — PERF-S1B: 仓库隔离由 RPC SQL 层完成，不再 JS 层过滤', () => {
+    // getOverseasStats 调用 RPC，仓库隔离在 SQL 层完成
+    const fnBody = src.match(/async getOverseasStats[\s\S]*?^\s{2}\},?\s*$/m);
+    if (fnBody) {
+      expect(fnBody[0]).not.toMatch(/accessibleWhIds/);
+    }
   });
 });
 

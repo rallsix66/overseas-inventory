@@ -20,19 +20,24 @@ describe('P3-S5B4: 海外库存"已确认到仓"列 — 数据层', () => {
     expect(actionsSrc).toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
   });
 
-  it('getOverseasInventory 调用 getConfirmedWarehousedByWarehouse 聚合', () => {
-    expect(actionsSrc).toMatch(/getConfirmedWarehousedByWarehouse/);
+  it('getOverseasInventory — PERF-S1B: 调用 getInTransitConfirmedAggregate 替代 N+1', () => {
+    expect(actionsSrc).toMatch(/getInTransitConfirmedAggregate/);
+    // 不再出现旧的 N+1 循环模式
+    expect(actionsSrc).not.toMatch(/uniqueWarehouseIds/);
+    expect(actionsSrc).not.toMatch(/getConfirmedWarehousedByWarehouse/);
   });
 
-  it('getOverseasInventory 对每仓并行查询已确认数据', () => {
-    expect(actionsSrc).toMatch(/Promise\.all/);
-    expect(actionsSrc).toMatch(/uniqueWarehouseIds\.map/);
+  it('getOverseasInventory — confirmedMap 从 aggregate 结果构建', () => {
+    // 单次 RPC 后从 aggregateRows 构建 confirmedMap
+    expect(actionsSrc).toMatch(/confirmedMap\[row\.warehouse_id\]/);
+    expect(actionsSrc).toMatch(/row\.confirmed_quantity/);
   });
 
-  it('getOverseasInventory 单仓失败不阻塞页面', () => {
-    // catch 块返回空聚合
-    expect(actionsSrc).toMatch(/catch/);
-    expect(actionsSrc).toMatch(/agg:\s*\[\]/);
+  it('getOverseasInventory — 聚合 RPC 失败由 repository throw，不再 per-warehouse catch', () => {
+    // 不再有 per-warehouse catch + 空 agg 降级
+    // 单次 RPC 失败由 repository 抛出中文错误
+    const invRepoSrc = readSrc('src/features/inventory/repository.ts');
+    expect(invRepoSrc).toMatch(/async getInTransitConfirmedAggregate/);
   });
 
   it('page.tsx 传递 confirmedMap 到 OverseasPageContent', () => {
@@ -394,9 +399,9 @@ describe('P3-S5B4: 架构合规检查', () => {
     expect(batchCompSrc).toMatch(/getShipmentDetail/);
   });
 
-  it('已确认到仓数据通过 getOverseasInventory action 获取', () => {
+  it('已确认到仓数据 — PERF-S1B: 通过 getInTransitConfirmedAggregate 一次性获取', () => {
     const actionsSrc = readSrc('src/features/inventory/actions.ts');
-    expect(actionsSrc).toMatch(/getConfirmedWarehousedByWarehouse/);
-    // repository 调用封装在 action 内，不暴露给组件
+    expect(actionsSrc).toMatch(/getInTransitConfirmedAggregate/);
+    // 单次 RPC 聚合替代 N+1 循环，action 内不暴露给组件直接调用
   });
 });

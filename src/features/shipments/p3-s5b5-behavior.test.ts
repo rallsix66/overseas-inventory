@@ -419,18 +419,19 @@ describe('P3-S5B5: validateEntry 校验逻辑', () => {
 describe('P3-S5B5: 海外库存 confirmedMap', () => {
   const actionsSrc = readSrc('src/features/inventory/actions.ts');
 
-  describe('confirmedMap 构建', () => {
-    it('uniqueWarehouseIds 从 result.data 提取去重 warehouseId', () => {
-      expect(actionsSrc).toMatch(/uniqueWarehouseIds.*new Set\(result\.data\.map/);
+  describe('confirmedMap 构建 — PERF-S1B: 由单次 RPC 聚合', () => {
+    it('调用 inventoryRepository.getInTransitConfirmedAggregate（替代 N+1 循环）', () => {
+      expect(actionsSrc).toMatch(/getInTransitConfirmedAggregate/);
     });
 
-    it('Promise.all 并行查询所有仓库', () => {
-      expect(actionsSrc).toMatch(/Promise\.all\(/);
-      expect(actionsSrc).toMatch(/uniqueWarehouseIds\.map/);
+    it('不再出现 uniqueWarehouseIds / getConfirmedWarehousedByWarehouse（N+1 已消除）', () => {
+      expect(actionsSrc).not.toMatch(/uniqueWarehouseIds/);
+      expect(actionsSrc).not.toMatch(/getConfirmedWarehousedByWarehouse/);
     });
 
-    it('调用 shipmentRepository.getConfirmedWarehousedByWarehouse', () => {
-      expect(actionsSrc).toMatch(/getConfirmedWarehousedByWarehouse/);
+    it('confirmedMap 从 aggregateRows 构建（warehouse_id → variant_id → confirmed_quantity）', () => {
+      expect(actionsSrc).toMatch(/confirmedMap\[row\.warehouse_id\]/);
+      expect(actionsSrc).toMatch(/row\.confirmed_quantity/);
     });
 
     it('confirmedMap 类型：Record<string, Record<string, number>>', () => {
@@ -442,17 +443,15 @@ describe('P3-S5B5: 海外库存 confirmedMap', () => {
     });
   });
 
-  describe('单仓失败隔离', () => {
-    it('单个仓库查询失败 → catch 返回空 agg，不 rethrow', () => {
-      expect(actionsSrc).toMatch(/catch/);
-      expect(actionsSrc).toMatch(/agg:\s*\[\]/);
-      // 关键：catch 块中无 throw，仅返回空数组
-      const fnStart = actionsSrc.indexOf('uniqueWarehouseIds.map');
-      const fnEnd = actionsSrc.indexOf('for (const { warehouseId');
-      const fnBody = actionsSrc.slice(fnStart, fnEnd);
-      // catch returns { warehouseId: whId, agg: [] } — no throw
-      const catchBlock = fnBody.slice(fnBody.indexOf('catch'));
-      expect(catchBlock).not.toMatch(/throw/);
+  describe('单仓失败隔离 — PERF-S1B: 单次 RPC，整体失败→throw', () => {
+    it('getInTransitConfirmedAggregate 失败时由 repository 抛出 ShipmentError', () => {
+      // 不再有 per-warehouse catch，单次 RPC 失败整个操作失败
+      const invRepoSrc = readSrc('src/features/inventory/repository.ts');
+      const fnStart = invRepoSrc.indexOf('async getInTransitConfirmedAggregate(');
+      const fnEnd = invRepoSrc.indexOf('};', fnStart);
+      const fnBody = invRepoSrc.slice(fnStart, fnEnd);
+      // RPC error 被捕获并转换为中文错误
+      expect(fnBody).toMatch(/throw new Error/);
     });
 
     it('失败仓库在 confirmedMap 中为 undefined（不存在该 key）', () => {

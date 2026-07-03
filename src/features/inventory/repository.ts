@@ -4,6 +4,8 @@
 // P5-SY11G: 归档过滤已从全局 product_variant.is_archived 迁移为用户级 user_variant_preference。
 // 海外库存列表/低库存/统计按当前用户归档偏好过滤；产品详情页不过滤。
 // P5-SY13A: operator 海外库存/低库存/统计按已分配仓库过滤。
+// PERF-S1B: 海外库存列表/统计/在途+已确认聚合已接入 Migration 00027 的 RPC（get_overseas_inventory /
+//           get_overseas_stats / get_in_transit_confirmed_aggregate），移除 JS 全量过滤分页和 N+1 查询。
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
 import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
@@ -13,9 +15,58 @@ import type { PaginatedResult } from '@/types/common';
 const PAGE_SIZE = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ---- 类型 ----
+
+/** get_overseas_inventory RPC 返回的原始行（snake_case） */
+interface RawOverseasInventoryRow {
+  id: string;
+  variant_id: string;
+  warehouse_id: string;
+  quantity: number;
+  last_sync_at: string | null;
+  sku: string;
+  country: string;
+  match_status: string;
+  product_name: string | null;
+  product_code: string | null;
+  safety_stock: number;
+  warehouse_name: string;
+  warehouse_type: string;
+  is_favorited: boolean;
+}
+
+/** get_in_transit_confirmed_aggregate RPC 返回的原始行（snake_case） */
+interface RawAggregateRow {
+  warehouse_id: string;
+  variant_id: string;
+  in_transit_quantity: number;
+  confirmed_quantity: number;
+}
+
 // ---- 工具 ----
 
-/** 获取当前用户已归档的 Variant ID 集合 */
+/** snake_case → camelCase 映射一条 RPC 返回行 */
+function mapOverseasRow(row: RawOverseasInventoryRow): InventoryItem {
+  return {
+    id: row.id,
+    variantId: row.variant_id,
+    warehouseId: row.warehouse_id,
+    quantity: row.quantity,
+    lastSyncAt: row.last_sync_at,
+    productName: row.product_name ?? null,
+    productCode: row.product_code ?? null,
+    sku: row.sku ?? '',
+    country: row.country ?? '',
+    warehouseName: row.warehouse_name ?? '',
+    warehouseType: row.warehouse_type ?? '',
+    safetyStock: row.safety_stock ?? 0,
+    matchStatus: row.match_status ?? 'unmatched',
+    isFavorited: row.is_favorited ?? false,
+    inTransitQuantity: 0,
+  };
+}
+
+/** 获取当前用户已归档的 Variant ID 集合（getLowStock 仍使用 JS 全量查询） */
 async function getUserArchivedVariantIds(userId: string | undefined): Promise<Set<string>> {
   if (!userId) return new Set();
 
@@ -28,24 +79,6 @@ async function getUserArchivedVariantIds(userId: string | undefined): Promise<Se
 
   if (error) {
     throw new Error(`查询归档偏好失败: ${error.message}`);
-  }
-
-  return new Set((data ?? []).map((r) => r.variant_id));
-}
-
-/** 获取当前用户已关注的 Variant ID 集合 */
-async function getUserFavoritedVariantIds(userId: string | undefined): Promise<Set<string>> {
-  if (!userId) return new Set();
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('user_variant_preference')
-    .select('variant_id')
-    .eq('user_id', userId)
-    .eq('preference_type', 'favorited');
-
-  if (error) {
-    throw new Error(`查询关注偏好失败: ${error.message}`);
   }
 
   return new Set((data ?? []).map((r) => r.variant_id));
@@ -120,121 +153,43 @@ export const inventoryRepository = {
   },
 
   /**
-   * 海外库存分页列表 — MVP 临时实现
+   * 海外库存分页列表 — PERF-S1B: 调用 get_overseas_inventory RPC
    *
-   * 当前数据规模较小，先获取全部海外库存基础数据，
-   * 在服务器 JS 层统一执行搜索、库存状态筛选和用户归档过滤，筛选完成后再分页。
-   * 数据量增大后改为数据库 RPC 函数。
+   * 将 country/warehouse/search/stock_status/favorited_only 筛选、
+   * 归档排除、仓库隔离、排序、分页全部下推到 SQL 层完成。
+   * 不再全量读取后在 JS 层过滤分页。
    */
   async getOverseasList(filters: InventoryFilters = {}): Promise<PaginatedResult<InventoryItem>> {
     const supabase = await createClient();
     const { country, stockStatus, search, page = 1, pageSize = PAGE_SIZE, warehouseId, userId } = filters;
 
-    // 获取当前用户已归档 / 已关注 Variant ID 集合
-    const [archivedVariantIds, favoritedVariantIds] = await Promise.all([
-      getUserArchivedVariantIds(userId),
-      getUserFavoritedVariantIds(userId),
-    ]);
-
-    // 加载全部海外库存数据（仅 warehouse.type = 'overseas'）
-    // 不再使用 variant.is_archived 过滤；归档过滤在 JS 层基于 user_variant_preference 完成
-    let query = supabase.from('inventory').select(
-      `id, variant_id, warehouse_id, quantity, last_sync_at,
-       variant:variant_id!inner (sku, country, match_status, product:product_id (name, code, safety_stock)),
-       warehouse:warehouse_id!inner (name, type)`
-    ).eq('warehouse.type', 'overseas');
-
-    // 简单 eq 筛选下推到 Supabase（减少数据传输量）
-    if (warehouseId) {
-      query = query.eq('warehouse_id', warehouseId);
+    if (!userId) {
+      return { data: [], total: 0, page, pageSize };
     }
 
-    const { data, error } = await query.order('quantity', { ascending: true });
+    const { data: rpcResult, error } = await supabase.rpc('get_overseas_inventory', {
+      p_user_id: userId,
+      p_country: country ?? null,
+      p_warehouse_id: warehouseId ?? null,
+      p_search: search || null,
+      p_stock_status: stockStatus ?? null,
+      p_favorited_only: false,
+      p_page: page,
+      p_page_size: pageSize,
+    });
 
     if (error) {
       throw new Error(`海外库存查询失败: ${error.message}`);
     }
 
-    if (!data || data.length === 0) {
-      return { data: [], total: 0, page, pageSize };
+    const raw = rpcResult as { data: RawOverseasInventoryRow[]; total: number } | null;
+    if (!raw || !raw.data || raw.data.length === 0) {
+      return { data: [], total: raw?.total ?? 0, page, pageSize };
     }
 
-    // JS 兜底：排除 variant 为 null 或当前用户已归档的 inventory 行
-    // 使用 row.variant_id（inventory 自带），variant join 的 select 不含 id
-    const activeData = data.filter((row) => {
-      const v = unwrapJoin<{ sku?: string }>(row.variant);
-      if (!v) return false;
-      return !archivedVariantIds.has(row.variant_id);
-    });
+    const items: InventoryItem[] = raw.data.map(mapOverseasRow);
 
-    // 解包关联数据为扁平结构
-    let items: InventoryItem[] = activeData.map((row) => {
-      const variant = unwrapJoin<{ sku: string; country: string; match_status: string; product: unknown }>(row.variant);
-      const product = unwrapJoin<{ name: string; code: string; safety_stock: number }>(variant?.product);
-      const warehouse = unwrapJoin<{ name: string; type: string }>(row.warehouse);
-
-      return {
-        id: row.id,
-        variantId: row.variant_id,
-        warehouseId: row.warehouse_id,
-        quantity: row.quantity as number,
-        lastSyncAt: row.last_sync_at,
-        productName: product?.name ?? null,
-        productCode: product?.code ?? null,
-        sku: variant?.sku ?? '',
-        country: variant?.country ?? '',
-        warehouseName: warehouse?.name ?? '',
-        warehouseType: warehouse?.type ?? '',
-        safetyStock: product?.safety_stock ?? 0,
-        matchStatus: variant?.match_status ?? 'unmatched',
-        isFavorited: favoritedVariantIds.has(row.variant_id),
-        inTransitQuantity: 0,
-      };
-    });
-
-    // JS 层国家筛选
-    if (country) {
-      items = items.filter((item) => item.country === country);
-    }
-
-    // P5-SY13A: 按已分配仓库过滤（admin 返回全部，operator 仅已分配；空分配→空结果）
-    if (userId) {
-      const accessibleWhIds = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
-      items = items.filter((item) => accessibleWhIds.has(item.warehouseId));
-    }
-
-    // JS 层搜索筛选
-    if (search) {
-      const s = search.toLowerCase();
-      items = items.filter(
-        (item) =>
-          item.sku.toLowerCase().includes(s) ||
-          (item.productName?.toLowerCase().includes(s) ?? false)
-      );
-    }
-
-    // JS 层库存状态筛选
-    if (stockStatus) {
-      items = items.filter((item) => {
-        if (stockStatus === 'out_of_stock') return item.quantity === 0;
-        if (stockStatus === 'low') {
-          return item.matchStatus === 'matched' && item.quantity > 0 && item.quantity <= item.safetyStock;
-        }
-        if (stockStatus === 'normal') {
-          return item.matchStatus === 'matched' && item.quantity > item.safetyStock;
-        }
-        return true;
-      });
-    }
-
-    // 关注产品置顶，其次保持原本的库存数量升序。
-    items.sort((a, b) => Number(b.isFavorited) - Number(a.isFavorited) || a.quantity - b.quantity);
-
-    const total = items.length;
-    const pagedFrom = (page - 1) * pageSize;
-    const paged = items.slice(pagedFrom, pagedFrom + pageSize);
-
-    return { data: paged, total, page, pageSize };
+    return { data: items, total: raw.total, page, pageSize };
   },
 
   /** 获取低库存列表（用于 Dashboard 缺货清单，排除当前用户已归档 Variant） */
@@ -352,31 +307,18 @@ export const inventoryRepository = {
   },
 
   /**
-   * 海外库存统计 — MVP 临时实现
+   * 海外库存统计 — PERF-S1B: 调用 get_overseas_stats RPC
    *
-   * 低库存按唯一 SKU 计数，仅统计已匹配且 quantity > 0 且 <= safety_stock 的 SKU。
-   * 未匹配 Product 的 SKU 不参与低库存统计。
-   * 排除当前用户已归档 Variant。
-   * 数据量增大后改为数据库 RPC 函数。
+   * 基础统计（SKU 数/总量/低库存数/最后同步时间）由 RPC 在 SQL 层聚合完成。
+   * 在途统计由调用方通过 inTransitMap 传入后在此计算（不修改 RPC）。
    */
   async getOverseasStats(
     userId?: string,
     inTransitMap?: Map<string, number>,
   ): Promise<OverseasStats> {
     const supabase = await createClient();
-    const archivedVariantIds = await getUserArchivedVariantIds(userId);
 
-     const { data, error } = await supabase.from('inventory').select(
-       `id, quantity, last_sync_at, variant_id, warehouse_id,
-        variant:variant_id!inner (product_id, product:product_id (safety_stock)),
-        warehouse:warehouse_id!inner (type)`
-     ).eq('warehouse.type', 'overseas');
-
-    if (error) {
-      throw new Error(`海外库存统计查询失败: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) {
+    if (!userId) {
       return {
         totalQuantity: 0,
         skuCount: 0,
@@ -387,50 +329,40 @@ export const inventoryRepository = {
       };
     }
 
-    // P5-SY13A: 获取已分配仓库 ID
-    let accessibleWhIds: Set<string> | null = null;
-    if (userId) {
-      accessibleWhIds = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+    const { data: rpcResult, error } = await supabase.rpc('get_overseas_stats', {
+      p_user_id: userId,
+      p_country: null,
+      p_warehouse_id: null,
+    });
+
+    if (error) {
+      throw new Error(`海外库存统计查询失败: ${error.message}`);
     }
 
-    let totalQuantity = 0;
-    const skuSet = new Set<string>();
-    const lowStockSkus = new Set<string>();
-    let lastSyncAt: string | null = null;
+    const raw = rpcResult as {
+      total_skus: number;
+      total_quantity: number;
+      low_stock_count: number;
+      last_sync_at: string | null;
+    } | null;
 
-    for (const row of data) {
-      // JS 兜底：排除 variant 为 null 或当前用户已归档的 inventory 行
-      const variantRaw = unwrapJoin<{ product: unknown }>(row.variant);
-      if (!variantRaw) continue;
-
-      // P5-SY13A: 排除非已分配仓库的 inventory 行（空分配→跳过所有行）
-      if (accessibleWhIds && !accessibleWhIds.has(row.warehouse_id)) continue;
-
-      // 排除当前用户已归档的 Variant
-      if (row.variant_id && archivedVariantIds.has(row.variant_id)) continue;
-
-      totalQuantity += (row.quantity as number) ?? 0;
-      if (row.variant_id) skuSet.add(row.variant_id);
-
-      const product = unwrapJoin<{ safety_stock: number }>(variantRaw?.product);
-      if (product && (row.quantity as number) > 0 && (row.quantity as number) <= product.safety_stock) {
-        lowStockSkus.add(row.variant_id);
-      }
-
-      if (row.last_sync_at) {
-        if (!lastSyncAt || row.last_sync_at > lastSyncAt) {
-          lastSyncAt = row.last_sync_at;
-        }
-      }
+    if (!raw) {
+      return {
+        totalQuantity: 0,
+        skuCount: 0,
+        lowStockCount: 0,
+        lastSyncAt: null,
+        inTransitSkuCount: 0,
+        inTransitTotalQuantity: 0,
+      };
     }
 
-    // P3-S2C: 从预聚合的在途 Map 中计算在途统计
+    // 在途统计：聚合 RPC 已做仓库隔离，inTransitMap 只含本用户可访问仓库的在途数据
     let inTransitSkuCount = 0;
     let inTransitTotalQuantity = 0;
     if (inTransitMap && inTransitMap.size > 0) {
-      for (const [variantId, qty] of inTransitMap) {
-        // 在途只统计海外库存中存在的 Variant（与显示数据一致）
-        if (skuSet.has(variantId) && qty > 0) {
+      for (const [, qty] of inTransitMap) {
+        if (qty > 0) {
           inTransitSkuCount++;
           inTransitTotalQuantity += qty;
         }
@@ -438,10 +370,10 @@ export const inventoryRepository = {
     }
 
     return {
-      totalQuantity,
-      skuCount: skuSet.size,
-      lowStockCount: lowStockSkus.size,
-      lastSyncAt,
+      totalQuantity: raw.total_quantity,
+      skuCount: raw.total_skus,
+      lowStockCount: raw.low_stock_count,
+      lastSyncAt: raw.last_sync_at,
       inTransitSkuCount,
       inTransitTotalQuantity,
     };
@@ -467,5 +399,37 @@ export const inventoryRepository = {
       name: w.name,
       country: w.country,
     }));
+  },
+
+  /**
+   * PERF-S1B: 在途 + 已确认到仓聚合 — 调用 get_in_transit_confirmed_aggregate RPC
+   *
+   * 一次 RPC 返回所有仓库的 (warehouse_id, variant_id, in_transit_quantity, confirmed_quantity)
+   * 四元组。替代原来的 getInTransitByVariantAndWarehouse（全量 shipment → JS 聚合）+
+   * getConfirmedWarehousedByWarehouse（N+1 按仓库循环查询）。
+   *
+   * 口径：
+   *   - 在途 = 非 warehoused shipment 的 SUM(quantity - warehoused_quantity)
+   *   - 已确认到仓 = SUM(warehoused_quantity) WHERE
+   *       status='customs' OR (status='warehoused' AND bigseller_absorbed_at IS NULL)
+   *   - 不读/写 inventory.quantity
+   */
+  async getInTransitConfirmedAggregate(
+    userId: string,
+    warehouseIds?: string[],
+  ): Promise<RawAggregateRow[]> {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase.rpc('get_in_transit_confirmed_aggregate', {
+      p_user_id: userId,
+      p_warehouse_ids: warehouseIds ?? null,
+    });
+
+    if (error) {
+      throw new Error(`查询在途与已确认到仓聚合失败: ${error.message}`);
+    }
+
+    const rows = data as RawAggregateRow[] | null;
+    return rows ?? [];
   },
 };

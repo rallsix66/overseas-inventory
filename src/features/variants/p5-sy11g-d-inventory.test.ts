@@ -163,18 +163,14 @@ describe('P5-SY11G-D 返工 — getOverseasList 使用 row.variant_id', () => {
     }
   });
 
-  it('getOverseasList variant join 不含 id，使用 row.variant_id 兜底', () => {
-    // 确认 select 中 variant join 确实不含 id
+  it('getOverseasList — PERF-S1B: 归档过滤由 RPC SQL 层处理，不再 JS 层 variant join', () => {
+    // getOverseasList 调用 get_overseas_inventory RPC，归档排除在 SQL 层完成
+    expect(repoSrc).toMatch(/\.rpc\(['"]get_overseas_inventory['"]/);
+    // 不再出现 variant:variant_id!inner 的 Supabase join 语法
     const fnBody = repoSrc.match(/async getOverseasList[\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBody).not.toBeNull();
     if (fnBody) {
-      // select 的 variant join 部分不应包含 id: 等字段（仅 sku/country/match_status/product）
-      const selectStmt = fnBody[0].match(/variant:variant_id!inner\s*\(([^)]+)\)/);
-      expect(selectStmt).not.toBeNull();
-      if (selectStmt) {
-        // 不包含 id 字段（只有 sku, country, match_status, product）
-        expect(selectStmt[1]).not.toMatch(/\bid\b/);
-      }
+      expect(fnBody[0]).not.toMatch(/variant:variant_id!inner/);
     }
   });
 
@@ -220,14 +216,14 @@ describe('P5-SY11G-D 返工 — 多用户隔离', () => {
     expect(repoSrc).toContain("'user_id', userId");
   });
 
-  it('filter 条件仅依赖当前用户的 archivedVariantIds', () => {
+  it('filter 条件 — PERF-S1B: 归档过滤由 RPC 内 user_variant_preference JOIN 完成', () => {
     const repoSrc = fs.readFileSync(INVENTORY_REPO_PATH, 'utf-8');
-    // 每个 getOverseasList 调用传入各自 userId，生成独立 archivedVariantIds
+    // getOverseasList 传入 p_user_id，RPC 内部按 user_variant_preference 过滤
     const fnBody = repoSrc.match(/async getOverseasList[\s\S]*?^\s{2}\},?\s*$/m);
     expect(fnBody).not.toBeNull();
     if (fnBody) {
-      // archivedVariantIds 通过 getUserArchivedVariantIds(userId) 获取
-      expect(fnBody[0]).toMatch(/getUserArchivedVariantIds\s*\(\s*userId/);
+      // RPC 调用包含 p_user_id 参数
+      expect(fnBody[0]).toMatch(/p_user_id/);
     }
   });
 });
