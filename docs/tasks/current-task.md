@@ -2,11 +2,11 @@
 
 ## Task ID
 
-`P3-S5B4` — 批量入仓 UI + 海外库存"已确认到仓"列
+`P3-S5B5` — 应用行为测试 + 文档同步 + 质量门
 
 ## 状态
 
-**DONE**（2026-07-02，P3-S5B0/B1/B2/B3/B4 全部完成，2026-07-02 返修完成）
+**DONE**（2026-07-03，P3-S5B0~B5 全部完成）
 
 ## 依赖
 
@@ -14,6 +14,8 @@
 - P3-S5B1 DONE（Migration 00026 + types/schema + 93 项静态测试。Migration 00026 已执行并验证）
 - P3-S5B2 DONE（Repository 5 方法 + Actions 3 函数 + 87 项测试。聚合口径已修复 — 仅纳入 customs 或 warehoused + bigseller_absorbed_at IS NULL）
 - P3-S5B3 DONE（详情页双模式按钮 + PartialWarehouseDialog + BigsellerAbsorptionButton + 收口返修）
+- P3-S5B4 DONE（批量入仓 UI + 海外库存"已确认到仓"列 + 返修完成）
+- P3-S5B5 DONE（2026-07-03，应用行为测试 + 文档同步 + 质量门）
 
 ## 范围（已完成）
 
@@ -56,21 +58,21 @@
 - 不写 inventory.quantity
 - 不调旧 00023 RPC
 - 不新增 Migration
-- 不实现应用行为测试（P3-S5B5）
 - 不把 BigSeller 同步库存和 DIS 到仓进度混成同一事实来源
 
 ## 下一步
 
-P3-S5B5 — 应用行为测试 + 文档同步 + 质量门（依赖 P3-S5B4 ✅）
+P3-S5B 全部完成。下一模块待用户确认。
 
 ## 质量门
 
-P3-S5B4 通过（含 2026-07-02 返修）：
-- shipments 890/890（14 文件，p3-s5b4-batch-warehouse.test.ts 从 61 → 70 项：+6 Zod schema + 1 schema import + 1 safeParse 校验失败 + 1 表头 13 列断言）
-- 全量 2452/2452（61 文件）
+P3-S5B5 通过（2026-07-03）：
+- 新增 `p3-s5b5-behavior.test.ts`（108 项应用行为测试：详情页双模式 23 + batchWarehousingAction mock 9 + validateEntry 9 + confirmedMap 12 + 安全边界 30 + 边界状态 12 + Zod schema 10 + 列数一致性 3 + 权限审计 6）
+- shipments 999/999（15 文件）
+- 全量 2561/2561（62 文件）
 - build pass
-- lint 5 errors / 26 warnings（all pre-existing, smoke-test-00025.ts）
-- git diff --check pass（LF/CRLF only）
+- lint 5 errors / 26 warnings（all pre-existing）
+- git diff --check pass
 
 ## 当前业务口径
 
