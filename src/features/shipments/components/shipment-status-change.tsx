@@ -22,9 +22,11 @@ const STATUS_LABELS: Record<string, string> = {
 interface Props {
   shipmentId: string;
   currentStatus: string;
+  /** PERF-S1D: 操作成功后的回调，用于父组件局部更新（替代 router.refresh()） */
+  onSuccess?: () => void;
 }
 
-export function ShipmentStatusChange({ shipmentId, currentStatus }: Props) {
+export function ShipmentStatusChange({ shipmentId, currentStatus, onSuccess }: Props) {
   const [open, setOpen] = useState(false);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -53,6 +55,7 @@ export function ShipmentStatusChange({ shipmentId, currentStatus }: Props) {
       toast.success(`物流状态已变更为「${STATUS_LABELS[nextValidStatus] ?? nextValidStatus}」`);
       setOpen(false);
       setDescription('');
+      onSuccess?.();
     } catch {
       toast.error('状态变更失败，请稍后重试');
     } finally {

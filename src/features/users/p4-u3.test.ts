@@ -239,15 +239,19 @@ describe('P4-U3 UserDetailSheet 集成', () => {
     expect(sheet).toContain('setRoleDialogOpen');
   });
 
-  it('角色修改成功后关闭 Sheet 并调用 router.refresh()', () => {
+  it('角色修改成功后局部刷新用户详情 + 通知父组件刷新列表', () => {
     const body = extractFnBody(sheet, 'UserDetailSheet');
     expect(body).toContain('handleRoleChangeSuccess');
     // 关闭 dialog
     expect(body).toContain('setRoleDialogOpen(false)');
-    // 关闭 sheet
-    // 刷新页面
-    expect(sheet).toContain('router.refresh()');
-    expect(sheet).toContain("import { useRouter } from 'next/navigation'");
+    // P4-UX: 不再关闭 Sheet、不整页刷新
+    expect(sheet).not.toMatch(/router\.refresh\(\)/);
+    expect(sheet).not.toMatch(/import \{ useRouter \} from 'next\/navigation'/);
+    // P4-UX: 通过 getUserById 局部刷新用户详情
+    expect(body).toMatch(/getUserById\(userId\)/);
+    // P4-UX: 通过 onUserChanged 通知父组件刷新列表
+    expect(sheet).toContain('onUserChanged?: () => void');
+    expect(body).toContain('onUserChanged?.()');
   });
 
   it('不出现启用/禁用相关按钮或文案', () => {

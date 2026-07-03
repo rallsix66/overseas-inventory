@@ -220,12 +220,18 @@ describe('P4-U4 UserDetailSheet 集成', () => {
     expect(sheet).toContain('setToggleDialogOpen');
   });
 
-  it('启用/禁用成功后关闭 Sheet 并调用 router.refresh()', () => {
+  it('启用/禁用成功后局部刷新用户详情 + 通知父组件刷新列表', () => {
     const body = extractFnBody(sheet, 'UserDetailSheet');
     expect(body).toContain('handleToggleSuccess');
     expect(body).toContain('setToggleDialogOpen(false)');
-    expect(sheet).toContain('router.refresh()');
-    expect(sheet).toContain("import { useRouter } from 'next/navigation'");
+    // P4-UX: 不再整页刷新
+    expect(sheet).not.toMatch(/router\.refresh\(\)/);
+    expect(sheet).not.toMatch(/import \{ useRouter \} from 'next\/navigation'/);
+    // P4-UX: 通过 getUserById 局部刷新用户详情
+    expect(body).toMatch(/getUserById\(userId\)/);
+    // P4-UX: 通过 onUserChanged 通知父组件刷新列表
+    expect(sheet).toContain('onUserChanged?: () => void');
+    expect(body).toContain('onUserChanged?.()');
   });
 
   it('UserActiveToggleDialog 与 UserRoleChangeDialog 共存', () => {

@@ -2,8 +2,9 @@
 
 // P4-U2: 用户列表 — 客户端交互层
 // 处理筛选、表格渲染、分页导航和行详情触发
+// P4-UX: 管理本地 users/total 状态，用户变更后局部刷新列表而非整页刷新
 // 查询错误由 error.tsx 边界处理，本组件不渲染查询错误状态
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Select,
@@ -23,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { UserDetailSheet } from '@/features/users/components/user-detail-sheet';
+import { listUsers } from '@/features/users/actions';
 import type { UserItem } from '@/features/users/types';
 
 interface Filters {
@@ -51,7 +53,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function UsersPageContent({
   data,
-  total,
+  total: initialTotal,
   page,
   pageSize,
   filters,
@@ -59,8 +61,31 @@ export function UsersPageContent({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // P4-UX: 本地 state，初始值来自服务端 props；变更后通过 listUsers 局部刷新
+  const [users, setUsers] = useState<UserItem[]>(data);
+  const [localTotal, setLocalTotal] = useState<number>(initialTotal);
+  const totalPages = Math.max(1, Math.ceil(localTotal / pageSize));
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  // P4-UX: 服务端 props 变更时同步本地 state（筛选/分页导航后覆盖旧数据）
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- props → 本地 state 同步是设计意图
+    setUsers(data);
+    setLocalTotal(initialTotal);
+  }, [data, initialTotal]);
+
+  // P4-UX: 用户变更后通过 listUsers 局部刷新当前页列表
+  const handleUserChanged = useCallback(async () => {
+    const roleId = filters.role && filters.role !== 'all' ? filters.role : undefined;
+    const isActive =
+      filters.status === 'active' ? true : filters.status === 'disabled' ? false : undefined;
+    const result = await listUsers({ roleId, isActive, page, pageSize });
+    if (result.success && result.data) {
+      setUsers(result.data.data);
+      setLocalTotal(result.data.total);
+    }
+  }, [filters.role, filters.status, page, pageSize]);
 
   const updateFilter = (key: string, value: string | null) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -113,7 +138,7 @@ export function UsersPageContent({
       </div>
 
       {/* 空数据 */}
-      {data.length === 0 ? (
+      {users.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground text-sm">
           暂无匹配的用户
         </div>
@@ -132,7 +157,7 @@ export function UsersPageContent({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((u) => (
+              {users.map((u) => (
                 <TableRow
                   key={u.id}
                   className="cursor-pointer hover:bg-gray-50"
@@ -170,7 +195,7 @@ export function UsersPageContent({
           {/* 分页 */}
           <div className="flex items-center justify-between mt-4">
             <span className="text-sm text-muted-foreground">
-              共 {total} 条，第 {page}/{totalPages} 页
+              共 {localTotal} 条，第 {page}/{totalPages} 页
             </span>
             <div className="flex gap-2">
               <Button
@@ -200,6 +225,7 @@ export function UsersPageContent({
           userId={selectedUserId}
           roles={roles}
           onClose={() => setSelectedUserId(null)}
+          onUserChanged={handleUserChanged}
         />
       )}
     </div>

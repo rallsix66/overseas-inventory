@@ -4,8 +4,8 @@
 // 通过 getUserById Server Action 获取单个用户详情
 // P4-U3 新增"修改角色"按钮，调用 updateUserRole action
 // P4-U4 新增"启用/禁用"按钮，通过 UserActiveToggleDialog 提交
+// P4-UX: 操作成功后局部刷新用户详情 + 通知父组件刷新列表（替代整页 router refresh）
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   Sheet,
   SheetContent,
@@ -29,6 +29,8 @@ interface Props {
   userId: string;
   onClose: () => void;
   roles: RoleOption[];
+  /** P4-UX: 用户变更后通知父组件刷新列表 */
+  onUserChanged?: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -36,24 +38,39 @@ const ROLE_LABELS: Record<string, string> = {
   operator: '运营',
 };
 
-export function UserDetailSheet({ userId, onClose, roles }: Props) {
-  const router = useRouter();
+export function UserDetailSheet({ userId, onClose, roles, onUserChanged }: Props) {
   const [user, setUser] = useState<UserItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [toggleDialogOpen, setToggleDialogOpen] = useState(false);
 
-  const handleRoleChangeSuccess = () => {
+  const handleRoleChangeSuccess = async () => {
     setRoleDialogOpen(false);
-    onClose();
-    router.refresh();
+    // P4-UX: 局部刷新用户详情，不关闭 Sheet，不整页刷新
+    try {
+      const result = await getUserById(userId);
+      if (result.success && result.data) {
+        setUser(result.data);
+      }
+    } catch {
+      // 重新获取失败不做额外处理，旧数据已可见
+    }
+    onUserChanged?.();
   };
 
-  const handleToggleSuccess = () => {
+  const handleToggleSuccess = async () => {
     setToggleDialogOpen(false);
-    onClose();
-    router.refresh();
+    // P4-UX: 局部刷新用户详情，不关闭 Sheet，不整页刷新
+    try {
+      const result = await getUserById(userId);
+      if (result.success && result.data) {
+        setUser(result.data);
+      }
+    } catch {
+      // 重新获取失败不做额外处理，旧数据已可见
+    }
+    onUserChanged?.();
   };
 
   useEffect(() => {

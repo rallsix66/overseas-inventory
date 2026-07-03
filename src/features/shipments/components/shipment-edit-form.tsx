@@ -31,9 +31,11 @@ interface Props {
   shipment: ShipmentDetail;
   warehouses: WarehouseSelectorItem[];
   isAdmin: boolean;
+  /** PERF-S1D: 操作成功后的回调，用于父组件局部更新（替代 router.refresh()） */
+  onSuccess?: () => void;
 }
 
-export function ShipmentEditForm({ shipment, warehouses, isAdmin }: Props) {
+export function ShipmentEditForm({ shipment, warehouses, isAdmin, onSuccess }: Props) {
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -88,6 +90,7 @@ export function ShipmentEditForm({ shipment, warehouses, isAdmin }: Props) {
       }
       toast.success('在途信息已更新');
       setEditing(false);
+      onSuccess?.();
     } catch {
       toast.error('更新失败，请稍后重试');
     } finally {
@@ -102,7 +105,21 @@ export function ShipmentEditForm({ shipment, warehouses, isAdmin }: Props) {
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => setEditing(true)}
+          onClick={() => {
+            // PERF-S1D 返修: 进入编辑态前用最新 shipment props 重置表单字段，
+            // 避免 refreshShipment 后本地 state 仍显示旧值
+            setShipmentNo(shipment.shipment_no ?? '');
+            setPurchaseOrderNo(shipment.purchase_order_no ?? '');
+            setVesselName(shipment.vessel_name ?? '');
+            setVoyageNumber(shipment.voyage_number ?? '');
+            setOriginPort(shipment.origin_port ?? '');
+            setDestinationPort(shipment.destination_port ?? '');
+            setCountry(shipment.country ?? '');
+            setWarehouseId(shipment.warehouse_id ?? '');
+            setEstimatedArrival(shipment.estimated_arrival ?? '');
+            setNote(shipment.note ?? '');
+            setEditing(true);
+          }}
           aria-label="编辑基本信息"
         >
           <PencilIcon className="size-3.5 mr-1" />

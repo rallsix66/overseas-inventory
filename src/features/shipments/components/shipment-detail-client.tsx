@@ -104,10 +104,12 @@ export function ShipmentDetailClient({ initialShipment, isAdmin, warehouses }: P
             shipment={shipment}
             warehouses={warehouses}
             isAdmin={isAdmin}
+            onSuccess={refreshShipment}
           />
           <ShipmentStatusChange
             shipmentId={shipment.id}
             currentStatus={shipment.status}
+            onSuccess={refreshShipment}
           />
           {/* P3-S5B3: 双模式确认到仓按钮（Admin + customs + 已分配仓库 → 全额/部分） */}
           {shipment.status === 'customs' && shipment.warehouse_id && (

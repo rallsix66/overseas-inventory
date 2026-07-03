@@ -131,9 +131,13 @@ describe('P4-U2 页面架构合规', () => {
     expect(content).not.toContain('service_role');
   });
 
-  it('users-page-content.tsx 不导入 actions（数据由 page 层传入）', () => {
-    // Content 组件接收 props，不自行调用 Server Actions
-    expect(content).not.toContain("from '@/features/users/actions'");
+  it('users-page-content.tsx 仅导入 listUsers 用于局部刷新（P4-UX），不导入其他 actions', () => {
+    // P4-UX: 用户变更后通过 listUsers 局部刷新列表
+    expect(content).toContain("import { listUsers } from '@/features/users/actions'");
+    // 不导入 getUserById / updateUserRole / toggleUserActive 等 Sheet 内部 actions
+    expect(content).not.toContain('getUserById');
+    expect(content).not.toContain('updateUserRole');
+    expect(content).not.toContain('toggleUserActive');
   });
 });
 
@@ -266,8 +270,8 @@ describe('P4-U2 UI 状态', () => {
 
   it('空数据时显示提示信息', () => {
     expect(content).toContain('暂无匹配的用户');
-    // data.length === 0 分支
-    expect(content).toContain('data.length === 0');
+    // P4-UX: 使用本地 users state 判断空数据
+    expect(content).toContain('users.length === 0');
   });
 
   it('包含分页控件：上一页 / 下一页 + 总条数 + 当前页信息', () => {
@@ -422,5 +426,65 @@ describe('P4-U2 不破坏 P4-U1', () => {
     const body = extractFnBody(repo, 'countByRole');
     expect(body).toContain("from('role')");
     expect(body).not.toMatch(/\.eq\(['"]role\.name/);
+  });
+});
+
+// ─── 9. P4-UX 局部刷新收口 ─────────────────────────────────────
+
+describe('P4-UX 局部刷新收口', () => {
+  let content: string;
+  let sheet: string;
+
+  beforeAll(() => {
+    content = readSrc('app/dashboard/users/_components/users-page-content.tsx');
+    sheet = readSrc('features/users/components/user-detail-sheet.tsx');
+  });
+
+  it('UsersPageContent 导入 useEffect 用于 props → 本地 state 同步', () => {
+    expect(content).toContain('import { useCallback, useEffect, useState }');
+  });
+
+  it('UsersPageContent 使用 useEffect 将 data/initialTotal 同步到本地 state', () => {
+    // useEffect(() => { setUsers(data); setLocalTotal(initialTotal); }, [data, initialTotal])
+    expect(content).toContain('useEffect');
+    expect(content).toContain('setUsers(data)');
+    expect(content).toContain('setLocalTotal(initialTotal)');
+    expect(content).toContain('[data, initialTotal]');
+  });
+
+  it('UserDetailSheet 不导入 useRouter / 不调用 router.refresh()', () => {
+    expect(sheet).not.toMatch(/import \{ useRouter \} from 'next\/navigation'/);
+    expect(sheet).not.toMatch(/router\.refresh\(\)/);
+  });
+
+  it('UserDetailSheet 导入 getUserById 用于局部刷新用户详情', () => {
+    expect(sheet).toContain('getUserById');
+    expect(sheet).toContain("import { getUserById } from '@/features/users/actions'");
+  });
+
+  it('UserDetailSheet 定义 onUserChanged 可选 prop 并在成功后调用', () => {
+    const body = extractFnBody(sheet, 'UserDetailSheet');
+    expect(sheet).toContain('onUserChanged?: () => void');
+    expect(body).toContain('onUserChanged?.()');
+  });
+
+  it('UsersPageContent 仅导入 listUsers（不导入 getUserById / updateUserRole / toggleUserActive）', () => {
+    expect(content).toContain("import { listUsers } from '@/features/users/actions'");
+    expect(content).not.toContain('getUserById');
+    expect(content).not.toContain('updateUserRole');
+    expect(content).not.toContain('toggleUserActive');
+  });
+
+  it('UsersPageContent handleUserChanged 使用 listUsers + useCallback 局部刷新', () => {
+    expect(content).toContain('handleUserChanged');
+    expect(content).toContain('useCallback');
+    expect(content).toContain('listUsers');
+  });
+
+  it('UsersPageContent 仍使用 useRouter 仅用于筛选/分页导航（非 refresh）', () => {
+    // useRouter 存在，但仅用于 router.push 导航，不调用 router.refresh()
+    expect(content).toContain('useRouter');
+    expect(content).toContain('router.push');
+    expect(content).not.toMatch(/router\.refresh\(\)/);
   });
 });

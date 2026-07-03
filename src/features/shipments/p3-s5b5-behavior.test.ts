@@ -232,7 +232,79 @@ describe('P3-S5B5: 详情页双模式 — warehouseBlockReason', () => {
       expect(detailSrc).toMatch(/清关后方可确认入仓/);
     });
   });
+
+  // PERF-S1D: 四个详情页操作组件均通过 onSuccess 接入局部刷新
+  describe('PERF-S1D: 局部刷新回调接入', () => {
+    it('ShipmentDetailClient 传入 ShipmentEditForm onSuccess={refreshShipment}', () => {
+      expect(detailSrc).toMatch(/<ShipmentEditForm[\s\S]*?onSuccess={refreshShipment}/);
+    });
+
+    it('ShipmentDetailClient 传入 ShipmentStatusChange onSuccess={refreshShipment}', () => {
+      expect(detailSrc).toMatch(/<ShipmentStatusChange[\s\S]*?onSuccess={refreshShipment}/);
+    });
+
+    it('ShipmentDetailClient 传入 PartialWarehouseEntry onSuccess={refreshShipment}', () => {
+      expect(detailSrc).toMatch(/<PartialWarehouseEntry[\s\S]*?onSuccess={refreshShipment}/);
+    });
+
+    it('ShipmentDetailClient 传入 BigsellerAbsorptionButton onSuccess={refreshShipment}', () => {
+      expect(detailSrc).toMatch(/<BigsellerAbsorptionButton[\s\S]*?onSuccess={refreshShipment}/);
+    });
+
+    it('ShipmentEditForm 类型含 onSuccess 可选回调', () => {
+      const editSrc = readSrc('src/features/shipments/components/shipment-edit-form.tsx');
+      expect(editSrc).toMatch(/onSuccess\?\s*:\s*\(\)\s*=>\s*void/);
+    });
+
+    it('ShipmentEditForm 成功后调用 onSuccess?.()', () => {
+      const editSrc = readSrc('src/features/shipments/components/shipment-edit-form.tsx');
+      expect(editSrc).toMatch(/onSuccess\?\.\(\)/);
+    });
+
+    it('ShipmentEditForm 进入编辑态时从最新 shipment props 重置所有表单字段', () => {
+      const editSrc = readSrc('src/features/shipments/components/shipment-edit-form.tsx');
+      // 断言 onClick 中重置 shipmentNo / country / warehouseId 等字段
+      expect(editSrc).toMatch(/setShipmentNo\(shipment\.shipment_no/);
+      expect(editSrc).toMatch(/setCountry\(shipment\.country/);
+      expect(editSrc).toMatch(/setWarehouseId\(shipment\.warehouse_id/);
+      expect(editSrc).toMatch(/setEstimatedArrival\(shipment\.estimated_arrival/);
+      expect(editSrc).toMatch(/setNote\(shipment\.note/);
+      // 重置必须在 setEditing(true) 之前
+      const editBtnOnClick = editSrc.match(/onClick=\{\(\)\s*=>\s*\{[\s\S]*?setEditing\(true\)/);
+      expect(editBtnOnClick).toBeTruthy();
+    });
+
+    it('ShipmentStatusChange 类型含 onSuccess 可选回调', () => {
+      const statusSrc = readSrc('src/features/shipments/components/shipment-status-change.tsx');
+      expect(statusSrc).toMatch(/onSuccess\?\s*:\s*\(\)\s*=>\s*void/);
+    });
+
+    it('ShipmentStatusChange 成功后调用 onSuccess?.()', () => {
+      const statusSrc = readSrc('src/features/shipments/components/shipment-status-change.tsx');
+      expect(statusSrc).toMatch(/onSuccess\?\.\(\)/);
+    });
+
+    it('PartialWarehouseEntry 类型含 onSuccess 可选回调（保持不退化）', () => {
+      const entrySrc = readSrc('src/features/shipments/components/partial-warehouse-entry.tsx');
+      expect(entrySrc).toMatch(/onSuccess\?\s*:\s*\(\)\s*=>\s*void/);
+    });
+
+    it('BigsellerAbsorptionButton 类型含 onSuccess 可选回调（保持不退化）', () => {
+      const absorptionSrc = readSrc('src/features/shipments/components/bigseller-absorption-button.tsx');
+      expect(absorptionSrc).toMatch(/onSuccess\?\s*:\s*\(\)\s*=>\s*void/);
+    });
+
+    it('ShipmentDetailClient 使用 getShipmentDetail 实现 refreshShipment', () => {
+      expect(detailSrc).toMatch(/getShipmentDetail\(/);
+    });
+
+    it('refreshShipment 通过 useCallback 稳定引用', () => {
+      expect(detailSrc).toMatch(/useCallback\(/);
+      expect(detailSrc).toMatch(/refreshShipment/);
+    });
+  });
 });
+
 
 // ============================================================================
 // 2. 批量入仓页 — listEligibleForBatchWarehousingAction mock 行为
