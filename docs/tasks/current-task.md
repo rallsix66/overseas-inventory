@@ -6,7 +6,7 @@
 
 ## 状态
 
-**DONE**（2026-07-03）。Repository（getOverseasList / getOverseasStats / getInTransitConfirmedAggregate）和 Actions（getOverseasInventory）已接入 Migration 00027 三个 RPC。Migration 00027 未执行生产 Supabase。下一步 PERF-S1C。
+**DONE**（2026-07-03）。Repository（getOverseasList / getOverseasStats / getInTransitConfirmedAggregate）和 Actions（getOverseasInventory）已接入 Migration 00027 三个 RPC（`get_overseas_inventory` / `get_overseas_stats` / `get_in_transit_confirmed_aggregate`）。列表、统计、在途+已确认聚合三条 RPC 均已接入，N+1 按仓循环查询已消除。Migration 00027 已于 2026-07-03 执行并通过数据库侧 smoke 验证（三个 RPC 存在、SECURITY INVOKER、anon 拒绝、auth.uid() 绑定正确）。PERF-S1C 的聚合内容已并入本任务完成。下一步：PERF-S1D（关键按钮局部更新，减少 router.refresh()）或 PERF-S1E（质量门/文档收口），以设计文档最终调整为准。
 
 ## 依赖
 
@@ -60,7 +60,7 @@
 
 ## 下一步
 
-**PERF-S1C**：合并在途 + 已确认到仓聚合，消除 `getConfirmedWarehousedByWarehouse` 按仓库循环查询。
+**PERF-S1D**：关键按钮局部更新，减少 `router.refresh()`（关注/入仓等按钮去整页刷新，改为局部状态更新）。PERF-S1C 的聚合内容（合并在途 + 已确认到仓聚合、消除按仓循环查询）已并入 PERF-S1B 完成。不引入 `revalidateTag` 除非先设计缓存边界。
 
 ## 质量门
 

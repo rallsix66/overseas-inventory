@@ -13,7 +13,6 @@ import type { InventoryItem, InventoryFilters, OverseasStats, WarehouseOption } 
 import type { PaginatedResult } from '@/types/common';
 
 const PAGE_SIZE = 20;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---- 类型 ----
 

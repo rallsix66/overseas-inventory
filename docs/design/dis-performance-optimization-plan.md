@@ -193,13 +193,14 @@
 - Repository 内部契约不变（仍返回 `PaginatedResult<InventoryItem>` / `OverseasStats`）
 - **不修改 UI 组件**
 
-### PERF-S1C：合并在途 + 已确认到仓聚合
+### PERF-S1C：合并在途 + 已确认到仓聚合（已并入 PERF-S1B）
 
-- `getInTransitByVariantAndWarehouse` 逻辑移入 RPC
-- `getConfirmedWarehousedByWarehouse` 循环查询改为单次 RPC 返回全仓聚合
-- `getOverseasInventory` 去除 `uniqueWarehouseIds.map(whId => ...)` 循环
-- 口径不变：仅 customs 或 warehoused + bigseller_absorbed_at IS NULL
-- **确认在途/已确认数与原 JS 聚合完全一致**
+- `getInTransitByVariantAndWarehouse` 逻辑移入 RPC ✅（PERF-S1B 已完成）
+- `getConfirmedWarehousedByWarehouse` 循环查询改为单次 RPC 返回全仓聚合 ✅（PERF-S1B 已完成）
+- `getOverseasInventory` 去除 `uniqueWarehouseIds.map(whId => ...)` 循环 ✅（PERF-S1B 已完成）
+- 口径不变：仅 customs 或 warehoused + bigseller_absorbed_at IS NULL ✅
+- **已确认在途/已确认数与原 JS 聚合完全一致** ✅
+- **状态**：已并入 PERF-S1B，不再独立执行。
 
 ### PERF-S1D：关键按钮局部更新，减少 router.refresh()
 
@@ -208,6 +209,7 @@
 - BigSeller 吸收确认：Button 关闭后局部更新 shipment 状态
 - 批量入仓页：提交后仅刷新当前页数据，不触发整页重渲染
 - **不改权限校验和 Repository 契约**
+- **不引入 `revalidateTag`**，除非先完成缓存边界设计；Supabase client 查询不是普通 Next fetch tag 缓存
 
 ### PERF-S1E：质量门、文档同步、性能验收
 
@@ -244,6 +246,7 @@ git diff --check
 ## 六、当前决策记录
 
 - **2026-07-03**：计划创建。所有优化仅限于第一阶段（PERF-S1），第二阶段（PERF-S2）和第三阶段（PERF-S3）仅记录不实现。
-- **2026-07-03**：PERF-S1A 完成（两次返修）。Migration 00027 创建了三个 RPC（`get_overseas_inventory` / `get_overseas_stats` / `get_in_transit_confirmed_aggregate`）+ 79 项静态契约测试通过。未执行生产 Supabase Migration。存储于 `supabase/migrations/00027_overseas_inventory_performance_rpc.sql`。测试文件 `src/features/inventory/perf-s1a-migration.test.ts`。全量 2640/2640（63 文件），build pass，lint 5/26。
-- **2026-07-03**：PERF-S1B 完成。Repository（`getOverseasList` / `getOverseasStats` / `getInTransitConfirmedAggregate`）+ Actions（`getOverseasInventory`）已接入 00027 三个 RPC。`getOverseasList` 从 ~110 行 JS 全量过滤分页简化为 ~30 行 RPC 调用 + snake_case→camelCase 映射。`getOverseasStats` 从 JS 循环聚合改为 RPC 调用。`getOverseasInventory` 消除 `uniqueWarehouseIds.map(whId => getConfirmedWarehousedByWarehouse(whId))` N+1 循环，改为单次 `get_in_transit_confirmed_aggregate` RPC。`database.ts` 新增三个 RPC 函数签名。Migration 00027 未执行生产 Supabase。全量 2639/2639（63 文件），build pass，lint 5/26。
+- **2026-07-03**：PERF-S1A 完成（两次返修）。Migration 00027 创建了三个 RPC（`get_overseas_inventory` / `get_overseas_stats` / `get_in_transit_confirmed_aggregate`）+ 79 项静态契约测试通过。已于 2026-07-03 执行并通过数据库侧 smoke 验证（三个 RPC 存在、SECURITY INVOKER、anon 拒绝、auth.uid() 绑定正确）。存储于 `supabase/migrations/00027_overseas_inventory_performance_rpc.sql`。测试文件 `src/features/inventory/perf-s1a-migration.test.ts`。全量 2640/2640（63 文件），build pass，lint 5/26。
+- **2026-07-03**：PERF-S1B 完成。Repository（`getOverseasList` / `getOverseasStats` / `getInTransitConfirmedAggregate`）+ Actions（`getOverseasInventory`）已接入 00027 三个 RPC。`getOverseasList` 从 ~110 行 JS 全量过滤分页简化为 ~30 行 RPC 调用 + snake_case→camelCase 映射。`getOverseasStats` 从 JS 循环聚合改为 RPC 调用。`getOverseasInventory` 消除 `uniqueWarehouseIds.map(whId => getConfirmedWarehousedByWarehouse(whId))` N+1 循环，改为单次 `get_in_transit_confirmed_aggregate` RPC。`database.ts` 新增三个 RPC 函数签名。Migration 00027 已于 2026-07-03 执行并通过数据库侧 smoke 验证。全量 2639/2639（63 文件），build pass，lint 5/26。
+- **2026-07-03**：PERF-S1B 收口返修。PERF-S1C 的聚合内容（合并在途 + 已确认到仓聚合、消除 N+1 按仓循环查询）已确认并入 PERF-S1B 完成。`get_in_transit_confirmed_aggregate` RPC 已覆盖原 PERF-S1C 范围：单次 RPC 返回所有仓库的 (warehouse_id, variant_id, in_transit_quantity, confirmed_quantity) 四元组，替代了 `getInTransitByVariantAndWarehouse`（全量 shipment → JS 聚合）+ `getConfirmedWarehousedByWarehouse`（N+1 按仓循环）。下一步聚焦 PERF-S1D（关键按钮局部更新）或 PERF-S1E（质量门/文档收口）。
 - **第一阶段推荐从 PERF-S1A 开始**：先设计 RPC 并编写静态契约测试，确认 SQL 层正确后再接入 Repository。
