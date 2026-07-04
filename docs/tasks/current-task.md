@@ -6,7 +6,7 @@
 
 ## 状态
 
-**DONE**（2026-07-04，2026-07-04 RPC 返修完成）。`inventoryRepository.getLowStock()` 已从 JS 全量过滤改为调用 Migration 00028 `get_low_stock` RPC。SQL 层完成归档排除、仓库隔离、`quantity <= safety_stock` 过滤、gap 计算、`ORDER BY gap DESC, quantity ASC`、`LIMIT p_limit`，确保 limit 只作用在"当前用户可见、未归档、真实低库存"的结果集之后。
+**DONE**（2026-07-04，2026-07-04 RPC 返修完成，2026-07-04 runtime smoke test 通过）。`inventoryRepository.getLowStock()` 已从 JS 全量过滤改为调用 Migration 00028 `get_low_stock` RPC。SQL 层完成归档排除、仓库隔离、`quantity <= safety_stock` 过滤、gap 计算、`ORDER BY gap DESC, quantity ASC`、`LIMIT p_limit`，确保 limit 只作用在"当前用户可见、未归档、真实低库存"的结果集之后。Migration 00028 已在 Supabase SQL Editor 手动执行并验证（`is_security_definer=false`、`authenticated EXECUTE=true`、`anon EXECUTE=false`）。Dashboard 首页低库存汇总区正常渲染，无 function not found / schema cache 错误。
 
 ### 背景
 
@@ -65,6 +65,8 @@
 | JS 层过滤全部移除 | ✅ |
 | Dashboard 调用方不变 | ✅ |
 | 返回类型仍为 Promise<InventoryItem[]> | ✅ |
+| Migration 00028 手动执行并验证（runtime smoke test 通过） | ✅ |
+| Dashboard 首页低库存汇总区正常渲染，无 function not found 错误 | ✅ |
 
 ### 禁止事项（已遵守）
 
