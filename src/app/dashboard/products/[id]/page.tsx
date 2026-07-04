@@ -18,10 +18,13 @@ export default async function ProductDetailPage({
 }) {
   const { id } = await params;
 
-  const user = await getCurrentUser();
-  const isAdmin = user?.roleName === 'admin';
+  // PERF-C2B: getCurrentUser() 与 productRepository.getById(id) 互不依赖，并行执行
+  const [user, product] = await Promise.all([
+    getCurrentUser(),
+    productRepository.getById(id),
+  ]);
 
-  const product = await productRepository.getById(id);
+  const isAdmin = user?.roleName === 'admin';
 
   if (!product) {
     notFound();

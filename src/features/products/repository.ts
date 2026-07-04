@@ -154,27 +154,29 @@ export const productRepository = {
     }
     if (!product) return null;
 
-    // 获取关联 SKU 列表
-    const { data: variants, error: vError } = await supabase
-      .from('product_variant')
-      .select('id, sku, country, name, match_status, last_sync_at')
-      .eq('product_id', id)
-      .order('country');
+    // PERF-C2B: variants 和 inventory 只依赖 product id，并行查询
+    const [variantsResult, inventoryResult] = await Promise.all([
+      supabase
+        .from('product_variant')
+        .select('id, sku, country, name, match_status, last_sync_at')
+        .eq('product_id', id)
+        .order('country'),
+      supabase
+        .from('inventory')
+        .select(
+          `id, quantity, last_sync_at,
+           variant:variant_id!inner (sku, country),
+           warehouse:warehouse_id (name)`
+        )
+        .eq('variant.product_id', id),
+    ]);
 
+    const { data: variants, error: vError } = variantsResult;
     if (vError) {
       throw new ProductError('查询产品关联 SKU 失败', 'DB_ERROR');
     }
 
-    // 获取各仓库存
-    const { data: inventoryRows, error: iError } = await supabase
-      .from('inventory')
-      .select(
-        `id, quantity, last_sync_at,
-         variant:variant_id!inner (sku, country),
-         warehouse:warehouse_id (name)`
-      )
-      .eq('variant.product_id', id);
-
+    const { data: inventoryRows, error: iError } = inventoryResult;
     if (iError) {
       throw new ProductError('查询产品库存失败', 'DB_ERROR');
     }

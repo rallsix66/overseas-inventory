@@ -16,14 +16,15 @@ export default async function ProductsPage({
   searchParams: Promise<{ search?: string; page?: string }>;
 }) {
   const sp = await searchParams;
-  const user = await getCurrentUser();
-  const isAdmin = user?.roleName === 'admin';
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const result = await productRepository.list({
-    search: sp.search,
-    page,
-  });
+  // PERF-C2B: getCurrentUser() 与 productRepository.list() 互不依赖，并行执行
+  const [user, result] = await Promise.all([
+    getCurrentUser(),
+    productRepository.list({ search: sp.search, page }),
+  ]);
+
+  const isAdmin = user?.roleName === 'admin';
 
   return (
     <ProductsPageContent

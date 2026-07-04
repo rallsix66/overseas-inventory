@@ -2,7 +2,7 @@
 
 ## Task ID
 
-`PERF-C2A` — 海外库存 getOverseasInventory 查询编排优化
+`PERF-C2B` — 产品页查询编排优化
 
 ## 状态
 
@@ -10,77 +10,73 @@
 
 ### 背景
 
-PERF-C1（Dashboard 首页并行重排）已完成。Phase C 第二轮只优化 `src/features/inventory/actions.ts#getOverseasInventory` 的查询编排，不处理产品页。当前实现中 `getInTransitConfirmedAggregate` 先串行完成，然后才并行 `getOverseasStats` / `getOverseasWarehouses` / `getOverseasList`。优化目标：`getOverseasWarehouses` 和 `getOverseasList` 不依赖 aggregate 结果，应与 aggregate 提前并行启动。
+PERF-C1（Dashboard 首页并行重排）和 PERF-C2A（海外库存 getOverseasInventory 查询编排）已完成。本轮只优化产品相关页面的数据加载编排：产品列表页、产品详情页、productRepository.getById。
 
 ### 实现
 
-**src/features/inventory/actions.ts：**
+**src/app/dashboard/products/page.tsx（产品列表页）：**
+- `searchParams` 仍先 await 解析
+- `page` 计算后，`getCurrentUser()` 与 `productRepository.list(...)` 通过 `Promise.all` 并行执行（两者互不依赖）
+- `isAdmin = user?.roleName === 'admin'` 语义不变
+- 传给 `ProductsPageContent` 的 props 不变
 
-- 新增 `seal<T>(p)` helper：为提前启动的 Promise 附加 noop `.catch()`，防止 `await aggregatePromise` 抛错时其余 promise 产生 unhandledRejection
-- 重构 `getOverseasInventory(filters)` 查询编排：
-  1. `requireAuth()` / `inventorySearchSchema.safeParse()` 仍保持前置
-  2. `userId` 确定后，三个互不依赖的查询立即启动：
-     - `aggregatePromise = getInTransitConfirmedAggregate(userId)`
-     - `warehousesPromise = seal(getOverseasWarehouses())`
-     - `listPromise = seal(getOverseasList({ ...parsed.data, userId }))`
-  3. `await aggregatePromise` → 构建 `whInTransitMap` / `variantTotalMap` / `confirmedMap`（逻辑不变）
-  4. `statsPromise = getOverseasStats(userId, variantTotalMap)` — 等待 variantTotalMap 就绪后才启动
-  5. `await Promise.all([statsPromise, warehousesPromise, listPromise])` — stats / warehouses / list 并行 await
-  6. `inTransitQuantity` 注入和 `confirmedMap` 返回逻辑完全不变
+**src/app/dashboard/products/[id]/page.tsx（产品详情页）：**
+- `params` 仍先 await 解析
+- `id` 提取后，`getCurrentUser()` 与 `productRepository.getById(id)` 通过 `Promise.all` 并行执行
+- `notFound()` 行为不变
+- 传给 `ProductDetailClient` 的 props 不变
+
+**src/features/products/repository.ts — getById(id)：**
+- `validateUUID(id)` 行为不变
+- product 主查询仍先执行；product 不存在时仍直接返回 `null`（不查 variants/inventory）
+- product 存在后，variants 查询与 inventory 查询改为 `Promise.all` 并行执行
+- 错误语义不变：
+  - product 查询 DB error → `ProductError('查询产品详情失败', 'DB_ERROR')`
+  - variants 查询 DB error → `ProductError('查询产品关联 SKU 失败', 'DB_ERROR')`
+  - inventory 查询 DB error → `ProductError('查询产品库存失败', 'DB_ERROR')`
+- 返回结构不变：`variants` / `inventory` / `inventory.safetyStock = product.safety_stock`
 
 **编排对比：**
 
 ```
-Before (PERF-S1B):
-  aggregate (串行) → [stats | warehouses | list] (并行)
-  串行阶段: 1 个查询
-  并行阶段: 3 个查询
+产品列表页:
+  Before: searchParams → getCurrentUser → productRepository.list
+  After:  searchParams → [getCurrentUser | productRepository.list] (Promise.all)
 
-After (PERF-C2A):
-  [aggregate | warehouses | list] (并行启动)
-  → aggregate 完成 → stats 启动
-  → [stats | warehouses | list] (并行 await)
-  首轮并行: 3 个查询（warehouses/list 不再等待 aggregate）
-  次轮并行: 3 个查询
+产品详情页:
+  Before: params → getCurrentUser → productRepository.getById
+  After:  params → [getCurrentUser | productRepository.getById] (Promise.all)
+
+repository.getById:
+  Before: product → variants (串行) → inventory (串行)
+  After:  product → [variants | inventory] (Promise.all)
 ```
 
-**错误隔离保证：**
-- 任一 repository 查询失败仍抛出错误，由海外库存页 `error.tsx` 边界处理
-- 不静默吞掉 `getOverseasInventory` 内部错误
-- `seal()` 仅防止 unhandledRejection 警告，不影响错误传播
-
-**src/features/shipments/p3-s5b4-batch-warehouse.test.ts：**
-- 新增 `PERF-C2A — getOverseasInventory 查询编排`describe 块，10 项测试：
-  - `seal` helper 存在
-  - aggregate / warehouses / list 三个 promise 提前并行启动
-  - aggregate 先 await，构建 variantTotalMap 后再启动 stats
-  - `variantTotalMap` 仍从 aggregateRows 构建
-  - `confirmedMap` 仍从 aggregateRows 构建
-  - stats / warehouses / list 在第二轮 `Promise.all` 中并行 await
-  - `inTransitQuantity` 注入仍在 result 返回后执行
-  - warehouses 和 list 不使用 seal 以外的独立 await（不串行等待）
-  - 不新增 per-warehouse N+1 查询模式
-  - `getOverseasStats` 仍使用 `variantTotalMap` 参数
+**src/features/products/perf-c2b-orchestration.test.ts（新文件）：**
+- 20 项源码级静态测试，覆盖 4 个 describe 块：
+  1. 产品列表页并行编排（5 项）：Promise.all 含 getCurrentUser + list、searchParams 先 await、isAdmin 语义、props 不变、无 supabase.from
+  2. 产品详情页并行编排（5 项）：Promise.all 含 getCurrentUser + getById、params 先 await、notFound、props 不变、无 supabase.from
+  3. repository.getById 并行编排（8 项）：product 先查、null 早返回、variants/inventory Promise.all、各错误分支、safetyStock 来源
+  4. 架构合规（2 项）：列表页/详情页无直接 Supabase 调用
 
 ### 禁止事项（已遵守）
 
-- 不改 Repository SQL / RPC / Migration / RLS
-- 不改 `get_overseas_inventory` / `get_overseas_stats` / `get_in_transit_confirmed_aggregate`
-- 不改海外库存 UI 表格列、筛选、分页、syncStatus
-- 不改产品页、产品 repository、产品详情页
-- 不改 Dashboard 首页
+- 不新增/修改 Migration、RPC、RLS、索引
+- 不改 product / product_variant / inventory 数据模型
+- 不改产品 UI、表格列、详情页展示、分页行为
+- 不改产品 actions 的写入逻辑
+- 不改 Dashboard 首页、海外库存页、同步页
 - 不改 `.claude/`
 - 不改 package.json
-- 不做无关重构
 - 不使用 `any`
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| 指定 4 个测试文件 | **261/261** 通过 ✅ |
-| `npm run build` | ✓ Compiled + TypeScript (23/23) ✅ |
-| `npm run lint` | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有），未发现本轮新增 ✅ |
+| `src/features/products` 测试 | **20/20** 通过 ✅ |
+| `npm run build` | ✓ Compiled + TypeScript ✅ |
+| `npm run lint` | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有）✅ |
 | `git diff --check` | 通过 ✅ |
 | 不新增 Migration | ✅ |
 | 不改产品/海外库存/同步页/权限 | ✅ |
@@ -89,21 +85,25 @@ After (PERF-C2A):
 
 | # | 文件 | 变更 |
 |---|------|------|
-| 1 | `src/features/inventory/actions.ts` | 重构 getOverseasInventory 查询编排：aggregate/warehouses/list 提前并行启动，stats 等 variantTotalMap 后再加入第二轮 Promise.all |
-| 2 | `src/features/shipments/p3-s5b4-batch-warehouse.test.ts` | 新增 PERF-C2A 查询编排 10 项测试 |
+| 1 | `src/app/dashboard/products/page.tsx` | getCurrentUser() + list 改为 Promise.all 并行 |
+| 2 | `src/app/dashboard/products/[id]/page.tsx` | getCurrentUser() + getById 改为 Promise.all 并行 |
+| 3 | `src/features/products/repository.ts` | getById 内 variants + inventory 改为 Promise.all 并行 |
+| 4 | `src/features/products/perf-c2b-orchestration.test.ts` | 新增 20 项 PERF-C2B 并行编排测试 |
 
 ### 范围说明
 
-本轮只做海外库存 actions 查询编排优化。Phase C 其余内容：
-- 产品页 actions 并行（`PERF-C2B`）— 未开始
+本轮只做产品页查询编排优化。Phase C 其余内容：
+- Dashboard 首页（PERF-C1）— 已完成
+- 海外库存 actions（PERF-C2A）— 已完成
 - 同步页分页（Phase D）— 未开始
 - 索引优化（Phase E）— 未开始
 
 ### 残余风险
 
-- `seal()` 的 noop `.catch()` 吞掉了 rejection reason；如果调用方因 bug 忘记 await sealed promise，错误会被静默丢失。当前代码保证所有 sealed promise 都在 `Promise.all` 中 await，风险可控
-- `aggregatePromise` 抛错时 `warehousesPromise` / `listPromise` 可能仍在飞行中；seal 防止了 unhandledRejection，但这两个查询的数据库资源不会被取消（JS 无原生 Promise cancellation）
+- 产品列表页 `getCurrentUser()` 与 `productRepository.list()` 并行：如果 Supabase auth cookie 失效但 product 查询成功，会出现 user 为 null 但 result 有数据的情况。当前代码 `user?.roleName === 'admin'` 已安全处理 null → false。产品列表页本身不需要 user 信息来过滤数据（非 Admin 权限限制在其他层面），无实质性风险
+- 产品详情页同理：getById 失败会抛 ProductError，与 getCurrentUser 失败（返回 null）不会互相影响
+- repository.getById 中 variants/inventory 并行：两个查询互不依赖，无风险
 
 ### 下一步
 
-PERF-C2A 完成。可推进 PERF-C2B（产品页 actions 并行重排）或其他未阻塞任务。P3-S1B 仍 BLOCKED_EXTERNAL。
+PERF-C2B 完成。Phase C 性能优化（PERF-C1/C2A/C2B）全部完成。可推进 Phase D（同步页分页）或 Phase E（索引优化）。P3-S1B 仍 BLOCKED_EXTERNAL。
