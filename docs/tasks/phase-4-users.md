@@ -86,13 +86,13 @@
 
 ### 实现内容
 
-1. **UI 入口**：`UserDetailSheet` 详情 Sheet 角色行新增"修改角色"按钮。点击后弹出 `UserRoleChangeDialog`（shadcn/ui Dialog）：选择新角色（过滤当前角色避免重复提交）+ 确认修改 + Loader2 pending 状态 + 失败展示中文错误。成功后关闭 Sheet + `router.refresh()` 刷新页面列表。
+1. **UI 入口**：`UserDetailSheet` 详情 Sheet 角色行新增"修改角色"按钮。点击后弹出 `UserRoleChangeDialog`（shadcn/ui Dialog）：选择新角色（过滤当前角色避免重复提交）+ 确认修改 + Loader2 pending 状态 + 失败展示中文错误。**P4-UX（2026-07-03）覆盖**：原实现成功后关闭 Sheet + `router.refresh()` 刷新页面列表；P4-UX 后改为 `getUserById` 局部刷新 Sheet 详情 + `onUserChanged` 通知父组件，不再关闭 Sheet、不整页刷新。
 
 2. **权限链路**：写操作通过 `updateUserRole` Server Action（Admin-only + 自降级保护 + 最后管理员保护）。Dialog 组件直接调用 action，页面/Sheet/Content 不直接写数据库。不新增 service_role 使用点。
 
 3. **文件**：
    - 新建 `src/features/users/components/user-role-change-dialog.tsx`
-   - 修改 `src/features/users/components/user-detail-sheet.tsx`（新增 roles prop + 修改角色按钮 + Dialog 集成 + router.refresh）
+   - 修改 `src/features/users/components/user-detail-sheet.tsx`（新增 roles prop + 修改角色按钮 + Dialog 集成；P4-UX 后 router.refresh 已移除）
    - 修改 `src/app/dashboard/users/_components/users-page-content.tsx`（透传 roles prop）
 
 4. **测试**：`src/features/users/p4-u3.test.ts` — 36 项测试（架构合规 + 导入控制 + Dialog 行为 + Sheet 集成 + 透传 + 权限 + P4-U1/P4-U2 回归）
@@ -109,7 +109,7 @@
 
 ### 实现内容
 
-1. **UI 入口**：`UserDetailSheet` 详情 Sheet 状态行新增"启用"/"禁用"按钮（按钮文案根据 `isActive` 切换）。点击后弹出 `UserActiveToggleDialog`（shadcn/ui Dialog）：区分启用/禁用说明文案 + 确认操作 + Loader2 pending 状态 + 失败展示中文错误。成功后关闭 Sheet + `router.refresh()` 刷新页面列表。
+1. **UI 入口**：`UserDetailSheet` 详情 Sheet 状态行新增"启用"/"禁用"按钮（按钮文案根据 `isActive` 切换）。点击后弹出 `UserActiveToggleDialog`（shadcn/ui Dialog）：区分启用/禁用说明文案 + 确认操作 + Loader2 pending 状态 + 失败展示中文错误。**P4-UX（2026-07-03）覆盖**：原实现成功后关闭 Sheet + `router.refresh()` 刷新页面列表；P4-UX 后改为 `getUserById` 局部刷新 Sheet 详情 + `onUserChanged` 通知父组件，不再关闭 Sheet、不整页刷新。
 
 2. **权限链路**：写操作通过 `toggleUserActive` Server Action（Admin-only + 自禁用保护 + 最后管理员保护）。Dialog 组件直接调用 action，页面/Sheet/Content 不直接写数据库。不新增 service_role 使用点。`UserActiveToggleDialog` 使用 `resetAndClose` 统一关闭模式（与 P4-U3 返工保持一致）。
 
