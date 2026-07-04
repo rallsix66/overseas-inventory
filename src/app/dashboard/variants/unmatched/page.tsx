@@ -19,6 +19,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -42,7 +43,12 @@ export default async function UnmatchedVariantsPage({
     pageSize: PAGE_SIZE,
   });
 
-  const totalPages = Math.ceil(result.total / PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+
+  // 超出总页数 → 重定向到最后一页，避免错误空态
+  if (result.total > 0 && result.data.length === 0 && page > 1) {
+    redirect(`?page=${totalPages}`);
+  }
 
   return (
     <div className="px-6">
@@ -52,7 +58,7 @@ export default async function UnmatchedVariantsPage({
         以下 SKU 尚未匹配到标准产品，需要管理员处理。您已归档的 SKU 不在此显示。
       </p>
 
-      {result.data.length === 0 ? (
+      {result.total === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <p className="text-lg mb-2">暂无待处理 SKU</p>
           <p className="text-sm">

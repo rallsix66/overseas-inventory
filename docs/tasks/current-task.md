@@ -6,7 +6,7 @@
 
 ## 状态
 
-**DONE**（2026-07-04）。待处理 SKU 页面 `/dashboard/variants/unmatched` 已从全量加载改为 DB 层分页查询，`docs/current-state.md` Pending Modules 表格的过期状态已修正。
+**DONE**（2026-07-04，2026-07-04 返修边界空态）。待处理 SKU 页面 `/dashboard/variants/unmatched` 已从全量加载改为 DB 层分页查询，`docs/current-state.md` Pending Modules 表格的过期状态已修正。返修增加了超出总页数时的 redirect 处理，避免错误空态。
 
 ### 背景
 
@@ -50,6 +50,23 @@
 | Pending Modules 表 3 条过期已修正 | ✅ |
 | Technical Debt getUnmatched 分页已标记补齐 | ✅ |
 | getLowStock 技术债仍保留 | ✅ |
+
+### 返修：边界空态（2026-07-04）
+
+**问题**：`?page=999` 等超出总页数的 URL 使 repository 返回 `data=[]` 但 `total>0`，页面按 `data.length === 0` 错误显示"暂无待处理 SKU"。
+
+**修复**（`unmatched/page.tsx`）：
+- `totalPages` = `Math.max(1, Math.ceil(result.total / PAGE_SIZE))`，避免 total=0 时产生 page=0
+- 当 `result.total > 0 && result.data.length === 0 && page > 1` 时，`redirect(?page=${totalPages})` 跳转到最后一页
+- 空数据状态仅当 `result.total === 0` 时显示
+- 导入 `redirect` from `next/navigation`
+
+**测试新增**：
+- 导入 redirect 断言
+- 超出页码 redirect 逻辑断言（`total > 0 && data.length === 0` + `redirect(…${totalPages})` + `Math.max(1, Math.ceil(`）
+- 空态条件改为 `result.total === 0` 断言
+
+**验收**：测试 2720/2720 ✅ | build ✅ | lint 5e/25w（仅既有）✅ | git diff --check ✅
 
 ### 禁止事项（已遵守）
 

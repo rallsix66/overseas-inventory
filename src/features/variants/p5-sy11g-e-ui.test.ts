@@ -112,6 +112,22 @@ describe('P5-SY11G-E — unmatched/page.tsx', () => {
   it('使用 PAGE_SIZE = 20 分页', () => {
     expect(unmatchedSrc).toContain('PAGE_SIZE = 20');
   });
+
+  it('导入 redirect 用于超出页码跳转', () => {
+    expect(unmatchedSrc).toContain("from 'next/navigation'");
+    expect(unmatchedSrc).toContain('redirect');
+  });
+
+  it('超出总页数时 redirect 到最后一页（result.total > 0 && data.length === 0 && page > 1）', () => {
+    expect(unmatchedSrc).toMatch(/result\.total\s*>\s*0\s*&&\s*result\.data\.length\s*===\s*0/);
+    expect(unmatchedSrc).toContain('redirect(`?page=${totalPages}`)');
+    expect(unmatchedSrc).toContain('Math.max(1, Math.ceil(');
+  });
+
+  it('空数据状态仅当 result.total === 0 时显示', () => {
+    // 真空中：total 为 0，而非仅检查 data.length
+    expect(unmatchedSrc).toMatch(/\{result\.total\s*===\s*0/);
+  });
 });
 
 // ─── archive-controls.tsx ─────────────────────────────────────────────
