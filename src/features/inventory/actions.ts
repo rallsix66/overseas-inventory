@@ -11,8 +11,14 @@ import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } 
 // re-export for page use
 export type { InventoryItem, OverseasStats, WarehouseOption } from './types';
 
+/** 防止 Promise 在未被 await 时产生 unhandledRejection；调用方负责 await + 错误处理 */
+function seal<T>(p: Promise<T>): Promise<T> {
+  p.catch(() => { /* sealed */ });
+  return p;
+}
+
 /**
- * 获取海外库存数据 — PERF-S1B: 统计、仓库列表、分页列表 + 在途/已确认聚合
+ * 获取海外库存数据 — PERF-C2A: 查询编排优化（aggregate/warehouses/list 提前并行启动）
  *
  * 在途与已确认到仓由单次 RPC（get_in_transit_confirmed_aggregate）一次性聚合返回，
  * 消除 N+1 按仓循环查询模式。
@@ -37,8 +43,16 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
 
   const userId = user.id;
 
-  // PERF-S1B: 单次 RPC 获取所有仓库的在途 + 已确认到仓聚合
-  const aggregateRows = await inventoryRepository.getInTransitConfirmedAggregate(userId);
+  // PERF-C2A: 提前启动互不依赖的查询，减少串行等待
+  // aggregate（需先完成才能构建 variantTotalMap → stats）
+  // warehouses + list 完全独立，尽早启动；seal 防止提前抛错时 unhandledRejection
+  const aggregatePromise = inventoryRepository.getInTransitConfirmedAggregate(userId);
+  const warehousesPromise = seal(inventoryRepository.getOverseasWarehouses());
+  const listPromise = seal(inventoryRepository.getOverseasList({ ...parsed.data, userId }));
+
+  // 先等 aggregate 完成，构建 stats 所需的 variantTotalMap
+  // 此时 warehouses + list 已在并行执行
+  const aggregateRows = await aggregatePromise;
 
   // 从聚合结果构建三个数据结构
   // whInTransitMap: variantId → Map<warehouseId, inTransitQty>（用于每行 inTransitQuantity）
@@ -73,11 +87,12 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
     }
   }
 
-  // getOverseasList 内部调用 get_overseas_inventory RPC（SQL 层过滤/排序/分页）
+  // stats 需要 variantTotalMap，此时才启动；warehouses + list 已在并行执行
+  const statsPromise = inventoryRepository.getOverseasStats(userId, variantTotalMap);
   const [stats, warehouses, result] = await Promise.all([
-    inventoryRepository.getOverseasStats(userId, variantTotalMap),
-    inventoryRepository.getOverseasWarehouses(),
-    inventoryRepository.getOverseasList({ ...parsed.data, userId }),
+    statsPromise,
+    warehousesPromise,
+    listPromise,
   ]);
 
   // 按仓库维度合并在途数量到每个分页项

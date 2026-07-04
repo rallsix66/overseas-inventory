@@ -405,3 +405,75 @@ describe('P3-S5B4: 架构合规检查', () => {
     // 单次 RPC 聚合替代 N+1 循环，action 内不暴露给组件直接调用
   });
 });
+
+// ─── PERF-C2A: 海外库存 getOverseasInventory 查询编排优化 ──────────────
+
+describe('PERF-C2A — getOverseasInventory 查询编排', () => {
+  const actionsSrc = readSrc('src/features/inventory/actions.ts');
+
+  it('seal helper 存在，防止提前启动的 promise 产生 unhandledRejection', () => {
+    expect(actionsSrc).toMatch(/function seal/);
+    expect(actionsSrc).toContain('p.catch(() => {');
+  });
+
+  it('aggregate / warehouses / list 三个 promise 提前并行启动', () => {
+    // aggregatePromise = getInTransitConfirmedAggregate
+    expect(actionsSrc).toMatch(/aggregatePromise\s*=\s*inventoryRepository\.getInTransitConfirmedAggregate/);
+    // warehousesPromise = getOverseasWarehouses（用 seal 包装）
+    expect(actionsSrc).toMatch(/warehousesPromise\s*=\s*seal\(inventoryRepository\.getOverseasWarehouses/);
+    // listPromise = getOverseasList（用 seal 包装）
+    expect(actionsSrc).toMatch(/listPromise\s*=\s*seal\(inventoryRepository\.getOverseasList/);
+  });
+
+  it('aggregate 先 await，构建 variantTotalMap 后再启动 stats', () => {
+    // aggregateRows = await aggregatePromise 在 stats 启动之前
+    const aggregateAwaitIdx = actionsSrc.indexOf('await aggregatePromise');
+    const statsStartIdx = actionsSrc.indexOf('statsPromise = inventoryRepository.getOverseasStats');
+    expect(aggregateAwaitIdx).toBeGreaterThan(0);
+    expect(statsStartIdx).toBeGreaterThan(aggregateAwaitIdx);
+  });
+
+  it('variantTotalMap 仍从 aggregateRows 构建', () => {
+    expect(actionsSrc).toContain('variantTotalMap');
+    expect(actionsSrc).toMatch(/variantTotalMap\.set\(/);
+  });
+
+  it('confirmedMap 仍从 aggregateRows 构建', () => {
+    expect(actionsSrc).toMatch(/confirmedMap\[row\.warehouse_id\]/);
+  });
+
+  it('stats / warehouses / list 在第二轮 Promise.all 中并行 await', () => {
+    // statsPromise + warehousesPromise + listPromise 一起 await
+    const promiseAllIdx = actionsSrc.indexOf('Promise.all([');
+    expect(promiseAllIdx).toBeGreaterThan(0);
+    const promiseAllBlock = actionsSrc.slice(promiseAllIdx, promiseAllIdx + 200);
+    expect(promiseAllBlock).toContain('statsPromise');
+    expect(promiseAllBlock).toContain('warehousesPromise');
+    expect(promiseAllBlock).toContain('listPromise');
+  });
+
+  it('inTransitQuantity 注入仍在 result 返回后执行', () => {
+    // Promise.all 之后的 for loop 注入 inTransitQuantity
+    const injectIdx = actionsSrc.indexOf('whInTransitMap.get(item.variantId)');
+    const promiseAllIdx = actionsSrc.indexOf('Promise.all([');
+    expect(injectIdx).toBeGreaterThan(promiseAllIdx);
+    expect(actionsSrc).toContain('item.inTransitQuantity');
+  });
+
+  it('warehouses 和 list 不使用 seal 以外的独立的 await（不串行等待）', () => {
+    // warehouses + list 仅通过 seal() 提前启动，无独立 await getOverseasWarehouses / getOverseasList
+    expect(actionsSrc).not.toMatch(/\bawait\s+inventoryRepository\.getOverseasWarehouses\(/);
+    expect(actionsSrc).not.toMatch(/\bawait\s+inventoryRepository\.getOverseasList\(/);
+  });
+
+  it('不新增 per-warehouse N+1 查询模式', () => {
+    // 确认仍无 uniqueWarehouseIds / getConfirmedWarehousedByWarehouse 等旧模式
+    expect(actionsSrc).not.toMatch(/uniqueWarehouseIds/);
+    expect(actionsSrc).not.toMatch(/getConfirmedWarehousedByWarehouse/);
+  });
+
+  it('getOverseasStats 仍使用 variantTotalMap 参数', () => {
+    // stats 调用传入了从 aggregate 构建的 variantTotalMap
+    expect(actionsSrc).toMatch(/getOverseasStats\(userId,\s*variantTotalMap\)/);
+  });
+});
