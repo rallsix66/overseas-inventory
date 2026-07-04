@@ -139,8 +139,12 @@ export const variantRepository = {
     };
   },
 
-  /** 获取未匹配 + 待确认的活跃 SKU（用于待处理列表，排除当前用户已归档） */
-  async getUnmatched(userId?: string): Promise<VariantItem[]> {
+  /** 获取未匹配 + 待确认的活跃 SKU（用于待处理列表，排除当前用户已归档）
+   *  归档过滤在 DB 层完成（分页前），确保 total 和每页条数准确。 */
+  async getUnmatched(
+    params: { userId?: string; page?: number; pageSize?: number } = {}
+  ): Promise<PaginatedResult<VariantItem>> {
+    const { userId, page = 1, pageSize = PAGE_SIZE } = params;
     const supabase = await createClient();
 
     // 获取当前用户已归档 ID
@@ -149,26 +153,37 @@ export const variantRepository = {
       archivedVariantIds = await this.getUserArchivedVariantIds(userId);
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('product_variant')
-      .select('*, product:product_id (name, code)')
-      .in('match_status', ['unmatched', 'pending'])
-      .order('last_sync_at', { ascending: false });
+      .select('*, product:product_id (name, code)', { count: 'exact' })
+      .in('match_status', ['unmatched', 'pending']);
+
+    // DB 层归档过滤（分页前完成，确保 total 准确、分页不丢行）
+    if (userId) {
+      const archivedArray = [...archivedVariantIds];
+      if (archivedArray.length > 0) {
+        query = query.notIn('id', archivedArray);
+      }
+    }
+
+    const from = (page - 1) * pageSize;
+    const { data, error, count } = await query
+      .order('last_sync_at', { ascending: false })
+      .range(from, from + pageSize - 1);
 
     if (error) {
       throw new VariantError('查询待处理 SKU 失败', 'DB_ERROR');
     }
 
-    if (!data || data.length === 0) return [];
+    if (!data || data.length === 0) {
+      return { data: [], total: count ?? 0, page, pageSize };
+    }
 
-    // JS 层排除当前用户已归档 Variant
-    const filtered = userId
-      ? data.filter((row: Record<string, unknown>) => !archivedVariantIds.has(row.id as string))
-      : data;
-
-    return filtered.map((row) =>
+    const items = data.map((row) =>
       mapVariantItem(row as unknown as Record<string, unknown>, archivedVariantIds)
     );
+
+    return { data: items, total: count ?? 0, page, pageSize };
   },
 
   /** 根据 ID 获取 SKU 详情（含当前用户归档状态） */

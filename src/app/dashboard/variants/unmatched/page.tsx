@@ -5,6 +5,8 @@
 //
 // P5-SY11G: 排除当前用户已归档 Variant（user_variant_preference），
 // 而非全局 is_archived。
+//
+// UNMATCHED-PAGINATION: getUnmatched 改为分页查询（DB 层 notIn + range）。
 import { requireActiveAuth } from '@/lib/auth';
 import { variantRepository } from '@/features/variants/repository';
 import { variantColumns } from '@/features/variants/columns';
@@ -16,15 +18,31 @@ import {
   TableRow,
   TableCell,
 } from '@/components/ui/table';
+import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '待处理 SKU',
 };
 
-export default async function UnmatchedVariantsPage() {
+const PAGE_SIZE = 20;
+
+export default async function UnmatchedVariantsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const user = await requireActiveAuth();
-  const items = await variantRepository.getUnmatched(user.id);
+  const sp = await searchParams;
+  const page = Math.max(1, parseInt(sp.page ?? '1', 10) || 1);
+
+  const result = await variantRepository.getUnmatched({
+    userId: user.id,
+    page,
+    pageSize: PAGE_SIZE,
+  });
+
+  const totalPages = Math.ceil(result.total / PAGE_SIZE);
 
   return (
     <div className="px-6">
@@ -34,7 +52,7 @@ export default async function UnmatchedVariantsPage() {
         以下 SKU 尚未匹配到标准产品，需要管理员处理。您已归档的 SKU 不在此显示。
       </p>
 
-      {items.length === 0 ? (
+      {result.data.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <p className="text-lg mb-2">暂无待处理 SKU</p>
           <p className="text-sm">
@@ -42,30 +60,67 @@ export default async function UnmatchedVariantsPage() {
           </p>
         </div>
       ) : (
-        <div className="border rounded-md">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {variantColumns.map((col) => (
-                  <TableHead key={col.key}>{col.header}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id} className="hover:bg-gray-50">
+        <>
+          <div className="border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
                   {variantColumns.map((col) => (
-                    <TableCell key={col.key}>
-                      {col.render
-                        ? col.render(item)
-                        : String(item[col.key as keyof typeof item] ?? '—')}
-                    </TableCell>
+                    <TableHead key={col.key}>{col.header}</TableHead>
                   ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {result.data.map((item) => (
+                  <TableRow key={item.id} className="hover:bg-gray-50">
+                    {variantColumns.map((col) => (
+                      <TableCell key={col.key}>
+                        {col.render
+                          ? col.render(item)
+                          : String(item[col.key as keyof typeof item] ?? '—')}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* 分页导航 */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 text-sm">
+              <span className="text-muted-foreground">
+                第 {page} 页，共 {result.total} 条
+              </span>
+              <div className="flex items-center gap-2">
+                {page > 1 ? (
+                  <Link
+                    href={`?page=${page - 1}`}
+                    className="px-3 py-1.5 border rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    上一页
+                  </Link>
+                ) : (
+                  <span className="px-3 py-1.5 border rounded-md text-gray-300 cursor-not-allowed">
+                    上一页
+                  </span>
+                )}
+                {page < totalPages ? (
+                  <Link
+                    href={`?page=${page + 1}`}
+                    className="px-3 py-1.5 border rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    下一页
+                  </Link>
+                ) : (
+                  <span className="px-3 py-1.5 border rounded-md text-gray-300 cursor-not-allowed">
+                    下一页
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

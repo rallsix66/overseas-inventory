@@ -2,51 +2,65 @@
 
 ## Task ID
 
-`SIDEBAR-ENABLE` — 侧边栏 SKU 管理/待处理 SKU 入口启用
+`UNMATCHED-PAGINATION` — 待处理 SKU 页面分页补齐 + Pending Modules 文档修正
 
 ## 状态
 
-**DONE**（2026-07-04）。侧边栏产品管理分组下 SKU 管理和待处理 SKU 入口已启用。
+**DONE**（2026-07-04）。待处理 SKU 页面 `/dashboard/variants/unmatched` 已从全量加载改为 DB 层分页查询，`docs/current-state.md` Pending Modules 表格的过期状态已修正。
 
 ### 背景
 
-侧边栏 `sidebar-nav.tsx` 中 `/dashboard/variants`（SKU 管理）和 `/dashboard/variants/unmatched`（待处理 SKU）的 `phase` 字段原为 `'1'`，导致这两个入口灰显不可点击。实际页面和功能已由 P5-SY11E（Variant 页面开发）和 P5-SY11G（用户级归档偏好）完整实现并测试通过。本任务仅将 phase 改为 `'0'` 启用入口，并同步修改 `docs/current-state.md` 中过期的 Current Implementation Limits（删除"SKU 管理与待处理 SKU 仍灰显"、修正 Users/Dashboard/海外库存 RPC 等过期描述）。
+`variantRepository.getUnmatched()` 原为全量查询（无 `.range()`、无 `count: 'exact'`），归档排除在 JS 层完成。所有 unmatched/pending SKU 一次性加载到内存再过滤分页。当前数据量小（< 10 条），但随同步持续增长存在性能退化风险。本任务补齐 DB 层分页，同时顺手修正 `docs/current-state.md` 中 Pending Modules 表格的 3 条过期状态。
 
 ### 实现（DONE）
 
-**sidebar-nav.tsx 修改：**
-- `/dashboard/variants` phase: `'1'` → `'0'`
-- `/dashboard/variants/unmatched` phase: `'1'` → `'0'`
-- 不修改 `/dashboard/inventory/domestic`（保持 phase `'2'`）
-- 不修改 `isAvailable` 规则（`phase === '0'`）
+**repository.ts 修改：**
+- `getUnmatched()` 签名改为 `getUnmatched(params: { userId?: string; page?: number; pageSize?: number }): Promise<PaginatedResult<VariantItem>>`
+- 查询使用 `{ count: 'exact' }` + `.range(from, from + pageSize - 1)`
+- 归档排除从 JS 层 `data.filter()` 迁移到 DB 层 `query.notIn('id', archivedArray)`（在 `.range()` 之前执行，确保 total 准确）
+- 排序保持 `last_sync_at desc`
+- 返回 `{ data, total, page, pageSize }`
+
+**unmatched/page.tsx 修改：**
+- 新增 `searchParams: Promise<{ page?: string }>` prop（Next.js 16）
+- `await searchParams` → `parseInt(page, 10)` → 默认 1
+- 调用 `getUnmatched({ userId: user.id, page, pageSize: 20 })`
+- 新增分页导航：上一页/下一页 Link + "第 N 页，共 M 条"
+- 空数据状态保持不变
 
 **测试（`src/features/variants/p5-sy11g-e-ui.test.ts`）：**
-- 新增 4 项 sidebar-nav 断言：variants phase 0 / unmatched phase 0 / 产品管理组无 phase 1 / domestic 保持 phase 2
+- 更新 `unmatched/page.tsx` 组：3 项新断言（searchParams + 分页导航 + PAGE_SIZE）+ 更新旧签名断言为新对象参数
+- 新增 `UNMATCHED-PAGINATION — variantRepository.getUnmatched 分页` 组：7 项断言（PaginatedResult 返回类型 / count exact / range / notIn 在 range 前 / last_sync_at 排序 / 返回字段）
 
 **文档：**
-- `docs/current-state.md` Current Task / Next Step / Last Updated / Current Implementation Limits 全部同步
-- `docs/tasks/current-task.md` 本文件
+- `docs/current-state.md`：Current Task / Pending Modules（3 条修正）/ Technical Debt（getUnmatched 分页已补齐）/ Next Step / Last Updated
+- `docs/tasks/current-task.md`：本文件
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| 全量测试 | **2707/2707**（64 文件）✅ |
+| 全量测试 | **2717/2717**（65 文件，concurrency + best live 预存失败）✅ |
 | build | Compiled + TypeScript ✅ |
 | lint | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有）✅ |
 | git diff --check | 通过 ✅ |
-| `/dashboard/variants` phase 为 `'0'` | ✅ |
-| `/dashboard/variants/unmatched` phase 为 `'0'` | ✅ |
-| 产品管理组无 phase `'1'` | ✅ |
-| Domestic Inventory 保持 phase `'2'` | ✅ |
+| getUnmatched 使用 count exact + range | ✅ |
+| notIn 归档过滤在 range 之前 | ✅ |
+| unmatched/page.tsx searchParams + 分页导航 | ✅ |
+| Pending Modules 表 3 条过期已修正 | ✅ |
+| Technical Debt getUnmatched 分页已标记补齐 | ✅ |
+| getLowStock 技术债仍保留 | ✅ |
 
 ### 禁止事项（已遵守）
 
-- 不修改 Migration / RLS / 权限模型 / Server Actions / Repository ✅
-- 不修改 variants 页面业务逻辑 ✅
-- 不处理 getLowStock/getUnmatched 分页技术债务 ✅
+- 不修改 getLowStock() ✅
+- 不新增 Migration / RPC ✅
+- 不修改 RLS / 权限模型 / Server Actions ✅
+- 不修改 ProductVariant 匹配业务逻辑 ✅
 - 不清理 smoke-test-00025.ts lint ✅
+- 不修改 .claude/context-status.json ✅
+- 不进入 P3-S1B/P3-S1C/P3-S1D/P3-S2/P3-S4 阻塞路径 ✅
 
 ## 下一步
 
-SIDEBAR-ENABLE 完成。PERF-S1 全系列、P4-UX、P2-D2、SIDEBAR-ENABLE 均已完成。P3-S1B 仍 BLOCKED_EXTERNAL（百世 API 授权未恢复）。可推进其他未阻塞任务。
+UNMATCHED-PAGINATION 完成。PERF-S1 全系列、P4-UX、P2-D2、SIDEBAR-ENABLE、UNMATCHED-PAGINATION 均已完成。P3-S1B 仍 BLOCKED_EXTERNAL（百世 API 授权未恢复）。可推进其他未阻塞任务（getLowStock 分页补齐 或 P2-I4 Domestic Inventory）。

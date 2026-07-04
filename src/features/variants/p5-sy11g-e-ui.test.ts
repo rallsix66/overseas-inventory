@@ -18,6 +18,7 @@ const CONTENT_PATH = path.resolve(process.cwd(), 'src/app/dashboard/variants/_co
 const UNMATCHED_PATH = path.resolve(process.cwd(), 'src/app/dashboard/variants/unmatched/page.tsx');
 const CONTROLS_PATH = path.resolve(process.cwd(), 'src/features/variants/components/archive-controls.tsx');
 const COLUMNS_PATH = path.resolve(process.cwd(), 'src/features/variants/columns.tsx');
+const REPO_PATH = path.resolve(process.cwd(), 'src/features/variants/repository.ts');
 
 // ─── page.tsx ─────────────────────────────────────────────────────────
 
@@ -87,12 +88,29 @@ describe('P5-SY11G-E — unmatched/page.tsx', () => {
     unmatchedSrc = fs.readFileSync(UNMATCHED_PATH, 'utf-8');
   });
 
-  it('传递 user.id 到 getUnmatched()', () => {
-    expect(unmatchedSrc).toMatch(/getUnmatched\s*\(\s*user\.id/);
+  it('传递 userId 到 getUnmatched()（UNMATCHED-PAGINATION 新签名为对象参数）', () => {
+    // 新签名：getUnmatched({ userId: user.id, page, pageSize })
+    expect(unmatchedSrc).toMatch(/getUnmatched\s*\(\s*\{/);
+    expect(unmatchedSrc).toMatch(/userId:\s*user\.id/);
   });
 
   it('描述文案更新为"您已归档的 SKU 不在此显示"', () => {
     expect(unmatchedSrc).toContain('您已归档');
+  });
+
+  it('从 searchParams 读取 page（Next.js 16 Promise 模式）', () => {
+    expect(unmatchedSrc).toMatch(/searchParams/);
+    expect(unmatchedSrc).toMatch(/Promise<\{/);
+  });
+
+  it('渲染分页导航（上一页/下一页 Link + 第 N 页，共 M 条）', () => {
+    expect(unmatchedSrc).toContain('上一页');
+    expect(unmatchedSrc).toContain('下一页');
+    expect(unmatchedSrc).toMatch(/第.*页.*共.*条/);
+  });
+
+  it('使用 PAGE_SIZE = 20 分页', () => {
+    expect(unmatchedSrc).toContain('PAGE_SIZE = 20');
   });
 });
 
@@ -178,5 +196,55 @@ describe('P5-SY11G-E — sidebar-nav 产品管理入口', () => {
 
   it('国内库存 (Domestic Inventory) 仍保持 phase: \'2\' 未启用', () => {
     expect(sidebarSrc).toMatch(/\/dashboard\/inventory\/domestic.*phase: '2'/);
+  });
+});
+
+// ─── UNMATCHED-PAGINATION — repository.ts 分页实现 ───────────────────
+
+describe('UNMATCHED-PAGINATION — variantRepository.getUnmatched 分页', () => {
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
+  });
+
+  it('getUnmatched 返回类型为 PaginatedResult<VariantItem>', () => {
+    expect(repoSrc).toMatch(/PaginatedResult<VariantItem>/);
+  });
+
+  it('getUnmatched 参数为对象解构 { userId, page, pageSize }', () => {
+    expect(repoSrc).toMatch(/getUnmatched\s*\(\s*params/);
+    // 对象解构包含 userId
+    const fnStart = repoSrc.indexOf('getUnmatched');
+    expect(fnStart).toBeGreaterThan(0);
+    const fnBody = repoSrc.slice(fnStart, fnStart + 1200);
+    expect(fnBody).toContain('userId');
+  });
+
+  it('使用 count: \'exact\' 获取准确总数', () => {
+    expect(repoSrc).toMatch(/count:\s*['"]exact['"]/);
+  });
+
+  it('使用 .range() 分页', () => {
+    expect(repoSrc).toMatch(/\.range\(/);
+  });
+
+  it('归档 notIn 过滤在 range 之前执行', () => {
+    // notIn 必须出现在 range 之前（源码中按行号顺序）
+    const notInIdx = repoSrc.indexOf('notIn');
+    const rangeIdx = repoSrc.indexOf('.range(');
+    expect(notInIdx).toBeGreaterThan(0);
+    expect(rangeIdx).toBeGreaterThan(0);
+    expect(notInIdx).toBeLessThan(rangeIdx);
+  });
+
+  it('排序保持 last_sync_at desc', () => {
+    expect(repoSrc).toMatch(/last_sync_at.*ascending.*false/);
+  });
+
+  it('返回 { data, total, page, pageSize }', () => {
+    expect(repoSrc).toContain('total:');
+    expect(repoSrc).toContain('page,');
+    expect(repoSrc).toContain('pageSize');
   });
 });
