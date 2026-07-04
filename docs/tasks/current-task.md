@@ -2,80 +2,89 @@
 
 ## Task ID
 
-`LOW-STOCK-PAGINATION` — `getLowStock()` RPC 分页补齐
+`PERF-B1` — DIS 性能优化 Phase B 第一轮：request-scope cache + dashboard layout 接入
 
 ## 状态
 
-**DONE**（2026-07-04，2026-07-04 RPC 返修完成，2026-07-04 runtime smoke test 通过）。`inventoryRepository.getLowStock()` 已从 JS 全量过滤改为调用 Migration 00028 `get_low_stock` RPC。SQL 层完成归档排除、仓库隔离、`quantity <= safety_stock` 过滤、gap 计算、`ORDER BY gap DESC, quantity ASC`、`LIMIT p_limit`，确保 limit 只作用在"当前用户可见、未归档、真实低库存"的结果集之后。Migration 00028 已在 Supabase SQL Editor 手动执行并验证（`is_security_definer=false`、`authenticated EXECUTE=true`、`anon EXECUTE=false`）。Dashboard 首页低库存汇总区正常渲染，无 function not found / schema cache 错误。
+**DONE**（2026-07-04，收口修复完成）。
 
 ### 背景
 
-`getLowStock()` 原为全量查询 + JS 层过滤（`quantity <= safetyStock`、归档排除、仓库隔离）。初版实现错误地将 `.limit(limit)` 放在 JS 过滤之前，会漏报高 gap 低库存项。返修通过新增 Migration 00028 RPC 在 SQL 层正确完成所有过滤和排序。
+Phase B 性能优化目标是减少同一 HTTP 请求内重复的 auth、role、warehouse、archive preference 查询。第一轮为低风险切片：仅在 5 个文件中添加 React `cache()` 实现请求级缓存，不改页面查询编排、sync pagination、索引或 Migration。
 
-### 实现（DONE + 返修）
+### 实现
 
-**Migration 00028（`supabase/migrations/00028_low_stock_rpc.sql`）：**
-- 新增 `get_low_stock(p_user_id uuid, p_limit integer DEFAULT 50)` RPC
-- `RETURNS jsonb`，返回 `{ "data": [...] }`
-- SECURITY INVOKER + `SET search_path = ''`
-- 身份绑定：`auth.uid() IS NOT NULL` + `p_user_id = auth.uid()`
-- 参数防御：`COALESCE(p_limit, 50)` + clamp `[1, 200]`
-- SQL 层过滤：`match_status = 'matched'` + `quantity > 0` + `quantity <= COALESCE(p.safety_stock, 0)`
-- 归档排除：`LEFT JOIN user_variant_preference uvp_arch ... WHERE uvp_arch.variant_id IS NULL`
-- 仓库隔离：`get_user_role() = 'admin' OR warehouse_id IN (SELECT get_assigned_warehouse_ids())`
-- gap 计算：`COALESCE(p.safety_stock, 0) - i.quantity AS gap`
-- 排序：`ORDER BY gap DESC, quantity ASC`
-- 分页：`LIMIT p_limit`
-- 权限收口：`REVOKE FROM PUBLIC, anon` + `GRANT TO authenticated`
-- 所有 RAISE EXCEPTION 为中文
+**src/lib/auth.ts：**
+- 新增 `cachedGetAuthProfile` React `cache()` 函数
+- 合并 `auth.getUser()` + `profiles(display_name, is_active, role)` 为一次查询
+- `getCurrentUser()` 和 `getCurrentActiveUser()` 均复用 `cachedGetAuthProfile`
+- PGRST116（profile 未创建，trigger race）处理为 absent profile → `getCurrentActiveUser()` 返回 `null`
+- 中文错误消息不变：`requireAuth()` → `未登录`，`requireActiveAuth()` → `未登录或账户已停用`，`requireActiveAdmin()` → `无权限：需要管理员角色`
 
-**repository.ts 修改：**
-- `getLowStock()` 改为调用 `supabase.rpc('get_low_stock', { p_user_id: userId, p_limit: limit })`
-- 使用 `mapOverseasRow` 映射 RPC 返回行
-- 移除 `getUserArchivedVariantIds` 辅助函数（归档已下沉 RPC）
-- 移除 `warehouseAccessRepository` 导入（仓库隔离已下沉 RPC）
-- 签名保持 `{ userId, limit }` 对象参数，返回 `Promise<InventoryItem[]>`
+**src/app/dashboard/layout.tsx：**
+- 移除直接 `createClient().auth.getUser()` + `profiles` 查询
+- 改用 `getCurrentUser()`（不校验 `is_active`，保持原行为：停用用户可进入 layout，各子页面自行校验）
 
-**database.ts：**
-- 新增 `get_low_stock` 函数类型定义
+**src/features/shipments/repository.ts：**
+- `getUserRole` 从 `async function` 改为 `const ... = cache(async ...)`
+- 语义不变：Admin → `'admin'`，Operator → `'operator'`，其他 → `'unknown'`
+- PGRST116 → `'unknown'`，DB error → `ShipmentError`
 
-**page.tsx：**
-- Dashboard 调用方使用 `getLowStock({ userId: user.id })`（不变）
+**src/features/warehouse-access/repository.ts：**
+- 新增 `cachedGetAccessibleWarehouseIds` React `cache()`
+- 返回 `string[]`（不可变），公开方法返回 `new Set(await cachedFn(userId))`
+- Admin → 所有 active overseas warehouse，Operator → 分配的 warehouse
 
-**测试：**
-- 新增 `src/features/inventory/low-stock-pagination-migration.test.ts`：25 项迁移静态契约测试
-- 更新 `src/features/inventory/p2-d2-low-stock-summary.test.ts`：10 项 RPC 调用断言
-- 适配 `p5-sy11g-d-inventory.test.ts`（3 项 → RPC 检查）
-- 适配 `p5-sy12-non-regression.test.ts`（1 项 → RPC 检查）
-- 适配 `p5-sy13a.test.ts`（3 项 → RPC 仓库隔离检查）
+**src/features/variants/repository.ts：**
+- 新增 `cachedGetUserArchivedVariantIds` React `cache()`
+- 返回 `string[]`（不可变），公开方法返回 `new Set(await cachedFn(userId))`
+- 无效 UUID → 空数组，DB error → `VariantError`
+
+**src/lib/auth.test.ts：**
+- 适配 select 字段断言（新增 `is_active`）
+- 新增 PGRST116 行为测试：`getCurrentActiveUser()` 在 profile 查询返回 PGRST116 时返回 `null`
+
+### 禁止事项（已遵守）
+
+- 不修改 `createClient()` 缓存
+- 不修改 `createServiceClient()`
+- 不修改 Migration
+- 不修改索引
+- 不修改 sync 页分页
+- 不修改页面查询编排（并行化）
+- 不修改 `package.json`
+- 不进行无关重构
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| 全量测试 | **2754/2754**（65 文件）✅ |
+| 全量测试 | **2754/2754**（65 文件）+ 1 项 PGRST116 新测试 ✅ |
 | build | Compiled + TypeScript ✅ |
 | lint | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有）✅ |
-| git diff --check | 通过 ✅ |
-| Migration 00028 新增 get_low_stock RPC | ✅ |
-| RPC SQL 层归档/仓库/低库存过滤正确 | ✅ |
-| RPC ORDER BY gap DESC, quantity ASC | ✅ |
-| RPC LIMIT p_limit（默认 50，上限 200） | ✅ |
-| Repository 调用 supabase.rpc | ✅ |
-| JS 层过滤全部移除 | ✅ |
-| Dashboard 调用方不变 | ✅ |
-| 返回类型仍为 Promise<InventoryItem[]> | ✅ |
-| Migration 00028 手动执行并验证（runtime smoke test 通过） | ✅ |
-| Dashboard 首页低库存汇总区正常渲染，无 function not found 错误 | ✅ |
+| `.claude/context-status.json` 不在 git status | ✅ |
+| auth.test.ts PGRST116 行为测试 | ✅ |
+| 测试文件 3 个指定文件通过 | 105/105（3 files）✅ |
+| 不新增 Migration | ✅ |
+| 不改页面查询编排 / sync pagination | ✅ |
 
-### 禁止事项（已遵守）
+### 修改文件清单
 
-- 不进入 P2-I4 Domestic Inventory ✅
-- 不清理 smoke-test-00025.ts 旧 lint ✅
-- 不修改 Product/ProductVariant/Inventory 关系 ✅
-- 不修改 RLS / 权限模型 ✅
-- 不修改 .claude/context-status.json ✅
+| # | 文件 | 变更类型 |
+|---|------|---------|
+| 1 | `src/lib/auth.ts` | 新增 `cachedGetAuthProfile` cache()，重构 getCurrentUser/getCurrentActiveUser |
+| 2 | `src/lib/auth.test.ts` | select 断言适配 + PGRST116 行为测试 |
+| 3 | `src/app/dashboard/layout.tsx` | 替换直接 Supabase 调用为 getCurrentUser() |
+| 4 | `src/features/shipments/repository.ts` | getUserRole 包裹 cache() |
+| 5 | `src/features/warehouse-access/repository.ts` | 新增 cachedGetAccessibleWarehouseIds |
+| 6 | `src/features/variants/repository.ts` | 新增 cachedGetUserArchivedVariantIds |
 
-## 下一步
+### 残余风险
 
-LOW-STOCK-PAGINATION 完成（RPC 返修）。UNMATCHED-PAGINATION、LOW-STOCK-PAGINATION 均已完成。PERF-S1 全系列、P4-UX、P2-D2、SIDEBAR-ENABLE 均已完成。P3-S1B 仍 BLOCKED_EXTERNAL（百世 API 授权未恢复）。可推进其他未阻塞任务（P2-I4 Domestic Inventory 或其他小修）。
+- React `cache()` 仅在单次 render 或单次 Server Action 内共享缓存；同一页面 render 和后续 Server Action 调用之间不共享缓存
+- 如需跨 render→action 共享缓存（Phase C），需评估 `AsyncLocalStorage` 方案
+- `cache()` 在 Vitest 测试环境表现为透明 pass-through（无缓存），不影响测试覆盖
+
+### 下一步
+
+PERF-B1 完成。Phase C（页面查询并行重排）建议优先推进——当前已有 request-scope cache 基础，并行重排可减少 dashboard pages 内部 waterfall。Phase D（同步页分页）和 Phase E（索引优化）与 PERF-B1 无冲突，可独立推进。P3-S1B 仍 BLOCKED_EXTERNAL。

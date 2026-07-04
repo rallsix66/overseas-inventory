@@ -74,6 +74,10 @@ function mockProfileNotFound() {
   mockSingle.mockResolvedValue({ data: null, error: null });
 }
 
+function mockProfilePGRST116() {
+  mockSingle.mockResolvedValue({ data: null, error: { code: 'PGRST116' } });
+}
+
 // ─── Existing function regression tests ───────────────────────────
 
 describe('getCurrentUser (existing, unchanged)', () => {
@@ -250,6 +254,18 @@ describe('getCurrentActiveUser', () => {
 
     const user = await getCurrentActiveUser();
 
+    expect(user).toBeNull();
+  });
+
+  it('returns null when profile query returns PGRST116 (trigger race — profile not yet created)', async () => {
+    mockAuthSuccess();
+    mockProfilePGRST116();
+
+    const user = await getCurrentActiveUser();
+
+    // PGRST116 = row not found. cachedGetAuthProfile treats it as absent profile
+    // (not a hard DB error), so getCurrentActiveUser() returns null — same as
+    // unauthenticated / inactive — to avoid leaking a partial user to callers.
     expect(user).toBeNull();
   });
 
