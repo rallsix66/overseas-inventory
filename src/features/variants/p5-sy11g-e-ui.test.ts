@@ -141,3 +141,42 @@ describe('P5-SY11G-E — columns.tsx', () => {
     expect(columnsSrc).not.toMatch(/'is_archived'/);
   });
 });
+
+// ─── Sidebar Nav — 产品管理组入口已启用 ────────────────────────────
+
+describe('P5-SY11G-E — sidebar-nav 产品管理入口', () => {
+  const SIDEBAR_PATH = path.resolve(
+    process.cwd(),
+    'src/app/dashboard/_components/sidebar-nav.tsx'
+  );
+  let sidebarSrc: string;
+
+  beforeAll(() => {
+    sidebarSrc = fs.readFileSync(SIDEBAR_PATH, 'utf-8');
+  });
+
+  it('/dashboard/variants (SKU 管理) phase 为 0，已启用', () => {
+    // 精确匹配 phase: '0' 在同一行
+    expect(sidebarSrc).toMatch(/\/dashboard\/variants.*phase: '0'/);
+  });
+
+  it('/dashboard/variants/unmatched (待处理 SKU) phase 为 0，已启用', () => {
+    expect(sidebarSrc).toMatch(/\/dashboard\/variants\/unmatched.*phase: '0'/);
+  });
+
+  it('产品管理组不再有 phase: \'1\' 的 SKU 入口', () => {
+    // 查找产品管理组区块（label: '产品管理' 到下一个 ] 之间）
+    const productGroupStart = sidebarSrc.indexOf("label: '产品管理'");
+    expect(productGroupStart).toBeGreaterThan(0);
+    // 找到该 group 的 items 数组结束位置（匹配接下来的 NavGroup 或 NAV_GROUPS 结束）
+    const afterGroup = sidebarSrc.indexOf('label: \'物流\'', productGroupStart);
+    expect(afterGroup).toBeGreaterThan(productGroupStart);
+    const productGroup = sidebarSrc.slice(productGroupStart, afterGroup);
+    // 组内不应有 phase: '1'
+    expect(productGroup).not.toContain("phase: '1'");
+  });
+
+  it('国内库存 (Domestic Inventory) 仍保持 phase: \'2\' 未启用', () => {
+    expect(sidebarSrc).toMatch(/\/dashboard\/inventory\/domestic.*phase: '2'/);
+  });
+});
