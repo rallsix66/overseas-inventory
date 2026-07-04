@@ -91,9 +91,9 @@ describe('getCurrentUser (existing, unchanged)', () => {
     expect(user!.displayName).toBe('Test User');
     expect(user!.roleName).toBe('admin');
 
-    // Verify query chain
+    // Verify query chain — select now includes is_active for shared cache
     expect(mockFrom).toHaveBeenCalledWith('profiles');
-    expect(mockSelect).toHaveBeenCalledWith('display_name, role:role_id (name)');
+    expect(mockSelect).toHaveBeenCalledWith('display_name, is_active, role:role_id (name)');
     expect(mockEq).toHaveBeenCalledWith('id', 'user-1');
     expect(mockSingle).toHaveBeenCalled();
   });

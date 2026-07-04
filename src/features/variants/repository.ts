@@ -8,6 +8,7 @@
 // - 目标不存在 → 返回 null
 // - 列表无数据 → 返回空数组
 // - 关联查询失败 → 抛出 VariantError(DB_ERROR)，不返回不完整数据
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
 import type { VariantItem, VariantFilters } from './types';
@@ -45,15 +46,12 @@ function mapVariantItem(row: Record<string, unknown>, archivedVariantIds: Set<st
   };
 }
 
-// ---- Repository ----
+// ─── Request-scope cached helpers ────────────────────────────────────
+// 内部函数返回 string[]（不可变），避免缓存可变 Set。
 
-export const variantRepository = {
-  /**
-   * 获取当前用户已归档的 Variant ID 集合（用于过滤/标记）
-   * 调用方负责传入 userId（从 session 获取）。
-   */
-  async getUserArchivedVariantIds(userId: string): Promise<Set<string>> {
-    if (!validateUUID(userId)) return new Set();
+const cachedGetUserArchivedVariantIds = cache(
+  async (userId: string): Promise<string[]> => {
+    if (!validateUUID(userId)) return [];
 
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -66,7 +64,20 @@ export const variantRepository = {
       throw new VariantError('查询归档偏好失败', 'DB_ERROR');
     }
 
-    return new Set((data ?? []).map((r) => r.variant_id));
+    return (data ?? []).map((r) => r.variant_id);
+  },
+);
+
+// ---- Repository ----
+
+export const variantRepository = {
+  /**
+   * 获取当前用户已归档的 Variant ID 集合（用于过滤/标记）
+   * 调用方负责传入 userId（从 session 获取）。
+   * 每次调用返回新的 Set（基于同一请求内缓存的 string[]），避免调用方修改共享状态。
+   */
+  async getUserArchivedVariantIds(userId: string): Promise<Set<string>> {
+    return new Set(await cachedGetUserArchivedVariantIds(userId));
   },
 
   /** 分页列表（含关联产品名 + 当前用户归档状态）

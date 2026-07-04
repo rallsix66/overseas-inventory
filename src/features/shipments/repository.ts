@@ -1,4 +1,5 @@
 // 物流模块数据访问层 — 封装 shipment / shipment_item / tracking_event 查询
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
 import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
@@ -34,26 +35,28 @@ export class ShipmentError extends Error {
   }
 }
 
-async function getUserRole(userId: string): Promise<'admin' | 'operator' | 'unknown'> {
-  const supabase = await createClient();
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('role:role_id(name)')
-    .eq('id', userId)
-    .single();
+const getUserRole = cache(
+  async (userId: string): Promise<'admin' | 'operator' | 'unknown'> => {
+    const supabase = await createClient();
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('role:role_id(name)')
+      .eq('id', userId)
+      .single();
 
-  if (error) {
-    // PGRST116 = row not found — profile genuinely doesn't exist
-    if (error.code === 'PGRST116') return 'unknown';
-    // Real DB/RLS error — must not silently degrade to 'unknown' and widen permissions
-    throw new ShipmentError('查询用户角色失败', 'DB_ERROR');
-  }
+    if (error) {
+      // PGRST116 = row not found — profile genuinely doesn't exist
+      if (error.code === 'PGRST116') return 'unknown';
+      // Real DB/RLS error — must not silently degrade to 'unknown' and widen permissions
+      throw new ShipmentError('查询用户角色失败', 'DB_ERROR');
+    }
 
-  const roleName = (profile as unknown as { role: { name: string } } | null)?.role?.name;
-  if (roleName === 'admin') return 'admin';
-  if (roleName === 'operator') return 'operator';
-  return 'unknown';
-}
+    const roleName = (profile as unknown as { role: { name: string } } | null)?.role?.name;
+    if (roleName === 'admin') return 'admin';
+    if (roleName === 'operator') return 'operator';
+    return 'unknown';
+  },
+);
 
 export const shipmentRepository = {
   /** P3-S2A/P3-S2B: 在途列表（不含 warehoused），含仓库隔离 */

@@ -4,6 +4,7 @@
 //
 // Admin 不受仓库分配限制（getUserRole() === 'admin' 时返回全部仓库）。
 // Operator 仅可访问 user_warehouses 中分配的仓库。
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
 import type { WarehouseAccessRepository, OperatorItem, AssignableWarehouse } from './types';
@@ -14,13 +15,12 @@ function validateUUID(id: string): boolean {
   return UUID_RE.test(id);
 }
 
-export const warehouseAccessRepository: WarehouseAccessRepository = {
-  /**
-   * 获取用户可访问的仓库 ID 集合。
-   * Admin 返回所有 active overseas warehouse；Operator 返回 user_warehouses 中分配的。
-   */
-  async getAccessibleWarehouseIds(userId: string): Promise<Set<string>> {
-    if (!validateUUID(userId)) return new Set();
+// ─── Request-scope cached helpers ────────────────────────────────────
+// 内部函数返回 string[]（不可变），避免缓存可变 Set。
+
+const cachedGetAccessibleWarehouseIds = cache(
+  async (userId: string): Promise<string[]> => {
+    if (!validateUUID(userId)) return [];
 
     const supabase = await createClient();
 
@@ -40,7 +40,7 @@ export const warehouseAccessRepository: WarehouseAccessRepository = {
         .eq('type', 'overseas')
         .eq('is_active', true);
 
-      return new Set((allWh ?? []).map((w) => w.id));
+      return (allWh ?? []).map((w) => w.id);
     }
 
     // Operator → 返回 user_warehouses 中分配的
@@ -49,7 +49,18 @@ export const warehouseAccessRepository: WarehouseAccessRepository = {
       .select('warehouse_id')
       .eq('user_id', userId);
 
-    return new Set((data ?? []).map((r) => r.warehouse_id));
+    return (data ?? []).map((r) => r.warehouse_id);
+  },
+);
+
+export const warehouseAccessRepository: WarehouseAccessRepository = {
+  /**
+   * 获取用户可访问的仓库 ID 集合。
+   * Admin 返回所有 active overseas warehouse；Operator 返回 user_warehouses 中分配的。
+   * 每次调用返回新的 Set（基于同一请求内缓存的 string[]），避免调用方修改共享状态。
+   */
+  async getAccessibleWarehouseIds(userId: string): Promise<Set<string>> {
+    return new Set(await cachedGetAccessibleWarehouseIds(userId));
   },
 
   /** 检查用户是否有某个仓库的访问权限 */
