@@ -8,7 +8,7 @@ Phase 3 收口 + 性能优化规划
 
 ## Current Task
 
-`P2-D2` — Dashboard 低库存汇总看板（**IN PROGRESS**，2026-07-04）。
+`P2-D2` — Dashboard 低库存汇总看板（**DONE**，2026-07-04）。
 
 P2-D2 验收结论：
 - 全量 2703/2703（64 文件），build pass，lint 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有），git diff --check pass
@@ -842,7 +842,3 @@ BigSeller 实际 VXE 结构：
 - **客户端组件**：`UserDetailSheet` / `UserRoleChangeDialog` / `UserActiveToggleDialog` — 通过 Server Actions 间接调用，不直接访问 Supabase / service_role / auth.admin。
 - **竞态修复**：Migration 00024 RPC 使用 `pg_advisory_xact_lock(987654321)` 序列化 Admin 写操作 + `FOR UPDATE` 锁定目标行，消除「两个管理员互相禁用/降级」TOCTOU 竞态窗口。Migration 00025 叠加 `auth.uid()` 身份绑定（auth.uid() IS NOT NULL / auth.uid() = p_operator_user_id / 活跃 Admin 校验）+ REVOKE EXECUTE FROM PUBLIC, anon + GRANT EXECUTE TO authenticated + `check_operator_profile_update` 触发器禁止 operator 自升 role_id / is_active。
 - **错误消息**：所有 RPC RAISE EXCEPTION 使用中文错误消息，Repository 捕获并通过 `UserError('DB_ERROR', error.message)` 传播至 ActionResult。
-
-## Last Updated
-
-**Last Updated**: 2026-07-03 — P4-UX DONE。用户管理页局部刷新收口：移除 UserDetailSheet 的 useRouter/router.refresh()，P4-U3/P4-U4 成功后改为 getUserById 局部刷新 Sheet + onUserChanged 通知父组件 + UsersPageContent useEffect props 同步 + listUsers 局部刷新列表。全量 2660/2660（63 文件），lint 仅 smoke-test-00025.ts 既有 5 errors / 25 warnings，build pass，git diff --check pass。PERF-S1 全系列 + P4-UX 已完成，Phase 3 主线 P3-S1B 等待百世 API 授权恢复。
