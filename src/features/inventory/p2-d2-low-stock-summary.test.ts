@@ -27,9 +27,12 @@ describe('P2-D2 — Dashboard 低库存数据获取', () => {
     expect(page).toContain('LowStockSummaryItem');
   });
 
-  it('Dashboard 调用 inventoryRepository.getLowStock', () => {
+  it('Dashboard 调用 inventoryRepository.getLowStock（LOW-STOCK-PAGINATION 对象参数）', () => {
     expect(page).toContain('getLowStock');
     expect(page).toContain("from '@/features/inventory/repository'");
+    // 新签名：getLowStock({ userId: user.id })
+    expect(page).toMatch(/getLowStock\s*\(\s*\{/);
+    expect(page).toMatch(/userId:\s*user\.id/);
   });
 
   it('getLowStock 在 try/catch 中调用，失败不崩溃 Dashboard', () => {
@@ -326,5 +329,79 @@ describe('P2-D2 — 不破坏 P5-SY12D 关注产品动态', () => {
     expect(page).toContain('<FollowedProductsSection');
     expect(page).toContain('variants={followedVariants}');
     expect(page).toContain('error={followedError}');
+  });
+});
+
+// ─── LOW-STOCK-PAGINATION — repository.ts getLowStock RPC 调用 ───────
+
+describe('LOW-STOCK-PAGINATION — inventoryRepository.getLowStock RPC 实现', () => {
+  const REPO_PATH = resolve(process.cwd(), 'src/features/inventory/repository.ts');
+  let repoSrc: string;
+
+  beforeAll(() => {
+    repoSrc = readFileSync(REPO_PATH, 'utf-8');
+  });
+
+  // 提取 getLowStock 函数体（到下一个 async 方法开始之前）
+  function getLowStockBody(): string {
+    const fnStart = repoSrc.indexOf('getLowStock');
+    const fnEnd = repoSrc.indexOf('getByProductId', fnStart);
+    return repoSrc.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 2000);
+  }
+
+  it('getLowStock 参数为对象解构 { userId, limit }', () => {
+    expect(repoSrc).toMatch(/getLowStock\s*\(\s*params/);
+    const fnBody = getLowStockBody();
+    expect(fnBody).toContain('userId');
+    expect(fnBody).toContain('limit');
+  });
+
+  it('默认 limit = 50', () => {
+    expect(repoSrc).toContain('limit = 50');
+  });
+
+  it('调用 supabase.rpc(\'get_low_stock\') 而非 PostgREST .from().select()', () => {
+    const fnBody = getLowStockBody();
+    expect(fnBody).toContain("supabase.rpc('get_low_stock'");
+    expect(fnBody).toContain('p_user_id');
+    expect(fnBody).toContain('p_limit');
+    // 不应再使用 .from('inventory') 全量查询
+    expect(fnBody).not.toMatch(/\.from\(['"]inventory['"]\)/);
+  });
+
+  it('不再使用 .order() + .limit() PostgREST 链式调用', () => {
+    const fnBody = getLowStockBody();
+    expect(fnBody).not.toMatch(/\.order\(/);
+    expect(fnBody).not.toMatch(/\.limit\(/);
+  });
+
+  it('不再 JS 层过滤 quantity <= safetyStock（已下沉 RPC）', () => {
+    const fnBody = getLowStockBody();
+    expect(fnBody).not.toMatch(/quantity\s*<=\s*\w+\.safetyStock/);
+  });
+
+  it('不再调用 getUserArchivedVariantIds（归档排除已下沉 RPC）', () => {
+    expect(repoSrc).not.toContain('getUserArchivedVariantIds');
+  });
+
+  it('不再 import warehouseAccessRepository（仓库隔离已下沉 RPC）', () => {
+    expect(repoSrc).not.toContain('warehouseAccessRepository');
+  });
+
+  it('使用 mapOverseasRow 映射 RPC 返回行', () => {
+    const fnBody = getLowStockBody();
+    expect(fnBody).toContain('mapOverseasRow');
+  });
+
+  it('!userId 时提前返回 []（不调用 RPC）', () => {
+    const fnBody = getLowStockBody();
+    expect(fnBody).toContain('if (!userId)');
+    expect(fnBody).toContain('return []');
+  });
+
+  it('getLowStock 返回类型为 Promise<InventoryItem[]>（非 PaginatedResult）', () => {
+    const fnBody = getLowStockBody();
+    expect(fnBody).toMatch(/Promise<InventoryItem\[\]>/);
+    expect(fnBody).not.toMatch(/PaginatedResult/);
   });
 });

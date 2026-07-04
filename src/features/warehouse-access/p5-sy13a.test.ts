@@ -88,8 +88,10 @@ describe('P5-SY13A — inventoryRepository 仓库过滤', () => {
     src = fs.readFileSync(INV_REPO_PATH, 'utf-8');
   });
 
-  it('导入 warehouseAccessRepository', () => {
-    expect(src).toMatch(/from ['"]@\/features\/warehouse-access\/repository['"]/);
+  it('LOW-STOCK-PAGINATION: getLowStock 仓库隔离已下沉到 RPC（不再 import warehouseAccessRepository）', () => {
+    // Migration 00028 get_low_stock RPC 内部使用 get_assigned_warehouse_ids()
+    // 仓库隔离在 SQL 层完成，repository.ts 不再导入 warehouseAccessRepository
+    expect(src).not.toMatch(/warehouseAccessRepository/);
   });
 
   it('getOverseasList — PERF-S1B: 仓库隔离由 RPC SQL 层完成（get_user_role + get_assigned_warehouse_ids）', () => {
@@ -102,11 +104,12 @@ describe('P5-SY13A — inventoryRepository 仓库过滤', () => {
     }
   });
 
-  it('getLowStock 仍调用 getAccessibleWarehouseIds（未接入 RPC）', () => {
-    // getLowStock 保持 JS 层仓库过滤，getAccessibleWarehouseIds 仍被使用
-    const matches = src.match(/getAccessibleWarehouseIds/g);
-    expect(matches).not.toBeNull();
-    expect(matches!.length).toBeGreaterThanOrEqual(1);
+  it('LOW-STOCK-PAGINATION: getLowStock 仓库隔离在 RPC SQL 层（get_user_role + get_assigned_warehouse_ids）', () => {
+    // Migration 00028 get_low_stock RPC 已接入仓库隔离
+    const repoPath = path.resolve(process.cwd(), 'supabase/migrations/00028_low_stock_rpc.sql');
+    const migSrc = fs.readFileSync(repoPath, 'utf-8');
+    expect(migSrc).toMatch(/get_assigned_warehouse_ids\(\)/);
+    expect(migSrc).toMatch(/get_user_role\(\)/);
   });
 
   it('getOverseasStats — PERF-S1B: 仓库隔离由 RPC SQL 层完成，不再 JS 层过滤', () => {
@@ -192,29 +195,14 @@ describe('P5-SY13A rework — 空分配集合不误放', () => {
     expect(syncSrc).not.toMatch(/accessibleWhIds\.size\s*>\s*0\s*&&/);
   });
 
-  it('inventoryRepository getLowStock 空分配时直接 filter（返回空数组）', () => {
-    // 验证：userId 存在时必然 filter，无 fallback return
-    expect(invSrc).toMatch(/return lowStockItems\.filter/);
-    // 不应该存在 accessibleWhIds2.size > 0 守卫（空分配绕过过滤）
-    expect(invSrc).not.toMatch(/accessibleWhIds2\.size\s*>\s*0/);
-    // 不应该存在两个连续的 return lowStockItems 路径（filtered + unfiltered bypass）
-    // unfiltered return lowStockItems; 只应在没有 userId 的 fallback 路径出现
-    const getLowStockFn = invSrc.match(/getLowStock[\s\S]*?^  },/m);
-    expect(getLowStockFn).not.toBeNull();
-    const body = getLowStockFn![0];
-    // userId 分支内，return lowStockItems 必须经过 .filter
-    const userIdSection = body.match(/if \(userId\)[\s\S]*?^    \}/m);
-    if (userIdSection) {
-      // userId 分支内的所有 return 都必须经过 .filter
-      const returnsInBranch = userIdSection[0].match(/return lowStockItems/g) ?? [];
-      for (const r of returnsInBranch) {
-        // 每个 return lowStockItems 后必须紧跟 .filter
-        const afterReturn = userIdSection[0].substring(
-          userIdSection[0].indexOf(r) + r.length
-        );
-        expect(afterReturn.trimStart().startsWith('.filter')).toBe(true);
-      }
-    }
+  it('LOW-STOCK-PAGINATION: getLowStock 空分配时 RPC 返回空（SQL 层 get_assigned_warehouse_ids）', () => {
+    // Migration 00028 get_low_stock RPC：SQL 层仓库隔离
+    // Operator 无分配仓库时 get_assigned_warehouse_ids() 返回空 → IN (...) 无匹配 → 空结果
+    const migPath = path.resolve(process.cwd(), 'supabase/migrations/00028_low_stock_rpc.sql');
+    const migSrc = fs.readFileSync(migPath, 'utf-8');
+    expect(migSrc).toMatch(/get_assigned_warehouse_ids\(\)/);
+    // RPC 内 operator 分支：get_user_role() != 'admin' 时走 IN (SELECT get_assigned_warehouse_ids())
+    // 空分配自然返回空结果，不需要 JS 层 filter
   });
 });
 

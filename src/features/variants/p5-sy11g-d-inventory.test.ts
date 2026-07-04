@@ -46,15 +46,13 @@ describe('P5-SY11G-D — 源码不再使用 is_archived 过滤', () => {
     expect(repoSrc).toMatch(/user_variant_preference/);
   });
 
-  it('getUserArchivedVariantIds 辅助函数存在', () => {
-    expect(repoSrc).toMatch(/getUserArchivedVariantIds/);
-  });
-
-  it('排除已归档 Variant 在 JS 层完成（非 DB 层），使用 row.variant_id 判断', () => {
-    // 关键修复：variant join select 不含 id，必须用 row.variant_id
-    expect(repoSrc).toMatch(/archivedVariantIds\.has\s*\(\s*row\.variant_id/);
-    // 不应继续使用 v.id（variant join 不含 id 字段）
-    expect(repoSrc).not.toMatch(/archivedVariantIds\.has\s*\(\s*v\.id/);
+  it('归档排除由 RPC SQL 层完成（get_low_stock RPC + user_variant_preference LEFT JOIN IS NULL）', () => {
+    // LOW-STOCK-PAGINATION: 归档排除已从 JS 层下沉到 get_low_stock RPC（Migration 00028）。
+    // 仓库隔离和低库存判定也一并下沉。
+    const migPath = path.resolve(process.cwd(), 'supabase/migrations/00028_low_stock_rpc.sql');
+    const migSrc = fs.readFileSync(migPath, 'utf-8');
+    expect(migSrc).toMatch(/user_variant_preference/);
+    expect(migSrc).toMatch(/uvp_arch\.variant_id\s+IS\s+NULL/);
   });
 });
 
@@ -210,10 +208,12 @@ describe('P5-SY11G-D 返工 — getLowStock 使用 row.variant_id', () => {
 // ─── 多用户隔离概念验证 ───────────────────────────────────────────────
 
 describe('P5-SY11G-D 返工 — 多用户隔离', () => {
-  it('getUserArchivedVariantIds 按 userId 查询（每人独立偏好）', () => {
-    const repoSrc = fs.readFileSync(INVENTORY_REPO_PATH, 'utf-8');
-    // 函数接收 userId 参数，按 user_id 查询
-    expect(repoSrc).toContain("'user_id', userId");
+  it('归档排除在 RPC 层按 p_user_id 查询（每人独立偏好）', () => {
+    // LOW-STOCK-PAGINATION: getLowStock RPC 内部 JOIN user_variant_preference
+    // ON uvp_arch.user_id = p_user_id，每人独立
+    const migPath = path.resolve(process.cwd(), 'supabase/migrations/00028_low_stock_rpc.sql');
+    const migSrc = fs.readFileSync(migPath, 'utf-8');
+    expect(migSrc).toMatch(/uvp_arch\.user_id\s*=\s*p_user_id/);
   });
 
   it('filter 条件 — PERF-S1B: 归档过滤由 RPC 内 user_variant_preference JOIN 完成', () => {

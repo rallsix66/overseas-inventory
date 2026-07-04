@@ -42,10 +42,11 @@ describe('P5-SY12 — 归档功能不退化', () => {
     expect(repoSrc).not.toContain("'favorited'");
   });
 
-  it('inventory repository 归档过滤仍使用 preference_type=archived', () => {
-    const repoPath = path.resolve(process.cwd(), 'src/features/inventory/repository.ts');
-    const repoSrc = fs.readFileSync(repoPath, 'utf-8');
-    expect(repoSrc).toMatch(/preference_type.*archived/);
+  it('inventory repository 归档过滤在 get_low_stock RPC SQL 层完成（LOW-STOCK-PAGINATION）', () => {
+    // LOW-STOCK-PAGINATION: 归档过滤已下沉到 Migration 00028 get_low_stock RPC
+    const migPath = path.resolve(process.cwd(), 'supabase/migrations/00028_low_stock_rpc.sql');
+    const migSrc = fs.readFileSync(migPath, 'utf-8');
+    expect(migSrc).toMatch(/preference_type.*archived/);
   });
 });
 

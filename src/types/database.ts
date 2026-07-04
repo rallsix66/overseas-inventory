@@ -724,6 +724,14 @@ export type Database = {
         }
         Returns: unknown[]
       }
+      /** LOW-STOCK-PAGINATION: 低库存查询 RPC（Migration 00028） */
+      get_low_stock: {
+        Args: {
+          p_user_id: string
+          p_limit?: number
+        }
+        Returns: Record<string, unknown>
+      }
       update_user_role_protected: {
         Args: {
           p_target_user_id: string

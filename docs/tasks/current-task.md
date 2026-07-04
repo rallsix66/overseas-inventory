@@ -2,82 +2,78 @@
 
 ## Task ID
 
-`UNMATCHED-PAGINATION` — 待处理 SKU 页面分页补齐 + Pending Modules 文档修正
+`LOW-STOCK-PAGINATION` — `getLowStock()` RPC 分页补齐
 
 ## 状态
 
-**DONE**（2026-07-04，2026-07-04 返修边界空态）。待处理 SKU 页面 `/dashboard/variants/unmatched` 已从全量加载改为 DB 层分页查询，`docs/current-state.md` Pending Modules 表格的过期状态已修正。返修增加了超出总页数时的 redirect 处理，避免错误空态。
+**DONE**（2026-07-04，2026-07-04 RPC 返修完成）。`inventoryRepository.getLowStock()` 已从 JS 全量过滤改为调用 Migration 00028 `get_low_stock` RPC。SQL 层完成归档排除、仓库隔离、`quantity <= safety_stock` 过滤、gap 计算、`ORDER BY gap DESC, quantity ASC`、`LIMIT p_limit`，确保 limit 只作用在"当前用户可见、未归档、真实低库存"的结果集之后。
 
 ### 背景
 
-`variantRepository.getUnmatched()` 原为全量查询（无 `.range()`、无 `count: 'exact'`），归档排除在 JS 层完成。所有 unmatched/pending SKU 一次性加载到内存再过滤分页。当前数据量小（< 10 条），但随同步持续增长存在性能退化风险。本任务补齐 DB 层分页，同时顺手修正 `docs/current-state.md` 中 Pending Modules 表格的 3 条过期状态。
+`getLowStock()` 原为全量查询 + JS 层过滤（`quantity <= safetyStock`、归档排除、仓库隔离）。初版实现错误地将 `.limit(limit)` 放在 JS 过滤之前，会漏报高 gap 低库存项。返修通过新增 Migration 00028 RPC 在 SQL 层正确完成所有过滤和排序。
 
-### 实现（DONE）
+### 实现（DONE + 返修）
+
+**Migration 00028（`supabase/migrations/00028_low_stock_rpc.sql`）：**
+- 新增 `get_low_stock(p_user_id uuid, p_limit integer DEFAULT 50)` RPC
+- `RETURNS jsonb`，返回 `{ "data": [...] }`
+- SECURITY INVOKER + `SET search_path = ''`
+- 身份绑定：`auth.uid() IS NOT NULL` + `p_user_id = auth.uid()`
+- 参数防御：`COALESCE(p_limit, 50)` + clamp `[1, 200]`
+- SQL 层过滤：`match_status = 'matched'` + `quantity > 0` + `quantity <= COALESCE(p.safety_stock, 0)`
+- 归档排除：`LEFT JOIN user_variant_preference uvp_arch ... WHERE uvp_arch.variant_id IS NULL`
+- 仓库隔离：`get_user_role() = 'admin' OR warehouse_id IN (SELECT get_assigned_warehouse_ids())`
+- gap 计算：`COALESCE(p.safety_stock, 0) - i.quantity AS gap`
+- 排序：`ORDER BY gap DESC, quantity ASC`
+- 分页：`LIMIT p_limit`
+- 权限收口：`REVOKE FROM PUBLIC, anon` + `GRANT TO authenticated`
+- 所有 RAISE EXCEPTION 为中文
 
 **repository.ts 修改：**
-- `getUnmatched()` 签名改为 `getUnmatched(params: { userId?: string; page?: number; pageSize?: number }): Promise<PaginatedResult<VariantItem>>`
-- 查询使用 `{ count: 'exact' }` + `.range(from, from + pageSize - 1)`
-- 归档排除从 JS 层 `data.filter()` 迁移到 DB 层 `query.notIn('id', archivedArray)`（在 `.range()` 之前执行，确保 total 准确）
-- 排序保持 `last_sync_at desc`
-- 返回 `{ data, total, page, pageSize }`
+- `getLowStock()` 改为调用 `supabase.rpc('get_low_stock', { p_user_id: userId, p_limit: limit })`
+- 使用 `mapOverseasRow` 映射 RPC 返回行
+- 移除 `getUserArchivedVariantIds` 辅助函数（归档已下沉 RPC）
+- 移除 `warehouseAccessRepository` 导入（仓库隔离已下沉 RPC）
+- 签名保持 `{ userId, limit }` 对象参数，返回 `Promise<InventoryItem[]>`
 
-**unmatched/page.tsx 修改：**
-- 新增 `searchParams: Promise<{ page?: string }>` prop（Next.js 16）
-- `await searchParams` → `parseInt(page, 10)` → 默认 1
-- 调用 `getUnmatched({ userId: user.id, page, pageSize: 20 })`
-- 新增分页导航：上一页/下一页 Link + "第 N 页，共 M 条"
-- 空数据状态保持不变
+**database.ts：**
+- 新增 `get_low_stock` 函数类型定义
 
-**测试（`src/features/variants/p5-sy11g-e-ui.test.ts`）：**
-- 更新 `unmatched/page.tsx` 组：3 项新断言（searchParams + 分页导航 + PAGE_SIZE）+ 更新旧签名断言为新对象参数
-- 新增 `UNMATCHED-PAGINATION — variantRepository.getUnmatched 分页` 组：7 项断言（PaginatedResult 返回类型 / count exact / range / notIn 在 range 前 / last_sync_at 排序 / 返回字段）
+**page.tsx：**
+- Dashboard 调用方使用 `getLowStock({ userId: user.id })`（不变）
 
-**文档：**
-- `docs/current-state.md`：Current Task / Pending Modules（3 条修正）/ Technical Debt（getUnmatched 分页已补齐）/ Next Step / Last Updated
-- `docs/tasks/current-task.md`：本文件
+**测试：**
+- 新增 `src/features/inventory/low-stock-pagination-migration.test.ts`：25 项迁移静态契约测试
+- 更新 `src/features/inventory/p2-d2-low-stock-summary.test.ts`：10 项 RPC 调用断言
+- 适配 `p5-sy11g-d-inventory.test.ts`（3 项 → RPC 检查）
+- 适配 `p5-sy12-non-regression.test.ts`（1 项 → RPC 检查）
+- 适配 `p5-sy13a.test.ts`（3 项 → RPC 仓库隔离检查）
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| 全量测试 | **2717/2717**（65 文件，concurrency + best live 预存失败）✅ |
+| 全量测试 | **2754/2754**（65 文件）✅ |
 | build | Compiled + TypeScript ✅ |
 | lint | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有）✅ |
 | git diff --check | 通过 ✅ |
-| getUnmatched 使用 count exact + range | ✅ |
-| notIn 归档过滤在 range 之前 | ✅ |
-| unmatched/page.tsx searchParams + 分页导航 | ✅ |
-| Pending Modules 表 3 条过期已修正 | ✅ |
-| Technical Debt getUnmatched 分页已标记补齐 | ✅ |
-| getLowStock 技术债仍保留 | ✅ |
-
-### 返修：边界空态（2026-07-04）
-
-**问题**：`?page=999` 等超出总页数的 URL 使 repository 返回 `data=[]` 但 `total>0`，页面按 `data.length === 0` 错误显示"暂无待处理 SKU"。
-
-**修复**（`unmatched/page.tsx`）：
-- `totalPages` = `Math.max(1, Math.ceil(result.total / PAGE_SIZE))`，避免 total=0 时产生 page=0
-- 当 `result.total > 0 && result.data.length === 0 && page > 1` 时，`redirect(?page=${totalPages})` 跳转到最后一页
-- 空数据状态仅当 `result.total === 0` 时显示
-- 导入 `redirect` from `next/navigation`
-
-**测试新增**：
-- 导入 redirect 断言
-- 超出页码 redirect 逻辑断言（`total > 0 && data.length === 0` + `redirect(…${totalPages})` + `Math.max(1, Math.ceil(`）
-- 空态条件改为 `result.total === 0` 断言
-
-**验收**：测试 2720/2720 ✅ | build ✅ | lint 5e/25w（仅既有）✅ | git diff --check ✅
+| Migration 00028 新增 get_low_stock RPC | ✅ |
+| RPC SQL 层归档/仓库/低库存过滤正确 | ✅ |
+| RPC ORDER BY gap DESC, quantity ASC | ✅ |
+| RPC LIMIT p_limit（默认 50，上限 200） | ✅ |
+| Repository 调用 supabase.rpc | ✅ |
+| JS 层过滤全部移除 | ✅ |
+| Dashboard 调用方不变 | ✅ |
+| 返回类型仍为 Promise<InventoryItem[]> | ✅ |
 
 ### 禁止事项（已遵守）
 
-- 不修改 getLowStock() ✅
-- 不新增 Migration / RPC ✅
-- 不修改 RLS / 权限模型 / Server Actions ✅
-- 不修改 ProductVariant 匹配业务逻辑 ✅
-- 不清理 smoke-test-00025.ts lint ✅
+- 不进入 P2-I4 Domestic Inventory ✅
+- 不清理 smoke-test-00025.ts 旧 lint ✅
+- 不修改 Product/ProductVariant/Inventory 关系 ✅
+- 不修改 RLS / 权限模型 ✅
 - 不修改 .claude/context-status.json ✅
-- 不进入 P3-S1B/P3-S1C/P3-S1D/P3-S2/P3-S4 阻塞路径 ✅
 
 ## 下一步
 
-UNMATCHED-PAGINATION 完成。PERF-S1 全系列、P4-UX、P2-D2、SIDEBAR-ENABLE、UNMATCHED-PAGINATION 均已完成。P3-S1B 仍 BLOCKED_EXTERNAL（百世 API 授权未恢复）。可推进其他未阻塞任务（getLowStock 分页补齐 或 P2-I4 Domestic Inventory）。
+LOW-STOCK-PAGINATION 完成（RPC 返修）。UNMATCHED-PAGINATION、LOW-STOCK-PAGINATION 均已完成。PERF-S1 全系列、P4-UX、P2-D2、SIDEBAR-ENABLE 均已完成。P3-S1B 仍 BLOCKED_EXTERNAL（百世 API 授权未恢复）。可推进其他未阻塞任务（P2-I4 Domestic Inventory 或其他小修）。

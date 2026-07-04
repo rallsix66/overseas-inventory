@@ -72,7 +72,7 @@ export default async function DashboardPage() {
   let lowStockError: string | null = null;
   if (user?.id) {
     try {
-      const rawItems = await inventoryRepository.getLowStock(user.id);
+      const rawItems = await inventoryRepository.getLowStock({ userId: user.id });
       lowStockItems = rawItems
         .map((item) => ({
           sku: item.sku,

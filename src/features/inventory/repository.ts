@@ -8,7 +8,6 @@
 //           get_overseas_stats / get_in_transit_confirmed_aggregate），移除 JS 全量过滤分页和 N+1 查询。
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
-import { warehouseAccessRepository } from '@/features/warehouse-access/repository';
 import type { InventoryItem, InventoryFilters, OverseasStats, WarehouseOption } from './types';
 import type { PaginatedResult } from '@/types/common';
 
@@ -63,24 +62,6 @@ function mapOverseasRow(row: RawOverseasInventoryRow): InventoryItem {
     isFavorited: row.is_favorited ?? false,
     inTransitQuantity: 0,
   };
-}
-
-/** 获取当前用户已归档的 Variant ID 集合（getLowStock 仍使用 JS 全量查询） */
-async function getUserArchivedVariantIds(userId: string | undefined): Promise<Set<string>> {
-  if (!userId) return new Set();
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('user_variant_preference')
-    .select('variant_id')
-    .eq('user_id', userId)
-    .eq('preference_type', 'archived');
-
-  if (error) {
-    throw new Error(`查询归档偏好失败: ${error.message}`);
-  }
-
-  return new Set((data ?? []).map((r) => r.variant_id));
 }
 
 export const inventoryRepository = {
@@ -191,64 +172,37 @@ export const inventoryRepository = {
     return { data: items, total: raw.total, page, pageSize };
   },
 
-  /** 获取低库存列表（用于 Dashboard 缺货清单，排除当前用户已归档 Variant） */
-  async getLowStock(userId?: string): Promise<InventoryItem[]> {
-    const supabase = await createClient();
-    const archivedVariantIds = await getUserArchivedVariantIds(userId);
+  /** 获取低库存列表（用于 Dashboard 缺货清单，排除当前用户已归档 Variant）
+   *  LOW-STOCK-PAGINATION: 调用 get_low_stock RPC（Migration 00028）。
+   *  SQL 层完成归档排除、仓库隔离、quantity <= safety_stock 过滤、
+   *  gap 计算、ORDER BY gap DESC, quantity ASC、LIMIT。
+   *  确保 limit 只作用在"当前用户可见、未归档、真实低库存"的结果集之后。 */
+  async getLowStock(
+    params: { userId?: string; limit?: number } = {}
+  ): Promise<InventoryItem[]> {
+    const { userId, limit = 50 } = params;
 
-    const { data, error } = await supabase.from('inventory').select(
-      `id, variant_id, warehouse_id, quantity, last_sync_at,
-       variant:variant_id!inner (sku, country, match_status, product_id, product:product_id (name, code, safety_stock)),
-       warehouse:warehouse_id (name, type)`
-    );
+    if (!userId) {
+      return [];
+    }
+
+    const supabase = await createClient();
+
+    const { data: rpcResult, error } = await supabase.rpc('get_low_stock', {
+      p_user_id: userId,
+      p_limit: limit,
+    });
 
     if (error) {
       throw new Error(`低库存查询失败: ${error.message}`);
     }
 
-    if (!data) return [];
-
-    // JS 兜底：排除 variant 为 null 或当前用户已归档的 inventory 行
-    // 使用 row.variant_id（inventory 自带），variant join 的 select 不含 id
-    const activeData = data.filter((row) => {
-      const v = unwrapJoin<{ sku?: string }>(row.variant);
-      if (!v) return false;
-      return !archivedVariantIds.has(row.variant_id);
-    });
-
-    // P5-SY13A: 按已分配仓库过滤
-    const lowStockItems = activeData
-      .map((row) => {
-        const variant = unwrapJoin<{ sku: string; country: string; match_status: string; product_id: string; product: unknown }>(row.variant);
-        const product = unwrapJoin<{ name: string; code: string; safety_stock: number }>(variant?.product);
-        const warehouse = unwrapJoin<{ name: string; type: string }>(row.warehouse);
-
-        return {
-          id: row.id,
-          variantId: row.variant_id,
-          warehouseId: row.warehouse_id,
-          quantity: row.quantity as number,
-          lastSyncAt: row.last_sync_at,
-          productName: product?.name ?? null,
-          productCode: product?.code ?? null,
-          sku: variant?.sku ?? '',
-          country: variant?.country ?? '',
-          warehouseName: warehouse?.name ?? '',
-          warehouseType: warehouse?.type ?? '',
-          safetyStock: product?.safety_stock ?? 0,
-          matchStatus: variant?.match_status ?? 'unmatched',
-          isFavorited: false,
-        inTransitQuantity: 0,
-        };
-      })
-      .filter((item) => item.quantity <= item.safetyStock);
-
-    // P5-SY13A: 按已分配仓库过滤（空分配→空结果）
-    if (userId) {
-      const accessibleWhIds2 = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
-      return lowStockItems.filter((item) => accessibleWhIds2.has(item.warehouseId));
+    const raw = rpcResult as { data: RawOverseasInventoryRow[] } | null;
+    if (!raw || !raw.data || raw.data.length === 0) {
+      return [];
     }
-    return lowStockItems;
+
+    return raw.data.map(mapOverseasRow);
   },
 
   /** 按产品 ID 获取各仓库存（不过滤归档，产品详情保留全部 Variant） */
