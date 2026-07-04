@@ -9,6 +9,7 @@ import { FollowedProductsSection } from '@/features/preferences/components/follo
 import { LowStockSummarySection } from './_components/low-stock-summary-section';
 import type { LowStockSummaryItem } from './_components/low-stock-summary-section';
 import type { FollowedVariantBasic } from '@/features/preferences/types';
+import type { InventoryItem } from '@/features/inventory/types';
 import { Package, Globe, Truck, ArrowRight, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -23,71 +24,76 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   const isAdmin = user?.roleName === 'admin';
 
-  // 获取海外库存统计（失败不影响首页渲染）
+  // PERF-C1: 将彼此独立的数据加载重排为并行执行
+  // 每个查询保留独立错误处理，单个失败不影响其他区块
   let overseasStats;
-  try {
-    overseasStats = await inventoryRepository.getOverseasStats(user?.id);
-  } catch {
-    // 统计获取失败时静默处理，首页仍可渲染
-  }
-
-  // P3-S2C: 获取在途聚合数据（供在途卡片 + 关注产品动态使用）
   let inTransitMap: Map<string, number> = new Map();
   let inTransitSkuCount = 0;
   let inTransitTotalQuantity = 0;
+  let followedVariants: FollowedVariantBasic[] = [];
+  let followedError: string | null = null;
+  let lowStockItems: LowStockSummaryItem[] = [];
+  let lowStockError: string | null = null;
+
   if (user?.id) {
-    try {
-      inTransitMap = await shipmentRepository.getInTransitByVariant(user.id);
-    } catch {
-      // 在途数据获取失败静默处理，不影响首页其余区块
-    }
+    // PERF-C1: 将彼此独立的数据加载重排为并行执行
+    // 每个查询的 .catch() 返回结构化结果（数据 + 错误），Promise.all 之后再赋值
+    const [osResult, itResult, fvResult, lsResult] = await Promise.all([
+      inventoryRepository.getOverseasStats(user.id).catch(() => undefined),
+      shipmentRepository.getInTransitByVariant(user.id).catch(() => new Map<string, number>()),
+      preferencesRepository.getFollowedVariantsBasic(user.id)
+        .then((data) => ({ data, error: null as string | null }))
+        .catch((e: unknown) => ({
+          data: [] as FollowedVariantBasic[],
+          error: e instanceof Error ? e.message : '关注产品加载失败',
+        })),
+      inventoryRepository.getLowStock({ userId: user.id })
+        .then((data) => ({ data, error: null as string | null }))
+        .catch((e: unknown) => ({
+          data: [] as InventoryItem[],
+          error: e instanceof Error ? e.message : '低库存数据加载失败',
+        })),
+    ]);
+
+    overseasStats = osResult;
+    inTransitMap = itResult;
+
     for (const qty of inTransitMap.values()) {
       if (qty > 0) {
         inTransitSkuCount++;
         inTransitTotalQuantity += qty;
       }
     }
-  }
 
-  // P5-SY12: 获取关注产品动态
-  // 查询失败时显示错误状态，不伪装成"暂无关注产品"
-  let followedVariants: FollowedVariantBasic[] = [];
-  let followedError: string | null = null;
-  if (user?.id) {
-    try {
-      followedVariants = await preferencesRepository.getFollowedVariantsBasic(user.id);
-      // P3-S2C: 注入在途数量到每个关注产品行
-      if (inTransitMap.size > 0) {
-        for (const v of followedVariants) {
-          v.inTransitQuantity = inTransitMap.get(v.variantId) ?? 0;
-        }
+    followedVariants = fvResult.data;
+    followedError = fvResult.error;
+    // P3-S2C: 注入在途数量到每个关注产品行
+    if (inTransitMap.size > 0) {
+      for (const v of followedVariants) {
+        v.inTransitQuantity = inTransitMap.get(v.variantId) ?? 0;
       }
-    } catch (e) {
-      followedError = e instanceof Error ? e.message : '关注产品加载失败';
     }
-  }
 
-  // P2-D2: 获取低库存汇总（全局低库存风险概览，不依赖用户是否关注）
-  let lowStockItems: LowStockSummaryItem[] = [];
-  let lowStockError: string | null = null;
-  if (user?.id) {
+    lowStockItems = lsResult.data
+      .map((item) => ({
+        sku: item.sku,
+        productName: item.productName,
+        productCode: item.productCode,
+        country: item.country,
+        warehouseName: item.warehouseName,
+        warehouseId: item.warehouseId,
+        quantity: item.quantity,
+        safetyStock: item.safetyStock,
+        gap: Math.max(item.safetyStock - item.quantity, 0),
+      }))
+      .sort((a, b) => b.gap - a.gap || a.quantity - b.quantity);
+    lowStockError = lsResult.error;
+  } else {
+    // 无 user.id — 仅获取海外统计，静默失败
     try {
-      const rawItems = await inventoryRepository.getLowStock({ userId: user.id });
-      lowStockItems = rawItems
-        .map((item) => ({
-          sku: item.sku,
-          productName: item.productName,
-          productCode: item.productCode,
-          country: item.country,
-          warehouseName: item.warehouseName,
-          warehouseId: item.warehouseId,
-          quantity: item.quantity,
-          safetyStock: item.safetyStock,
-          gap: Math.max(item.safetyStock - item.quantity, 0),
-        }))
-        .sort((a, b) => b.gap - a.gap || a.quantity - b.quantity);
-    } catch (e) {
-      lowStockError = e instanceof Error ? e.message : '低库存数据加载失败';
+      overseasStats = await inventoryRepository.getOverseasStats(user?.id);
+    } catch {
+      // 统计获取失败时静默处理，首页仍可渲染
     }
   }
 

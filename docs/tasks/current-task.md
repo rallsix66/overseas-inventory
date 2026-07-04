@@ -2,89 +2,86 @@
 
 ## Task ID
 
-`PERF-B1` — DIS 性能优化 Phase B 第一轮：request-scope cache + dashboard layout 接入
+`PERF-C1` — Dashboard 首页查询并行重排
 
 ## 状态
 
-**DONE**（2026-07-04，收口修复完成）。
+**DONE**（2026-07-04）。
 
 ### 背景
 
-Phase B 性能优化目标是减少同一 HTTP 请求内重复的 auth、role、warehouse、archive preference 查询。第一轮为低风险切片：仅在 5 个文件中添加 React `cache()` 实现请求级缓存，不改页面查询编排、sync pagination、索引或 Migration。
+PERF-B1（request-scope cache）已完成。Phase C 第一轮只优化 `/dashboard` 首页的服务端查询编排，将 `getCurrentUser()` 之后彼此独立的四个数据加载从串行改为并行执行，减少 waterfall。
 
 ### 实现
 
-**src/lib/auth.ts：**
-- 新增 `cachedGetAuthProfile` React `cache()` 函数
-- 合并 `auth.getUser()` + `profiles(display_name, is_active, role)` 为一次查询
-- `getCurrentUser()` 和 `getCurrentActiveUser()` 均复用 `cachedGetAuthProfile`
-- PGRST116（profile 未创建，trigger race）处理为 absent profile → `getCurrentActiveUser()` 返回 `null`
-- 中文错误消息不变：`requireAuth()` → `未登录`，`requireActiveAuth()` → `未登录或账户已停用`，`requireActiveAdmin()` → `无权限：需要管理员角色`
+**src/app/dashboard/page.tsx：**
+- `getCurrentUser()` 保持第一步
+- 当 `user?.id` 存在时，使用 `Promise.all` 并行执行四个查询：
+  - `getOverseasStats(user.id).catch(() => undefined)` — 静默失败
+  - `getInTransitByVariant(user.id).catch(() => new Map())` — 静默失败，返回空 Map
+  - `getFollowedVariantsBasic(user.id).then(data => ({ data, error: null })).catch(e => ({ data: [], error: ... }))` — 返回 `{ data, error }` 结构化结果，Promise.all 之后赋值 `followedVariants = fvResult.data`、`followedError = fvResult.error`
+  - `getLowStock({ userId: user.id }).then(data => ({ data, error: null })).catch(e => ({ data: [], error: ... }))` — 返回 `{ data, error }` 结构化结果，Promise.all 之后赋值 `lowStockError = lsResult.error`
+- 并行块之后：计算 `inTransitSkuCount`/`inTransitTotalQuantity`、注入 `inTransitQuantity` 到关注产品、map + sort 低库存列表
+- 未登录时仅调用 `getOverseasStats(user?.id)`（原有行为，静默失败）
 
-**src/app/dashboard/layout.tsx：**
-- 移除直接 `createClient().auth.getUser()` + `profiles` 查询
-- 改用 `getCurrentUser()`（不校验 `is_active`，保持原行为：停用用户可进入 layout，各子页面自行校验）
+**错误隔离保证：**
+- overseas stats 失败 → 不显示 stats，不影响其他区块
+- in-transit 失败 → 返回空 Map（在途卡片显示 0），不影响其他区块
+- followed variants 失败 → `followedError` 设置，`FollowedProductsSection` 显示错误状态
+- low stock 失败 → `lowStockError` 设置，`LowStockSummarySection` 显示错误状态
 
-**src/features/shipments/repository.ts：**
-- `getUserRole` 从 `async function` 改为 `const ... = cache(async ...)`
-- 语义不变：Admin → `'admin'`，Operator → `'operator'`，其他 → `'unknown'`
-- PGRST116 → `'unknown'`，DB error → `ShipmentError`
-
-**src/features/warehouse-access/repository.ts：**
-- 新增 `cachedGetAccessibleWarehouseIds` React `cache()`
-- 返回 `string[]`（不可变），公开方法返回 `new Set(await cachedFn(userId))`
-- Admin → 所有 active overseas warehouse，Operator → 分配的 warehouse
-
-**src/features/variants/repository.ts：**
-- 新增 `cachedGetUserArchivedVariantIds` React `cache()`
-- 返回 `string[]`（不可变），公开方法返回 `new Set(await cachedFn(userId))`
-- 无效 UUID → 空数组，DB error → `VariantError`
-
-**src/lib/auth.test.ts：**
-- 适配 select 字段断言（新增 `is_active`）
-- 新增 PGRST116 行为测试：`getCurrentActiveUser()` 在 profile 查询返回 PGRST116 时返回 `null`
+**src/features/inventory/p2-d2-low-stock-summary.test.ts：**
+- 更新"隔离测试"：从检查 try/catch 改为检查 `.catch()` 独立错误处理
+- 新增 10 项 PERF-C1 并行编排测试：
+  - `Promise.all` 存在
+  - 四个查询均在 `Promise.all` 内，各有独立 `.catch()`
+  - `followedError` / `lowStockError` 在 Promise.all 之后从结构化结果赋值
+  - `inTransitQuantity` 注入在 `Promise.all` 之后
+  - `lowStockItems` map/sort 在 `Promise.all` 之后
+  - 未登录时不调用三个 `user.id` 依赖查询
+  - `if (user?.id)` 内无串行 await（无独立 `await xxxRepository.xxx()`）
 
 ### 禁止事项（已遵守）
 
-- 不修改 `createClient()` 缓存
-- 不修改 `createServiceClient()`
-- 不修改 Migration
-- 不修改索引
-- 不修改 sync 页分页
-- 不修改页面查询编排（并行化）
-- 不修改 `package.json`
-- 不进行无关重构
+- 不改 `createClient()` / `createServiceClient()`
+- 不新增 Migration / RPC / 索引
+- 不改同步页分页
+- 不改产品列表或产品详情页
+- 不替换 `getInTransitByVariant` 为其他 RPC
+- 不改权限模型、RLS、Repository 边界
+- 不改 `.claude/` 下任何文件
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| 全量测试 | **2754/2754**（65 文件）+ 1 项 PGRST116 新测试 ✅ |
-| build | Compiled + TypeScript ✅ |
-| lint | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有）✅ |
-| `.claude/context-status.json` 不在 git status | ✅ |
-| auth.test.ts PGRST116 行为测试 | ✅ |
-| 测试文件 3 个指定文件通过 | 105/105（3 files）✅ |
+| 指定 3 个测试文件 | **145/145** 通过 ✅ |
+| `npm run build` | ✓ Compiled + TypeScript ✅ |
+| `git diff --check` | 通过 ✅ |
 | 不新增 Migration | ✅ |
-| 不改页面查询编排 / sync pagination | ✅ |
+| 不改产品/海外库存/同步页/权限 | ✅ |
 
 ### 修改文件清单
 
-| # | 文件 | 变更类型 |
-|---|------|---------|
-| 1 | `src/lib/auth.ts` | 新增 `cachedGetAuthProfile` cache()，重构 getCurrentUser/getCurrentActiveUser |
-| 2 | `src/lib/auth.test.ts` | select 断言适配 + PGRST116 行为测试 |
-| 3 | `src/app/dashboard/layout.tsx` | 替换直接 Supabase 调用为 getCurrentUser() |
-| 4 | `src/features/shipments/repository.ts` | getUserRole 包裹 cache() |
-| 5 | `src/features/warehouse-access/repository.ts` | 新增 cachedGetAccessibleWarehouseIds |
-| 6 | `src/features/variants/repository.ts` | 新增 cachedGetUserArchivedVariantIds |
+| # | 文件 | 变更 |
+|---|------|------|
+| 1 | `src/app/dashboard/page.tsx` | 重构为 `Promise.all` 并行执行 4 个独立查询 |
+| 2 | `src/features/inventory/p2-d2-low-stock-summary.test.ts` | 更新隔离测试 + 新增 10 项 PERF-C1 并行编排测试 |
+
+### 范围说明
+
+本轮只做 Dashboard 首页查询并行重排。Phase C 其余内容未开始：
+- 产品页 actions 并行（`/dashboard/products`）
+- 海外库存页 actions 并行（`/dashboard/inventory/overseas`）
+- 同步页分页（Phase D）
+- 索引优化（Phase E）
 
 ### 残余风险
 
-- React `cache()` 仅在单次 render 或单次 Server Action 内共享缓存；同一页面 render 和后续 Server Action 调用之间不共享缓存
-- 如需跨 render→action 共享缓存（Phase C），需评估 `AsyncLocalStorage` 方案
-- `cache()` 在 Vitest 测试环境表现为透明 pass-through（无缓存），不影响测试覆盖
+- `Promise.all` 中任一查询抛未捕获异常会导致整个并行块失败；已通过 `.catch()` 全覆盖避免
+- 已移除 `.catch()` 内直接修改外层变量的副作用模式；当前使用 `.then()+.catch()` 返回 `{ data, error }` 结构化结果，Promise.all 之后再统一赋值
+- 无 `Promise.allSettled` — 不需要，`.catch()` 已确保所有 promise 都 resolved
 
 ### 下一步
 
-PERF-B1 完成。Phase C（页面查询并行重排）建议优先推进——当前已有 request-scope cache 基础，并行重排可减少 dashboard pages 内部 waterfall。Phase D（同步页分页）和 Phase E（索引优化）与 PERF-B1 无冲突，可独立推进。P3-S1B 仍 BLOCKED_EXTERNAL。
+PERF-C1 完成。可推进 PERF-C2（产品页/海外库存页 actions 并行）或其他未阻塞任务。P3-S1B 仍 BLOCKED_EXTERNAL。
