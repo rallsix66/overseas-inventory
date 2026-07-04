@@ -1,10 +1,13 @@
 // Dashboard 首页 — 库存概览
-// Server Component：展示各仓库库存入口、关键指标和关注产品动态
+// Server Component：展示各仓库库存入口、关键指标、低库存汇总和关注产品动态
+// P2-D2: 新增低库存汇总区块（全局低库存风险概览，不依赖关注）
 import { getCurrentUser } from '@/lib/auth';
 import { inventoryRepository } from '@/features/inventory/repository';
 import { preferencesRepository } from '@/features/preferences/repository';
 import { shipmentRepository } from '@/features/shipments/repository';
 import { FollowedProductsSection } from '@/features/preferences/components/followed-products-section';
+import { LowStockSummarySection } from './_components/low-stock-summary-section';
+import type { LowStockSummaryItem } from './_components/low-stock-summary-section';
 import type { FollowedVariantBasic } from '@/features/preferences/types';
 import { Package, Globe, Truck, ArrowRight, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
@@ -61,6 +64,30 @@ export default async function DashboardPage() {
       }
     } catch (e) {
       followedError = e instanceof Error ? e.message : '关注产品加载失败';
+    }
+  }
+
+  // P2-D2: 获取低库存汇总（全局低库存风险概览，不依赖用户是否关注）
+  let lowStockItems: LowStockSummaryItem[] = [];
+  let lowStockError: string | null = null;
+  if (user?.id) {
+    try {
+      const rawItems = await inventoryRepository.getLowStock(user.id);
+      lowStockItems = rawItems
+        .map((item) => ({
+          sku: item.sku,
+          productName: item.productName,
+          productCode: item.productCode,
+          country: item.country,
+          warehouseName: item.warehouseName,
+          warehouseId: item.warehouseId,
+          quantity: item.quantity,
+          safetyStock: item.safetyStock,
+          gap: Math.max(item.safetyStock - item.quantity, 0),
+        }))
+        .sort((a, b) => b.gap - a.gap || a.quantity - b.quantity);
+    } catch (e) {
+      lowStockError = e instanceof Error ? e.message : '低库存数据加载失败';
     }
   }
 
@@ -171,6 +198,9 @@ export default async function DashboardPage() {
           </div>
         </Link>
       </div>
+
+      {/* P2-D2: 低库存汇总 — 全局低库存风险概览（不依赖关注） */}
+      <LowStockSummarySection items={lowStockItems} error={lowStockError} />
 
       {/* P5-SY12D: 关注产品动态 — 运营可用性收口（筛选/跳转/未匹配说明） */}
       <FollowedProductsSection variants={followedVariants} error={followedError} />

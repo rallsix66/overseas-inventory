@@ -2,70 +2,77 @@
 
 ## Task ID
 
-`P4-UX` — 用户管理页局部刷新收口
+`P2-D2` — Dashboard 低库存汇总看板
 
 ## 状态
 
-**DONE**（2026-07-03）。P4-UX 完成：用户管理模块移除最后一处 `router.refresh()`。
+**DONE**（2026-07-04）。P2-D2 完成：Dashboard 首页新增低库存汇总区块，不依赖用户关注。
 
 ### 背景
 
-P4-U3（修改角色）和 P4-U4（启用/禁用）原实现中，操作成功后关闭 Sheet 并 `router.refresh()` 整页刷新。P4-UX 参照 PERF-S1D 的 `onSuccess` 回调模式，改为 `getUserById` + `listUsers` Server Actions 局部刷新，消除 `UserDetailSheet` 中的 `useRouter` / `router.refresh()`。
+Phase 2 任务表中 P2-D2 原本标记为 BLOCKED（依赖 P2-I3）。P2-I3（海外库存真实数据走查）已于早期完成，P2-D2 实际已解除阻塞。P2-D2 面向运营人员快速发现全局低库存风险，与 P5-SY12C/D 关注产品动态互补：关注是用户策展的（手动星标），低库存汇总是系统全量的。
 
-### P4-UX 实现（DONE）
+### P2-D2 实现（DONE）
 
-**UserDetailSheet（`src/features/users/components/user-detail-sheet.tsx`）：**
-- 移除 `useRouter` import + `router.refresh()` 调用
-- 新增 `onUserChanged?: () => void` prop（可选，向后兼容）
-- `handleRoleChangeSuccess` / `handleToggleSuccess` 改为 async：
-  1. 关闭子 Dialog（`setRoleDialogOpen(false)` / `setToggleDialogOpen(false)`）
-  2. `getUserById(userId)` 重新获取最新用户数据 → `setUser(result.data)` 局部刷新 Sheet
-  3. `onUserChanged?.()` 通知父组件
-- **不再关闭 Sheet**（操作后 Sheet 保持打开，显示最新数据）
+**LowStockSummarySection（`src/app/dashboard/_components/low-stock-summary-section.tsx`）：**
+- Client Component，导出 `LowStockSummaryItem` 类型 + `LowStockSummarySection` 组件
+- Props: `items: LowStockSummaryItem[]`, `error?: string | null`
+- 空状态：绿色边框 "库存正常 — 当前所有海外仓库存均高于安全库存线"
+- 错误状态：红色边框 "低库存数据加载失败：{error}"
+- 正常状态：按仓库分组表格（SKU/产品/库存/安全库存/缺口），缺口列红色
+- `groupByWarehouse()` 按 warehouseId 分组，各组按缺口总和降序
+- MAX_DISPLAY=15 控制首页展示数量，超出显示 "还有 N 项 — 查看全部低库存"
+- SKU 链接 → `/dashboard/inventory/overseas?search=<sku>`
+- "查看全部" → `/dashboard/inventory/overseas?stockStatus=low`
+- 不导入 supabase / Repository / Server Actions / preferences
 
-**UsersPageContent（`src/app/dashboard/users/_components/users-page-content.tsx`）：**
-- 新增 `useEffect` import
-- `users` / `localTotal` 本地 state（初始值来自 `data` / `initialTotal` props）
-- `useEffect(() => { setUsers(data); setLocalTotal(initialTotal); }, [data, initialTotal])` — 筛选/分页导航后服务端 props 变更时覆盖本地 state
-- `handleUserChanged` callback（`useCallback`）：调用 `listUsers` 重新获取当前筛选/分页条件的数据 → 更新本地 `users` / `localTotal`
-- `UserDetailSheet` 传入 `onUserChanged={handleUserChanged}`
-- 保留 `useRouter` 仅用于筛选/分页 `router.push` 导航，不使用 `router.refresh()`
+**DashboardPage（`src/app/dashboard/page.tsx`）：**
+- 新增 `inventoryRepository.getLowStock(user.id)` 调用（独立 try/catch）
+- gap = `Math.max(safetyStock - quantity, 0)`，非负
+- 排序：缺口降序 → 库存升序
+- 失败不崩溃 Dashboard（catch 赋值 lowStockError）
+- 未登录（无 user.id）时不调用 getLowStock
+- 低库存与关注产品各自独立 try/catch，互不影响
 
-**测试（`src/features/users/p4-u2.test.ts`）：**
-- 新增 8 项 P4-UX 断言（describe `P4-UX 局部刷新收口`）：
-  - `UsersPageContent` 导入 `useEffect`
-  - `useEffect` 将 `data`/`initialTotal` 同步到 `setUsers`/`setLocalTotal`，依赖 `[data, initialTotal]`
-  - `UserDetailSheet` 不导入 `useRouter`、不调用 `router.refresh()`
-  - `UserDetailSheet` 导入 `getUserById` 用于局部刷新
-  - `UserDetailSheet` 定义 `onUserChanged?: () => void` 并在成功后调用 `onUserChanged?.()`
-  - `UsersPageContent` 仅导入 `listUsers`（不导入 `getUserById` / `updateUserRole` / `toggleUserActive`）
-  - `UsersPageContent` 包含 `handleUserChanged` / `useCallback` / `listUsers`
-  - `UsersPageContent` 保留 `useRouter` 仅用于 `router.push` 导航，不调用 `router.refresh()`
+**测试（`src/features/inventory/p2-d2-low-stock-summary.test.ts`）：**
+- 43 项测试，8 个 describe 分组：
+  - Dashboard 数据获取链路（9 项）
+  - LowStockSummarySection 组件结构（11 项）
+  - 空状态与错误状态（4 项）
+  - 仓库分组（4 项）
+  - SKU 跳转链接（4 项）
+  - 关注与低库存隔离（5 项）
+  - 架构合规（5 项）
+  - P5-SY12D 回归（5 项）
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| 全量测试 | **2660/2660**（63 文件）✅ |
+| 全量测试 | **2703/2703**（64 文件）✅ |
 | build | Compiled + TypeScript ✅ |
 | lint | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有）✅ |
 | git diff --check | 通过 ✅ |
-| `rg "router.refresh\|useRouter" src/features/users` | 仅测试断言（无业务代码使用）✅ |
-| `rg "router.refresh\|useRouter" src/app/dashboard/users` | 仅 `users-page-content.tsx` 筛选/分页导航 ✅ |
-| `UserDetailSheet` 无 `useRouter` / `router.refresh` | ✅ |
-| `UsersPageContent` `useEffect` 同步 `data`/`initialTotal` props | ✅ |
+| Dashboard 存在低库存汇总区块 | ✅ |
+| 使用 inventoryRepository.getLowStock(user?.id) | ✅ |
+| 关注产品动态保持原行为 | ✅ |
+| Admin/Operator 按现有仓库权限隔离 | ✅ |
+| 空状态/错误状态中文文案 | ✅ |
+| 不修改 Migration/RLS/权限模型/Server Actions | ✅ |
+| 页面/组件不直接调用 supabase | ✅ |
 
 ### 禁止事项（已遵守）
 
-- 不修改 Server Actions、Repository、Migration、RLS、权限模型 ✅
-- 不回退 PERF-S1 改动 ✅
-- 不引入新技术栈 ✅
-- 不在页面或客户端组件直接调用 Supabase ✅
-
-### P4-U3 / P4-U4 历史描述覆盖
-
-P4-U3 和 P4-U4 原始实现成功后会关闭 Sheet 并 `router.refresh()` 刷新页面列表。P4-UX 后改为 `getUserById` 局部刷新 Sheet 详情 + `onUserChanged` 通知父组件，不再关闭 Sheet、不整页刷新。相关测试已更新。详见 `docs/current-state.md` 中两条目的 P4-UX 覆盖说明。
+- 不修改 Migration ✅
+- 不修改 RLS ✅
+- 不修改权限模型 ✅
+- 不修改 Server Actions 签名 ✅
+- 不修改 inventoryRepository.getLowStock() 接口 ✅
+- 不把关注产品逻辑和低库存汇总逻辑混在一起 ✅
+- 不让页面或客户端组件直接调用 supabase ✅
+- 不处理 getLowStock/getUnmatched 分页技术债务 ✅
+- 不清理 smoke-test-00025.ts lint ✅
 
 ## 下一步
 
-PERF-S1 全系列 + P4-UX 均已完成。Phase 3 主线 P3-S1B 等待百世 API 授权恢复，或推进其他未阻塞任务。
+P2-D2 完成。PERF-S1 全系列、P4-UX、P2-D2 均已完成。P3-S1B 仍 BLOCKED_EXTERNAL（百世 API 授权未恢复）。可推进其他未阻塞任务。
