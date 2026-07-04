@@ -10,7 +10,7 @@
 
 ### 背景
 
-侧边栏 `sidebar-nav.tsx` 中 `/dashboard/variants`（SKU 管理）和 `/dashboard/variants/unmatched`（待处理 SKU）的 `phase` 字段原为 `'1'`，导致这两个入口灰显不可点击。实际页面和功能已由 P5-SY11E（Variant 页面开发）和 P5-SY11G（用户级归档偏好）完整实现并测试通过。本任务仅将 phase 改为 `'0'` 启用入口，不同步修改 `docs/current-state.md` 中过期的 Current Implementation Limits（删除"SKU 管理与待处理 SKU 仍灰显"、修正 Users/Dashboard/海外库存 RPC 等过期描述）。
+侧边栏 `sidebar-nav.tsx` 中 `/dashboard/variants`（SKU 管理）和 `/dashboard/variants/unmatched`（待处理 SKU）的 `phase` 字段原为 `'1'`，导致这两个入口灰显不可点击。实际页面和功能已由 P5-SY11E（Variant 页面开发）和 P5-SY11G（用户级归档偏好）完整实现并测试通过。本任务仅将 phase 改为 `'0'` 启用入口，并同步修改 `docs/current-state.md` 中过期的 Current Implementation Limits（删除"SKU 管理与待处理 SKU 仍灰显"、修正 Users/Dashboard/海外库存 RPC 等过期描述）。
 
 ### 实现（DONE）
 
