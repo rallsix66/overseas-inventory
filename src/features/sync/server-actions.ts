@@ -13,14 +13,14 @@ import { FileSystemArtifactProvider } from './file-system-artifact-provider';
 import { RealSyncRunner, type WarehouseBridgeInfo } from './real-sync-runner';
 import { WebInputArtifactSource, isWebsyncRealWriteEnabled } from './web-input-artifact-source';
 import { evaluateRules } from './rules-engine';
-import { getSyncRunsSchema, getSyncRunDetailSchema, getSyncLogDetailSchema } from './schema';
+import { getSyncRunsSchema, getSyncRunsPaginatedSchema, getSyncRunDetailSchema, getSyncLogDetailSchema } from './schema';
 import { revalidatePath } from 'next/cache';
 import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus, AutoPreReviewResult, AutoPreReviewItem, WarehouseHistory, RuleVerdict } from './types';
+import type { SyncRunsResponse, SyncRunsPaginatedResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus, AutoPreReviewResult, AutoPreReviewItem, WarehouseHistory, RuleVerdict } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -68,6 +68,24 @@ export async function getSyncRuns(
   return repository.getSyncRuns({
     warehouseId: parsed.warehouseId,
     limit: parsed.limit,
+  });
+}
+
+/** Phase D: 服务端分页查询同步运行列表。
+ *  返回 { rows, total, page, pageSize }，替换客户端分页。
+ *  Admin 和 Operator 均可调用，角色感知脱敏由 RPC 处理。 */
+export async function getSyncRunsPaginated(
+  warehouseId?: string,
+  page?: number,
+  pageSize?: number,
+): Promise<SyncRunsPaginatedResponse> {
+  await requireActiveAuth();
+  const repository = await createSupabaseRepo();
+  const parsed = getSyncRunsPaginatedSchema.parse({ warehouseId, page, pageSize });
+  return repository.getSyncRunsPaginated({
+    warehouseId: parsed.warehouseId,
+    page: parsed.page,
+    pageSize: parsed.pageSize,
   });
 }
 

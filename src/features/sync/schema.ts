@@ -51,6 +51,16 @@ export const getSyncRunsSchema = z.object({
 
 export type GetSyncRunsInput = z.infer<typeof getSyncRunsSchema>;
 
+// ─── Phase D: 服务端分页 ─────────────────────────────────────
+
+export const getSyncRunsPaginatedSchema = z.object({
+  warehouseId: z.string().uuid().optional(),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(100).default(20),
+}).strict();
+
+export type GetSyncRunsPaginatedInput = z.infer<typeof getSyncRunsPaginatedSchema>;
+
 export const getSyncRunDetailSchema = z.object({
   runId: z.string().uuid(),
 });

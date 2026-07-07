@@ -198,6 +198,19 @@ export interface SyncRunOperatorRow {
 /** get_sync_runs 返回类型 — JSON 数组 */
 export type SyncRunsResponse = SyncRunAdminRow[] | SyncRunOperatorRow[];
 
+// ─── Phase D: 服务端分页 ────────────────────────────────────────
+
+/** get_sync_runs_paginated RPC 返回的 rows 数组元素 */
+export type SyncRunsPaginatedRow = SyncRunAdminRow | SyncRunOperatorRow;
+
+/** get_sync_runs_paginated RPC 返回值 */
+export interface SyncRunsPaginatedResponse {
+  rows: SyncRunsPaginatedRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 // ─── Session Health Check (P5-SY9B) ─────────────────────────────
 
 /** BigSeller 登录会话健康状态 */

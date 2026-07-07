@@ -2,6 +2,7 @@
 
 import type {
   SyncRunsResponse,
+  SyncRunsPaginatedResponse,
   SyncRunDetailResponse,
   DryRunBindingMetadata,
   SyncLogRecord,
@@ -45,6 +46,9 @@ export interface SyncRepository {
 
   /** get_sync_runs RPC — 无 offset 参数，返回角色感知结果 */
   getSyncRuns(params: { warehouseId?: string; limit: number }): Promise<SyncRunsResponse>;
+
+  /** Phase D: get_sync_runs_paginated RPC — 服务端分页，返回 { rows, total, page, pageSize } */
+  getSyncRunsPaginated(params: { warehouseId?: string; page: number; pageSize: number }): Promise<SyncRunsPaginatedResponse>;
 
   /** get_sync_run_detail RPC — 返回角色感知结果，不存在返回 null */
   getSyncRunDetail(runId: string): Promise<SyncRunDetailResponse>;
@@ -415,6 +419,81 @@ export class MockRepository implements SyncRepository {
         ? `同步失败：${r.errorMessage.slice(0, 50)}`
         : null,
     }));
+  }
+
+  async getSyncRunsPaginated(params: {
+    warehouseId?: string;
+    page: number;
+    pageSize: number;
+  }): Promise<SyncRunsPaginatedResponse> {
+    let result = Array.from(MockRepository.runs.values());
+
+    if (params.warehouseId) {
+      result = result.filter((r) => r.warehouseId === params.warehouseId);
+    }
+
+    result.sort(
+      (a, b) => b.startedAt.getTime() - a.startedAt.getTime(),
+    );
+
+    const total = result.length;
+    const offset = (params.page - 1) * params.pageSize;
+    const paged = result.slice(offset, offset + params.pageSize);
+
+    if (this.callerRole === 'admin') {
+      return {
+        rows: paged.map((r) => ({
+          id: r.id,
+          warehouse_id: r.warehouseId,
+          warehouse_name: `仓库-${r.warehouseId.slice(0, 8)}`,
+          mode: r.mode,
+          status: r.status,
+          display_name: `用户-${r.triggeredBy.slice(0, 8)}`,
+          triggered_from: r.triggeredFrom,
+          started_at: r.startedAt.toISOString(),
+          finished_at: r.finishedAt?.toISOString() ?? null,
+          created_at: r.createdAt.toISOString(),
+          exit_code: r.exitCode,
+          error_message: r.errorMessage,
+          result_summary: r.resultSummary,
+          plan_drift_check: r.planDriftCheck,
+          plan_drift_count: r.planDriftCount,
+          dry_run_run_id: r.dryRunRunId,
+        })),
+        total,
+        page: params.page,
+        pageSize: params.pageSize,
+      };
+    }
+
+    return {
+      rows: paged.map((r) => ({
+        id: r.id,
+        warehouse_id: r.warehouseId,
+        warehouse_name: `仓库-${r.warehouseId.slice(0, 8)}`,
+        mode: r.mode,
+        status: r.status,
+        triggered_by_email: `${r.triggeredBy.slice(0, 6)}***@example.com`,
+        triggered_from: r.triggeredFrom,
+        started_at: r.startedAt.toISOString(),
+        finished_at: r.finishedAt?.toISOString() ?? null,
+        created_at: r.createdAt.toISOString(),
+        plan_drift_check: r.planDriftCheck,
+        plan_drift_count: r.planDriftCount,
+        result_summary: r.resultSummary
+          ? {
+              variantsCreated: (r.resultSummary as Record<string, unknown>).variantsCreated,
+              inventoryUpdated: (r.resultSummary as Record<string, unknown>).inventoryUpdated,
+            }
+          : null,
+        failure_summary: r.status === 'failed' && r.errorMessage
+          ? `同步失败：${r.errorMessage.slice(0, 50)}`
+          : null,
+      })),
+      total,
+      page: params.page,
+      pageSize: params.pageSize,
+    };
   }
 
   async getSyncRunDetail(runId: string): Promise<SyncRunDetailResponse> {

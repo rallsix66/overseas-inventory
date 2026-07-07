@@ -2,7 +2,7 @@
 
 // 库存同步页 — 客户端交互层
 // 处理同步运行列表、仓库筛选和触发同步 Dialog
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Eye, Play, RefreshCw, LogIn, CheckCircle, AlertTriangle, ShieldAlert, Package, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
@@ -42,6 +42,7 @@ import {
 import {
   getSyncRunDetail,
   getSyncLogDetail,
+  getSyncRunsPaginated,
   establishBigSellerSession,
   verifyBigSellerSession,
   triggerDryRun,
@@ -53,7 +54,7 @@ import {
 import type {
   SyncRunAdminRow,
   SyncRunOperatorRow,
-  SyncRunsResponse,
+  SyncRunsPaginatedRow,
   SyncRunDetailAdmin,
   SyncRunDetailOperator,
   SessionHealthResult,
@@ -377,7 +378,10 @@ function BatchReviewCard({
 // ─── Props ─────────────────────────────────────────────────────
 
 interface Props {
-  runs: SyncRunsResponse;
+  initialRows: SyncRunsPaginatedRow[];
+  initialTotal: number;
+  initialPage: number;
+  initialPageSize: number;
   isAdmin: boolean;
   warehouses: WarehouseOption[];
 }
@@ -390,23 +394,67 @@ const DEFAULT_TRIGGER_FORM = {
 
 // ─── Component ─────────────────────────────────────────────────
 
-export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
+export function SyncPageContent({ initialRows, initialTotal, initialPage, initialPageSize, isAdmin, warehouses }: Props) {
   const router = useRouter();
 
-  const rows: SyncRunRow[] = useMemo(() => {
-    if (!Array.isArray(runs)) return [];
-    return runs as SyncRunRow[];
-  }, [runs]);
+  // ─── Phase D: 服务端分页状态 ────────────────────────────────────
+  const [rows, setRows] = useState<SyncRunsPaginatedRow[]>(initialRows);
+  const [total, setTotal] = useState(initialTotal);
+  const [page, setPage] = useState(initialPage);
+  const [pageSize] = useState(initialPageSize);
+  const [loading, setLoading] = useState(false);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // Warehouse filter
   const [filterWarehouseId, setFilterWarehouseId] = useState('all');
 
-  const filteredRows = useMemo(() => {
-    if (filterWarehouseId === 'all') return rows;
-    return rows.filter((r) => r.warehouse_id === filterWarehouseId);
-  }, [rows, filterWarehouseId]);
+  // ─── Fetch page from server ──────────────────────────────────────
+  async function fetchPage(newPage: number, warehouseId?: string) {
+    setLoading(true);
+    try {
+      const result = await getSyncRunsPaginated(
+        warehouseId && warehouseId !== 'all' ? warehouseId : undefined,
+        newPage,
+        pageSize,
+      );
+      setRows(result.rows);
+      setTotal(result.total);
+      setPage(result.page);
+    } catch {
+      // keep current state on error
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  // ─── P5-SY9H: 仓库聚合概览 ──────────────────────────────────────
+  // When warehouse filter changes, reset to page 1 and fetch
+  function handleWarehouseChange(newWhId: string) {
+    setFilterWarehouseId(newWhId);
+    const whParam = newWhId !== 'all' ? newWhId : undefined;
+    void fetchPage(1, whParam);
+  }
+
+  // When page changes, fetch new page
+  function handlePageChange(newPage: number) {
+    const whParam = filterWarehouseId !== 'all' ? filterWarehouseId : undefined;
+    void fetchPage(newPage, whParam);
+  }
+
+  const typedRows: SyncRunRow[] = useMemo(() => rows as SyncRunRow[], [rows]);
+
+  // Sync state from server re-render (e.g., after router.refresh() from operations)
+  useEffect(() => {
+    startTransition(() => {
+      setRows(initialRows);
+      setTotal(initialTotal);
+      setPage(initialPage);
+      setFilterWarehouseId('all');
+    });
+  }, [initialRows, initialTotal, initialPage]);
+
+  // ─── P5-SY9H: 仓库聚合概览（仅当前页 rows 或额外获取） ──────────
+  // 聚合概览卡片需要仓库最新状态，从已有 rows 推导有限可能是
+  // 本页行，但仓库卡片足够运营使用。保留现有概览逻辑。
   const warehouseOverview = useMemo(() => {
     const grouped = new Map<string, {
       warehouseId: string;
@@ -417,7 +465,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       lastFailureReason: string | null;
     }>();
 
-    for (const row of rows) {
+    for (const row of typedRows) {
       const entry = grouped.get(row.warehouse_id) || {
         warehouseId: row.warehouse_id,
         warehouseName: row.warehouse_name,
@@ -429,7 +477,6 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
 
       const rowTime = row.finished_at ?? row.started_at ?? row.created_at;
 
-      // Track latest per mode
       if (row.mode === 'dry_run') {
         if (!entry.latestDryRun || (rowTime && entry.latestDryRun.time && rowTime > entry.latestDryRun.time)) {
           entry.latestDryRun = { status: row.status, time: rowTime, runId: row.id };
@@ -440,14 +487,12 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
         }
       }
 
-      // Track last success
       if (row.status === 'completed' && row.finished_at) {
         if (!entry.lastSuccessTime || row.finished_at > entry.lastSuccessTime) {
           entry.lastSuccessTime = row.finished_at;
         }
       }
 
-      // Track last failure reason (first failed run)
       if (row.status === 'failed') {
         if (!entry.lastFailureReason) {
           const reason = isAdmin
@@ -461,23 +506,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
     }
 
     return Array.from(grouped.values());
-  }, [rows, isAdmin]);
-
-  // ─── P5-SY9H: 客户端分页 ────────────────────────────────────────
-  const PAGE_SIZE = 20;
-  const [page, setPage] = useState(1);
-  const totalFiltered = filteredRows.length;
-  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
-  const paginatedRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredRows.slice(start, start + PAGE_SIZE);
-  }, [filteredRows, page]);
-
-  // Reset page when filter changes — wrap in setTimeout to avoid cascading render warning
-  useEffect(() => {
-    const timer = setTimeout(() => setPage(1), 0);
-    return () => clearTimeout(timer);
-  }, [filterWarehouseId]);
+  }, [typedRows, isAdmin]);
 
   // Trigger dialog
   const [triggerOpen, setTriggerOpen] = useState(false);
@@ -1082,7 +1111,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       <div className="flex items-center gap-2 mb-5">
         <Select
           value={filterWarehouseId}
-          onValueChange={(v) => setFilterWarehouseId(v ?? 'all')}
+          onValueChange={(v) => handleWarehouseChange(v ?? 'all')}
         >
           <SelectTrigger size="sm" className="w-[180px]">
             <SelectValue placeholder="全部仓库" />
@@ -1101,7 +1130,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setFilterWarehouseId('all')}
+            onClick={() => handleWarehouseChange('all')}
           >
             清除
           </Button>
@@ -1109,16 +1138,16 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       </div>
 
       {/* 空数据状态 */}
-      {paginatedRows.length === 0 && (
+      {typedRows.length === 0 && !loading && (
         <div className="text-center py-16">
           <RefreshCw className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">
-            {rows.length === 0
+            {total === 0
               ? '暂无同步记录'
               : '未找到匹配的同步记录'}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {rows.length === 0
+            {total === 0
               ? isAdmin
                 ? '点击右上角"触发同步"执行单仓 Dry Run，或使用"批量 Dry Run"审核全部仓库'
                 : '请联系管理员触发库存同步'
@@ -1128,7 +1157,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
       )}
 
       {/* 同步运行列表 */}
-      {paginatedRows.length > 0 && (
+      {typedRows.length > 0 && (
         <>
         <div className="rounded-md border overflow-x-auto">
           <Table>
@@ -1147,7 +1176,7 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedRows.map((row) => (
+              {typedRows.map((row) => (
                 <TableRow key={row.id} className="hover:bg-gray-50">
                   <TableCell className="text-sm max-w-[160px] truncate">
                     {row.warehouse_name}
@@ -1201,10 +1230,13 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
           </Table>
         </div>
 
-        {/* P5-SY9H: 分页控件 */}
+        {/* Phase D: 服务端分页控件 */}
         <div className="flex items-center justify-between mt-5">
           <p className="text-sm text-muted-foreground">
-            共 {totalFiltered} 条记录
+            {loading && (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin inline mr-1.5" />
+            )}
+            共 {total} 条记录
             {filterWarehouseId !== 'all' && `（仓库筛选）`}
             {totalPages > 1 && `，第 ${page} / ${totalPages} 页`}
           </p>
@@ -1213,16 +1245,16 @@ export function SyncPageContent({ runs, isAdmin, warehouses }: Props) {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                onClick={() => handlePageChange(Math.max(1, page - 1))}
               >
                 上一页
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
               >
                 下一页
               </Button>

@@ -7,7 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import type { SyncRepository } from './repository';
-import type { SyncRunsResponse, SyncRunDetailResponse, DryRunBindingMetadata, SyncLogRecord, WarehouseHistory } from './types';
+import type { SyncRunsResponse, SyncRunsPaginatedResponse, SyncRunDetailResponse, DryRunBindingMetadata, SyncLogRecord, WarehouseHistory } from './types';
 
 export class SupabaseSyncRepository implements SyncRepository {
   constructor(
@@ -123,6 +123,31 @@ export class SupabaseSyncRepository implements SyncRepository {
 
     const parsed = typeof data === 'string' ? JSON.parse(data) : data;
     return (Array.isArray(parsed) ? parsed : []) as SyncRunsResponse;
+  }
+
+  /** Phase D: 服务端分页查询 sync_run 列表。
+   *  调用 get_sync_runs_paginated RPC，返回 { rows, total, page, pageSize }。
+   *  脱敏矩阵与 getSyncRuns 一致（Admin/Operator 角色感知）。 */
+  async getSyncRunsPaginated(params: {
+    warehouseId?: string;
+    page: number;
+    pageSize: number;
+  }): Promise<SyncRunsPaginatedResponse> {
+    const { data, error } = await this.authClient.rpc('get_sync_runs_paginated', {
+      p_warehouse_id: params.warehouseId ?? null,
+      p_page: params.page,
+      p_page_size: params.pageSize,
+    });
+
+    if (error) throw new Error(`get_sync_runs_paginated RPC 失败: ${error.message}`);
+
+    const parsed = (typeof data === 'string' ? JSON.parse(data) : data) as Record<string, unknown>;
+    return {
+      rows: (Array.isArray(parsed.rows) ? parsed.rows : []) as SyncRunsPaginatedResponse['rows'],
+      total: (parsed.total as number) ?? 0,
+      page: (parsed.page as number) ?? params.page,
+      pageSize: (parsed.pageSize as number) ?? params.pageSize,
+    };
   }
 
   async getSyncRunDetail(runId: string): Promise<SyncRunDetailResponse> {

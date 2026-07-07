@@ -685,6 +685,11 @@ export type Database = {
         Args: { p_warehouse_id?: string | null; p_limit: number }
         Returns: unknown
       }
+      /** Phase D: 同步运行列表服务端分页 RPC */
+      get_sync_runs_paginated: {
+        Args: { p_warehouse_id?: string | null; p_page?: number; p_page_size?: number }
+        Returns: Record<string, unknown>
+      }
       get_sync_run_detail: {
         Args: { p_run_id: string }
         Returns: unknown | null

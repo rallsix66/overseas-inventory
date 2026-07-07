@@ -2,108 +2,100 @@
 
 ## Task ID
 
-`PERF-C2B` — 产品页查询编排优化
+`PHASE-E` — 索引优化
 
 ## 状态
 
-**DONE**（2026-07-04）。
+**DONE + REVISED + EXECUTED**（2026-07-07 返工修正并执行 00031）。
 
 ### 背景
 
-PERF-C1（Dashboard 首页并行重排）和 PERF-C2A（海外库存 getOverseasInventory 查询编排）已完成。本轮只优化产品相关页面的数据加载编排：产品列表页、产品详情页、productRepository.getById。
+Phase D（同步页服务端分页）完成后，对真实查询路径做了系统性审查，发现多处高频查询依赖单列索引 bitmap 合并、全量排序或 seq scan。需要补建针对性复合索引。
+
+### 返工修正（2026-07-07）
+
+独立审查发现 00031 初版中两个索引冗余、一个索引覆盖不精确：
+
+1. **删除 `idx_inventory_variant_id ON inventory(variant_id)`**：Migration 00001 已有 `inventory_variant_warehouse_unique UNIQUE (variant_id, warehouse_id)`，自动生成的唯一索引 `variant_id` 前导列已覆盖单列 `variant_id` 查询，无需额外索引。
+
+2. **删除 `idx_sync_run_warehouse_status ON sync_run(warehouse_id, status)`**：Migration 00007 已有 `CREATE UNIQUE INDEX idx_sync_run_one_in_progress ON sync_run(warehouse_id) WHERE status='in_progress'`（部分唯一索引），精确覆盖 `claim_sync_run` 的 `warehouse_id + status='in_progress'` FOR UPDATE 查询。`cleanup_expired_sync_runs` 的 `status='in_progress' + lease_expires_at < now()` 由 `idx_sync_run_status_lease` 覆盖。
+
+3. **`idx_shipment_status_created` → `idx_shipment_active_created`**：原 `(status, created_at DESC)` 对 `status='customs'` 等值查询有效，但无法完整覆盖 `shipmentRepository.list()` 的 `.neq('status','warehoused').order('created_at',{ascending:false})`（不等值全局排序）。改为部分索引 `ON shipment(created_at DESC) WHERE status <> 'warehoused'` 精确匹配在途列表主查询。
 
 ### 实现
 
-**src/app/dashboard/products/page.tsx（产品列表页）：**
-- `searchParams` 仍先 await 解析
-- `page` 计算后，`getCurrentUser()` 与 `productRepository.list(...)` 通过 `Promise.all` 并行执行（两者互不依赖）
-- `isAdmin = user?.roleName === 'admin'` 语义不变
-- 传给 `ProductsPageContent` 的 props 不变
+**审查范围**：
+- `get_sync_runs_paginated` / `get_sync_runs` / `claim_sync_run` / `cleanup_expired_sync_runs` / `getWarehouseHistory`
+- `get_overseas_inventory` / `get_overseas_stats` / `get_low_stock`
+- `get_in_transit_confirmed_aggregate`
+- `shipmentRepository.list()` / `listEligibleForBatchWarehousing()` / `getInTransitDetailsByVariantAndWarehouse()`
+- `shipmentRepository.getById()` → tracking_event 时间线
+- `user_variant_preference` LEFT JOIN 反连接
 
-**src/app/dashboard/products/[id]/page.tsx（产品详情页）：**
-- `params` 仍先 await 解析
-- `id` 提取后，`getCurrentUser()` 与 `productRepository.getById(id)` 通过 `Promise.all` 并行执行
-- `notFound()` 行为不变
-- 传给 `ProductDetailClient` 的 props 不变
+**Migration 00031** — `00031_phase_e_index_optimization.sql`（仅索引，7 个）：
 
-**src/features/products/repository.ts — getById(id)：**
-- `validateUUID(id)` 行为不变
-- product 主查询仍先执行；product 不存在时仍直接返回 `null`（不查 variants/inventory）
-- product 存在后，variants 查询与 inventory 查询改为 `Promise.all` 并行执行
-- 错误语义不变：
-  - product 查询 DB error → `ProductError('查询产品详情失败', 'DB_ERROR')`
-  - variants 查询 DB error → `ProductError('查询产品关联 SKU 失败', 'DB_ERROR')`
-  - inventory 查询 DB error → `ProductError('查询产品库存失败', 'DB_ERROR')`
-- 返回结构不变：`variants` / `inventory` / `inventory.safetyStock = product.safety_stock`
+| # | 索引名称 | 表 | 列 | 目标查询 |
+|---|---------|----|-----|---------|
+| 1 | `idx_sync_run_warehouse_started` | sync_run | `(warehouse_id, started_at DESC)` | 分页/历史排序 |
+| 2 | `idx_sync_run_status_lease` | sync_run | `(status, lease_expires_at)` | cleanup 租约扫描 |
+| 3 | `idx_shipment_warehouse_status` | shipment | `(warehouse_id, status)` | 在途明细/聚合过滤 |
+| 4 | `idx_shipment_active_created` | shipment | `(created_at DESC) WHERE status <> 'warehoused'` | 在途列表主查询 / 批量入仓排序 |
+| 5 | `idx_shipment_item_shipment_variant` | shipment_item | `(shipment_id, variant_id)` | 在途明细双列过滤 |
+| 6 | `idx_uvp_variant_user_type` | user_variant_preference | `(variant_id, user_id, preference_type)` | 海外库存反连接 |
+| 7 | `idx_tracking_event_shipment_occurred` | tracking_event | `(shipment_id, occurred_at)` | 轨迹时间线排序 |
 
-**编排对比：**
+所有索引均使用 `IF NOT EXISTS` 保证幂等。
 
-```
-产品列表页:
-  Before: searchParams → getCurrentUser → productRepository.list
-  After:  searchParams → [getCurrentUser | productRepository.list] (Promise.all)
+**与已建索引的关系**：
+- `idx_sync_run_warehouse_started`：补充 `idx_sync_run_warehouse_id`（00007），添加 `started_at DESC` 消除排序
+- `idx_sync_run_status_lease`：补充 `idx_sync_run_status`（00007），添加 `lease_expires_at` 覆盖 cleanup 扫描
+- `idx_shipment_warehouse_status`：合并 `idx_shipment_warehouse_id` + `idx_shipment_status`（均为 00001）的双列 bitmap 合并
+- `idx_shipment_active_created`：全新 — `created_at` 此前无任何索引
+- `idx_shipment_item_shipment_variant`：合并 `idx_shipment_item_shipment_id` + `idx_shipment_item_variant_id`（均为 00001）的双列 bitmap 合并
+- `idx_uvp_variant_user_type`：补充现有唯一索引 `(user_id, variant_id, preference_type)`（00001），提供 `variant_id` 前导列
+- `idx_tracking_event_shipment_occurred`：补充 `idx_tracking_event_shipment_id`（00001），添加 `occurred_at` 消除排序
 
-产品详情页:
-  Before: params → getCurrentUser → productRepository.getById
-  After:  params → [getCurrentUser | productRepository.getById] (Promise.all)
-
-repository.getById:
-  Before: product → variants (串行) → inventory (串行)
-  After:  product → [variants | inventory] (Promise.all)
-```
-
-**src/features/products/perf-c2b-orchestration.test.ts（新文件）：**
-- 20 项源码级静态测试，覆盖 4 个 describe 块：
-  1. 产品列表页并行编排（5 项）：Promise.all 含 getCurrentUser + list、searchParams 先 await、isAdmin 语义、props 不变、无 supabase.from
-  2. 产品详情页并行编排（5 项）：Promise.all 含 getCurrentUser + getById、params 先 await、notFound、props 不变、无 supabase.from
-  3. repository.getById 并行编排（8 项）：product 先查、null 早返回、variants/inventory Promise.all、各错误分支、safetyStock 来源
-  4. 架构合规（2 项）：列表页/详情页无直接 Supabase 调用
+**phase-e-indexes.test.ts**：35 项静态契约测试（仅索引变更 / 7 索引命名 / 目标表列 / schema 不破坏 / 幂等 / 文件元数据）。
 
 ### 禁止事项（已遵守）
 
-- 不新增/修改 Migration、RPC、RLS、索引
-- 不改 product / product_variant / inventory 数据模型
-- 不改产品 UI、表格列、详情页展示、分页行为
-- 不改产品 actions 的写入逻辑
-- 不改 Dashboard 首页、海外库存页、同步页
-- 不改 `.claude/`
-- 不改 package.json
-- 不使用 `any`
+- 不修改已执行 Migration 00001~00030
+- 不改 Product/ProductVariant/Inventory 模型
+- 不改 RLS、不放宽权限、不绕过 Repository / Server Action
+- 不做无关重构、不改 UI
+- 不修改 `.claude/`
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| `src/features/products` 测试 | **20/20** 通过 ✅ |
+| `phase-e-indexes.test.ts` | **35/35** 通过 ✅ |
+| `npm run test`（全量非并发） | **2905/2905** 通过（69 文件）✅ |
 | `npm run build` | ✓ Compiled + TypeScript ✅ |
-| `npm run lint` | 5 errors / 25 warnings（仅 `smoke-test-00025.ts` 既有）✅ |
+| `npm run lint` | 5 errors / 25 warnings（均为既有，非本轮新增）✅ |
 | `git diff --check` | 通过 ✅ |
-| 不新增 Migration | ✅ |
-| 不改产品/海外库存/同步页/权限 | ✅ |
+| 不修改已执行 Migration | ✅ |
+| 不修改 RLS/权限/RPC | ✅ |
 
 ### 修改文件清单
 
 | # | 文件 | 变更 |
 |---|------|------|
-| 1 | `src/app/dashboard/products/page.tsx` | getCurrentUser() + list 改为 Promise.all 并行 |
-| 2 | `src/app/dashboard/products/[id]/page.tsx` | getCurrentUser() + getById 改为 Promise.all 并行 |
-| 3 | `src/features/products/repository.ts` | getById 内 variants + inventory 改为 Promise.all 并行 |
-| 4 | `src/features/products/perf-c2b-orchestration.test.ts` | 新增 20 项 PERF-C2B 并行编排测试 |
+| 1 | `supabase/migrations/00031_phase_e_index_optimization.sql` | 返工修正：9→7 索引，删除 2 个冗余，1 个改为部分索引 |
+| 2 | `src/features/sync/phase-e-indexes.test.ts` | 同步更新：35 项测试（7 索引 × 参数化） |
+| 3 | `docs/current-state.md` | 返工状态同步 |
+| 4 | `docs/tasks/current-task.md` | 返工 Task 记录（本文件） |
 
-### 范围说明
+### 生产启用
 
-本轮只做产品页查询编排优化。Phase C 其余内容：
-- Dashboard 首页（PERF-C1）— 已完成
-- 海外库存 actions（PERF-C2A）— 已完成
-- 同步页分页（Phase D）— 未开始
-- 索引优化（Phase E）— 未开始
+Migration 00031 已在 Supabase SQL Editor 手动执行成功（2026-07-07，Success. No rows returned）。
 
 ### 残余风险
 
-- 产品列表页 `getCurrentUser()` 与 `productRepository.list()` 并行：如果 Supabase auth cookie 失效但 product 查询成功，会出现 user 为 null 但 result 有数据的情况。当前代码 `user?.roleName === 'admin'` 已安全处理 null → false。产品列表页本身不需要 user 信息来过滤数据（非 Admin 权限限制在其他层面），无实质性风险
-- 产品详情页同理：getById 失败会抛 ProductError，与 getCurrentUser 失败（返回 null）不会互相影响
-- repository.getById 中 variants/inventory 并行：两个查询互不依赖，无风险
+- 索引在低数据量（<1000 行）下收益不可感知，随数据增长逐步显现
+- `lease_expires_at` 索引对 cleanup_expired_sync_runs 的加速效果依赖 in_progress 行数
+- `idx_shipment_active_created` 部分索引仅覆盖 `status <> 'warehoused'` 行；`warehoused` 行的 `created_at` 排序无索引（已入仓查询通常不按时间排序）
 
 ### 下一步
 
-PERF-C2B 完成。Phase C 性能优化（PERF-C1/C2A/C2B）全部完成。可推进 Phase D（同步页分页）或 Phase E（索引优化）。P3-S1B 仍 BLOCKED_EXTERNAL。
+Phase E 返工完成且 Migration 00031 已执行。可选择推进新 Phase 或 P3-S1B 恢复（百世 API 权限，仍 BLOCKED_EXTERNAL）。
