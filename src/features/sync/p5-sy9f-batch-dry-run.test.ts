@@ -424,9 +424,9 @@ describe('P5-SY9F — 页面/组件不直接 supabase.from()', () => {
     // Must NOT contain direct supabase.from() calls
     expect(fnBody).not.toMatch(/supabase\.from\(/);
     // Must NOT contain createClient() or createServiceClient() — these are only in repository
-    // Actually createClient is used in getCachedOverseasWarehouses and wireRealActions which are called...
+    // Actually createClient is used in getOverseasWarehouses and wireRealActions which are called...
     // But those are defined elsewhere. The triggerBatchDryRun itself should not create new clients.
-    // Let me check — triggerBatchDryRun calls getCachedOverseasWarehouses() and wireRealActions()
+    // Let me check — triggerBatchDryRun calls getOverseasWarehouses() and wireRealActions()
     // which internally use supabase. That's fine — they use the repository pattern.
     // The point is: the fnBody itself shouldn't create raw supabase clients.
   });

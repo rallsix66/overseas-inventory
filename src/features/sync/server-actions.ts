@@ -155,21 +155,12 @@ async function getOverseasWarehouses(): Promise<
   }));
 }
 
-// 启动时缓存（同一请求内复用）
-let _overseasWhCache: Awaited<ReturnType<typeof getOverseasWarehouses>> | null = null;
-async function getCachedOverseasWarehouses() {
-  if (!_overseasWhCache) {
-    _overseasWhCache = await getOverseasWarehouses();
-  }
-  return _overseasWhCache;
-}
-
 /** 获取海外仓选项列表（供前端筛选和触发同步使用） */
 export async function getOverseasWarehouseOptions(): Promise<
   Array<{ id: string; name: string; country: string }>
 > {
   await requireActiveAuth();
-  const warehouses = await getCachedOverseasWarehouses();
+  const warehouses = await getOverseasWarehouses();
   return warehouses.map(({ id, name, country }) => ({ id, name, country }));
 }
 
@@ -229,7 +220,7 @@ export async function triggerDryRun(warehouseId: string): Promise<TriggerDryRunR
     };
   }
 
-  const warehouses = await getCachedOverseasWarehouses();
+  const warehouses = await getOverseasWarehouses();
   const wh = warehouses.find((w) => w.id === warehouseId);
   if (!wh) {
     return { warehouseId, warehouseName: '未知仓库', success: false, runId: '', status: 'failed', error: '未知仓库 ID' };
@@ -277,7 +268,7 @@ export async function confirmRealWrite(
     };
   }
 
-  const warehouses = await getCachedOverseasWarehouses();
+  const warehouses = await getOverseasWarehouses();
   const wh = warehouses.find((w) => w.id === warehouseId);
   if (!wh) {
     return { warehouseId, warehouseName: '未知仓库', success: false, runId: '', status: 'failed', error: '未知仓库 ID', dryRunRunId };
@@ -308,7 +299,7 @@ export async function triggerBatchDryRun(): Promise<BatchDryRunResult> {
     };
   }
 
-  const warehouses = await getCachedOverseasWarehouses();
+  const warehouses = await getOverseasWarehouses();
   const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
   const result = await actions.triggerBatchDryRun(
     warehouses.map((w) => ({ id: w.id, name: w.name, country: w.country })),
@@ -341,7 +332,7 @@ export async function runAutoPreReview(): Promise<AutoPreReviewResult> {
     };
   }
 
-  const warehouses = await getCachedOverseasWarehouses();
+  const warehouses = await getOverseasWarehouses();
   const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
   const result = await actions.runAutoPreReview(
     warehouses.map((w) => ({ id: w.id, name: w.name, country: w.country })),
@@ -399,7 +390,7 @@ export async function runScheduledAutoPreReview(
   }
 
   // ── 仓库列表 ───────────────────────────────────────────────
-  const warehouses = await getCachedOverseasWarehouses();
+  const warehouses = await getOverseasWarehouses();
   const bridgeInfo = toWarehouseBridgeInfo(warehouses);
 
   // ── 系统 claim wiring（不经过 createSyncActions）─────────
@@ -659,7 +650,7 @@ export async function triggerBatchRealWrite(
     };
   }
 
-  const warehouses = await getCachedOverseasWarehouses();
+  const warehouses = await getOverseasWarehouses();
   const actions = await wireRealActions(toWarehouseBridgeInfo(warehouses));
 
   // Populate confirmToken server-side from COUNTRY_TOKEN_MAP.
