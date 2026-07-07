@@ -218,13 +218,13 @@ async function testSecurityInvoker() {
     return;
   }
 
-  const allInvoker = data!.every((f: any) => f.prosecdef === false);
+  const allInvoker = data!.every((f: { proname: string; prosecdef: boolean }) => f.prosecdef === false);
   record(
     "SECURITY INVOKER: 3 个函数均为 prosecdef=false",
     allInvoker,
     allInvoker
       ? "全部 SECURITY INVOKER"
-      : `发现 SECURITY DEFINER: ${data!.filter((f: any) => f.prosecdef !== false).map((f: any) => f.proname).join(", ")}`
+      : `发现 SECURITY DEFINER: ${data!.filter((f: { proname: string; prosecdef: boolean }) => f.prosecdef !== false).map((f: { proname: string }) => f.proname).join(", ")}`
   );
 }
 
@@ -246,10 +246,8 @@ function testChineseErrors() {
     "不允许修改自己的启用状态",
   ];
 
-  const fs = require("node:fs");
-  const path = require("node:path");
-  const sql = fs.readFileSync(
-    path.resolve("supabase/migrations/00025_rpc_caller_identity_binding.sql"),
+  const sql = readFileSync(
+    resolve("supabase/migrations/00025_rpc_caller_identity_binding.sql"),
     "utf-8"
   );
 
