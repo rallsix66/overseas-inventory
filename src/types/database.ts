@@ -729,6 +729,11 @@ export type Database = {
         }
         Returns: unknown[]
       }
+      /** PERF-D-OVERVIEW: 服务端全量仓库同步概览 RPC（Migration 00032） */
+      get_sync_warehouse_overview: {
+        Args: Record<string, never>
+        Returns: unknown[]
+      }
       /** LOW-STOCK-PAGINATION: 低库存查询 RPC（Migration 00028） */
       get_low_stock: {
         Args: {

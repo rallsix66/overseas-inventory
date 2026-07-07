@@ -7,6 +7,7 @@ import type {
   DryRunBindingMetadata,
   SyncLogRecord,
   WarehouseHistory,
+  SyncWarehouseOverviewItem,
 } from './types';
 
 // ─── Repository 接口 ──────────────────────────────────────────────
@@ -90,6 +91,11 @@ export interface SyncRepository {
    *  从 sync_run + sync_log 推导 hasBaseline / consecutiveFailures / lastSuccess / stats。
    *  使用 serviceClient 直接查询 public.sync_run，仅供规则引擎预审使用。 */
   getWarehouseHistory(warehouseId: string): Promise<WarehouseHistory>;
+
+  /** PERF-D-OVERVIEW: 获取全量仓库同步概览（服务端聚合）。
+   *  调用 get_sync_warehouse_overview RPC，返回每个海外仓最新 Dry Run / Real Write 状态。
+   *  Admin 返回全部活跃海外仓，Operator 仅返回已分配仓库。 */
+  getSyncWarehouseOverview(): Promise<SyncWarehouseOverviewItem[]>;
 }
 
 // ─── Mock Repository ──────────────────────────────────────────────
@@ -702,5 +708,54 @@ export class MockRepository implements SyncRepository {
     }
 
     return { hasBaseline, consecutiveFailures, lastSuccess, stats };
+  }
+
+  // ─── PERF-D-OVERVIEW: 服务端全量仓库同步概览 ────────────────────
+
+  async getSyncWarehouseOverview(): Promise<SyncWarehouseOverviewItem[]> {
+    const allRuns = Array.from(MockRepository.runs.values());
+    const grouped = new Map<string, MockRunRecord[]>();
+
+    for (const run of allRuns) {
+      const list = grouped.get(run.warehouseId) || [];
+      list.push(run);
+      grouped.set(run.warehouseId, list);
+    }
+
+    const result: SyncWarehouseOverviewItem[] = [];
+
+    for (const [whId, runs] of grouped) {
+      runs.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+
+      const latestDryRun = runs.find((r) => r.mode === 'dry_run');
+      const latestRealWrite = runs.find((r) => r.mode === 'real_write');
+      const lastSuccess = runs.find((r) => r.status === 'completed');
+      const lastFailure = runs.find((r) => r.status === 'failed');
+
+      result.push({
+        warehouseId: whId,
+        warehouseName: `仓库-${whId.slice(0, 8)}`,
+        country: 'XX',
+        latestDryRun: latestDryRun ? {
+          status: latestDryRun.status,
+          time: latestDryRun.startedAt.toISOString(),
+          runId: latestDryRun.id,
+        } : null,
+        latestRealWrite: latestRealWrite ? {
+          status: latestRealWrite.status,
+          time: latestRealWrite.startedAt.toISOString(),
+          runId: latestRealWrite.id,
+        } : null,
+        lastSuccessTime: lastSuccess?.finishedAt?.toISOString() ?? null,
+        lastFailureReason: lastFailure?.errorMessage
+          ? (this.callerRole === 'admin'
+            ? lastFailure.errorMessage
+            : `同步失败：${lastFailure.errorMessage.slice(0, 50)}`)
+          : null,
+      });
+    }
+
+    result.sort((a, b) => a.country.localeCompare(b.country));
+    return result;
   }
 }

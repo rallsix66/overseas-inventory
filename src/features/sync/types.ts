@@ -547,3 +547,16 @@ export interface AutoPreReviewResult {
   /** 全局阻断原因（如 session unhealthy / 批量 Dry Run 整体失败），此时 items 为空 */
   blockReason?: string;
 }
+
+// ─── PERF-D-OVERVIEW: 服务端全量仓库同步概览 ───────────────────
+
+/** 单仓概览条目 — get_sync_warehouse_overview RPC 返回 */
+export interface SyncWarehouseOverviewItem {
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  latestDryRun: { status: string; time: string | null; runId: string } | null;
+  latestRealWrite: { status: string; time: string | null; runId: string } | null;
+  lastSuccessTime: string | null;
+  lastFailureReason: string | null;
+}

@@ -20,7 +20,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { SyncRunsResponse, SyncRunsPaginatedResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus, AutoPreReviewResult, AutoPreReviewItem, WarehouseHistory, RuleVerdict } from './types';
+import type { SyncRunsResponse, SyncRunsPaginatedResponse, SyncRunDetailResponse, SessionHealthResult, TriggerDryRunResult, ConfirmRealWriteResult, BatchDryRunResult, BatchRealWriteResult, BatchRealWriteItem, SyncLogRecord, WarehouseSyncStatus, AutoPreReviewResult, AutoPreReviewItem, WarehouseHistory, RuleVerdict, SyncWarehouseOverviewItem } from './types';
 
 // ─── Per-request dependency wiring ───────────────────────────────
 
@@ -162,6 +162,15 @@ export async function getOverseasWarehouseOptions(): Promise<
   await requireActiveAuth();
   const warehouses = await getOverseasWarehouses();
   return warehouses.map(({ id, name, country }) => ({ id, name, country }));
+}
+
+/** PERF-D-OVERVIEW: 获取全量仓库同步概览（服务端聚合）。
+ *  Admin 返回全部活跃海外仓，Operator 仅返回已分配仓库。
+ *  无外部输入，内部调用 get_sync_warehouse_overview RPC。 */
+export async function getSyncWarehouseOverview(): Promise<SyncWarehouseOverviewItem[]> {
+  await requireActiveAuth();
+  const repository = await createSupabaseRepo();
+  return repository.getSyncWarehouseOverview();
 }
 
 // ─── 一键同步（自动 dry_run → real_write 链式调用）────────────────

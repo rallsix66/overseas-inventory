@@ -67,6 +67,7 @@ import type {
   AutoPreReviewResult,
   AutoPreReviewItem,
   RuleVerdict,
+  SyncWarehouseOverviewItem,
 } from '@/features/sync/types';
 
 // ─── Type helpers ──────────────────────────────────────────────
@@ -384,6 +385,8 @@ interface Props {
   initialPageSize: number;
   isAdmin: boolean;
   warehouses: WarehouseOption[];
+  /** PERF-D-OVERVIEW: 服务端全量仓库概览，替代客户端分页 rows useMemo 聚合 */
+  warehouseOverview: SyncWarehouseOverviewItem[];
 }
 
 // ─── Default trigger form state ────────────────────────────────
@@ -394,7 +397,7 @@ const DEFAULT_TRIGGER_FORM = {
 
 // ─── Component ─────────────────────────────────────────────────
 
-export function SyncPageContent({ initialRows, initialTotal, initialPage, initialPageSize, isAdmin, warehouses }: Props) {
+export function SyncPageContent({ initialRows, initialTotal, initialPage, initialPageSize, isAdmin, warehouses, warehouseOverview }: Props) {
   const router = useRouter();
 
   // ─── Phase D: 服务端分页状态 ────────────────────────────────────
@@ -452,61 +455,9 @@ export function SyncPageContent({ initialRows, initialTotal, initialPage, initia
     });
   }, [initialRows, initialTotal, initialPage]);
 
-  // ─── P5-SY9H: 仓库聚合概览（仅当前页 rows 或额外获取） ──────────
-  // 聚合概览卡片需要仓库最新状态，从已有 rows 推导有限可能是
-  // 本页行，但仓库卡片足够运营使用。保留现有概览逻辑。
-  const warehouseOverview = useMemo(() => {
-    const grouped = new Map<string, {
-      warehouseId: string;
-      warehouseName: string;
-      latestDryRun: { status: string; time: string | null; runId: string } | null;
-      latestRealWrite: { status: string; time: string | null; runId: string } | null;
-      lastSuccessTime: string | null;
-      lastFailureReason: string | null;
-    }>();
-
-    for (const row of typedRows) {
-      const entry = grouped.get(row.warehouse_id) || {
-        warehouseId: row.warehouse_id,
-        warehouseName: row.warehouse_name,
-        latestDryRun: null as { status: string; time: string | null; runId: string } | null,
-        latestRealWrite: null as { status: string; time: string | null; runId: string } | null,
-        lastSuccessTime: null as string | null,
-        lastFailureReason: null as string | null,
-      };
-
-      const rowTime = row.finished_at ?? row.started_at ?? row.created_at;
-
-      if (row.mode === 'dry_run') {
-        if (!entry.latestDryRun || (rowTime && entry.latestDryRun.time && rowTime > entry.latestDryRun.time)) {
-          entry.latestDryRun = { status: row.status, time: rowTime, runId: row.id };
-        }
-      } else if (row.mode === 'real_write') {
-        if (!entry.latestRealWrite || (rowTime && entry.latestRealWrite.time && rowTime > entry.latestRealWrite.time)) {
-          entry.latestRealWrite = { status: row.status, time: rowTime, runId: row.id };
-        }
-      }
-
-      if (row.status === 'completed' && row.finished_at) {
-        if (!entry.lastSuccessTime || row.finished_at > entry.lastSuccessTime) {
-          entry.lastSuccessTime = row.finished_at;
-        }
-      }
-
-      if (row.status === 'failed') {
-        if (!entry.lastFailureReason) {
-          const reason = isAdmin
-            ? (row as SyncRunAdminRow).error_message
-            : (row as SyncRunOperatorRow).failure_summary;
-          entry.lastFailureReason = reason ?? null;
-        }
-      }
-
-      grouped.set(row.warehouse_id, entry);
-    }
-
-    return Array.from(grouped.values());
-  }, [typedRows, isAdmin]);
+  // PERF-D-OVERVIEW: 仓库同步概览已改为服务端全量聚合
+  //（通过 getSyncWarehouseOverview RPC → page.tsx Server Component → prop 传入），
+  // 不再基于当前页 rows 做客户端 useMemo 聚合。
 
   // Trigger dialog
   const [triggerOpen, setTriggerOpen] = useState(false);
