@@ -4,7 +4,9 @@
 import { revalidatePath } from 'next/cache';
 import { requireAuth } from '@/lib/auth';
 import { inventoryRepository } from './repository';
-import { inventoryUpdateSchema, inventorySearchSchema } from './schema';
+import { inventoryUpdateSchema, inventorySearchSchema, exportCsvSchema } from './schema';
+import { toCsv } from '@/lib/csv';
+import type { CsvColumn } from '@/lib/csv';
 import type { ActionResult } from '@/types/common';
 import type { InventoryFilters, OverseasStats, WarehouseOption, InventoryItem } from './types';
 
@@ -126,5 +128,110 @@ export async function updateInventoryQuantity(
     return { success: true };
   } catch (error) {
     return { success: false, error: '更新库存失败，请稍后重试' };
+  }
+}
+
+/** 导出 CSV 最大行数 */
+const CSV_EXPORT_MAX_ROWS = 10000;
+/** 导出分页循环每页大小（与 inventorySearchSchema.pageSize.max 一致） */
+const CSV_EXPORT_PAGE_SIZE = 100;
+
+/** 海外库存 CSV 列定义 */
+const exportColumns: CsvColumn<InventoryItem>[] = [
+  { header: '国家', accessor: (r) => r.country },
+  { header: '仓库', accessor: (r) => r.warehouseName },
+  { header: 'SKU', accessor: (r) => r.sku },
+  { header: '产品名称', accessor: (r) => r.productName ?? '未匹配' },
+  { header: '当前库存', accessor: (r) => r.quantity },
+  { header: '在途', accessor: (r) => r.inTransitQuantity || 0 },
+  { header: '库存+在途', accessor: (r) => r.quantity + (r.inTransitQuantity || 0) },
+  { header: '安全库存', accessor: (r) => r.matchStatus === 'matched' ? r.safetyStock : '—' },
+  { header: '库存状态', accessor: (r) => stockStatusLabel(r) },
+  { header: '最后同步时间', accessor: (r) => r.lastSyncAt ?? '' },
+];
+
+function stockStatusLabel(item: InventoryItem): string {
+  if (item.quantity === 0) return '缺货';
+  if (item.matchStatus !== 'matched') return '未匹配';
+  if (item.quantity <= item.safetyStock) return '低库存';
+  return '正常';
+}
+
+/**
+ * 导出海外库存为 CSV
+ *
+ * 使用分页循环拉取（pageSize=100），最多累计 10000 行。
+ * 超过上限时返回错误提示用户缩小筛选范围。
+ */
+export async function exportOverseasInventoryCsv(filters: {
+  country?: string;
+  warehouseId?: string;
+  stockStatus?: string;
+  search?: string;
+}): Promise<ActionResult<string>> {
+  try {
+    const user = await requireAuth();
+
+    const parsed = exportCsvSchema.safeParse(filters);
+    if (!parsed.success) {
+      return { success: false, error: '导出参数校验失败' };
+    }
+
+    // 获取在途聚合数据，构建 variantId → Map<warehouseId, inTransitQty> 维度映射
+    const aggregateRows = await inventoryRepository.getInTransitConfirmedAggregate(user.id);
+    const whInTransitMap = new Map<string, Map<string, number>>();
+    for (const row of aggregateRows) {
+      if (row.in_transit_quantity > 0) {
+        let whMap = whInTransitMap.get(row.variant_id);
+        if (!whMap) {
+          whMap = new Map();
+          whInTransitMap.set(row.variant_id, whMap);
+        }
+        whMap.set(row.warehouse_id, row.in_transit_quantity);
+      }
+    }
+
+    const allRows: InventoryItem[] = [];
+    let page = 1;
+
+    // 分页循环拉取
+    while (true) {
+      const result = await inventoryRepository.getOverseasList({
+        ...parsed.data,
+        userId: user.id,
+        page,
+        pageSize: CSV_EXPORT_PAGE_SIZE,
+      });
+
+      // 按仓库维度回填在途数量（复用 getOverseasInventory 的聚合逻辑）
+      for (const item of result.data) {
+        item.inTransitQuantity = whInTransitMap.get(item.variantId)?.get(item.warehouseId) ?? 0;
+      }
+
+      allRows.push(...result.data);
+
+      // 超限保护
+      if (allRows.length > CSV_EXPORT_MAX_ROWS) {
+        return {
+          success: false,
+          error: `导出结果超过 ${CSV_EXPORT_MAX_ROWS.toLocaleString()} 行，请缩小筛选范围后重试`,
+        };
+      }
+
+      // 已拉完所有数据
+      if (allRows.length >= result.total) break;
+
+      page++;
+    }
+
+    // 空数据
+    if (allRows.length === 0) {
+      return { success: false, error: '无数据可导出' };
+    }
+
+    const csv = toCsv(allRows, exportColumns);
+    return { success: true, data: csv };
+  } catch {
+    return { success: false, error: '导出失败，请稍后重试' };
   }
 }

@@ -2,108 +2,145 @@
 
 ## Task ID
 
-`PERF-H-DROP-UNUSED-INVENTORY-QUANTITY-INDEXES` — 新增 Migration 00033 删除两个未使用的 inventory quantity 部分索引
+`P6-CSV-EXPORT` — 海外库存 CSV 导出
 
 ## 状态
 
-**DONE**（2026-07-07）。Migration 00033 已在 Supabase SQL Editor 手动执行成功。执行后验证查询 `pg_stat_user_indexes` 返回 No rows returned（两个索引已删除确认）。
+**DONE**（2026-07-07）。
 
-### 背景
+## 功能概述
 
-PERF-G 已完成静态查询路径分析（12 条路径全覆盖）+ `pg_stat_user_indexes` 运行时验证：
+海外库存页面新增"导出 CSV"按钮，复用当前筛选条件（国家/仓库/库存状态/搜索），通过分页循环拉取全量数据生成 UTF-8 BOM CSV 文件。
 
-| 索引 | WHERE 条件 | idx_scan | idx_tup_read | idx_tup_fetch | index_size |
-|------|-----------|----------|-------------|--------------|------------|
-| `idx_inventory_low_stock` | `quantity <= 500` | 0 | 0 | 0 | 16 kB |
-| `idx_inventory_quantity` | `quantity = 0` | 0 | 0 | 0 | 16 kB |
+## 核心设计
 
-两个索引在 pg_stat_user_indexes 统计窗口内均未观察到任何使用。
+### Server Action
 
-### 删除依据
+`exportOverseasInventoryCsv(filters)` — `src/features/inventory/actions.ts`
 
-**静态分析（PERF-G）**：
-- 所有低库存/海外库存查询已由 PERF-S1（Migration 00027/00028）迁移至 RPC，使用 `COALESCE(safety_stock, 0)` 动态参数
-- PostgreSQL planner 无法在计划时证明动态参数 `≤ 500`，不会选择 `idx_inventory_low_stock` partial index
-- `idx_inventory_quantity WHERE quantity = 0` 的潜在使用者 `get_overseas_inventory` out_of_stock 分支虽在静态分析中不能排除可能，但运行时统计确认未使用
+1. `requireAuth()` → `exportCsvSchema.safeParse(filters)` 校验
+2. `inventoryRepository.getInTransitConfirmedAggregate(user.id)` 获取在途聚合
+3. 构建 `whInTransitMap`（variantId → Map<warehouseId, inTransitQty>），复用 `getOverseasInventory` 的维度映射逻辑
+4. `while(true)` 分页循环调用 `inventoryRepository.getOverseasList({pageSize: CSV_EXPORT_PAGE_SIZE=100})`
+5. 每页 rows 回填 `item.inTransitQuantity = whInTransitMap.get(item.variantId)?.get(item.warehouseId) ?? 0`
+6. 累计到 `allRows`，超 `CSV_EXPORT_MAX_ROWS=10000` → 返回中文错误
+7. 空数据 → 返回中文错误
+8. `toCsv(allRows, exportColumns)` 生成 CSV 字符串
 
-**运行时验证（pg_stat_user_indexes）**：
-- 两个索引均 `idx_scan=0` / `idx_tup_read=0` / `idx_tup_fetch=0` / `index_size=16 kB`
-- 综合静态分析 + 运行时统计，判断两个索引均可安全删除
+### CSV 工具
 
-**注意**：`idx_scan=0` 仅代表当前统计窗口内未观察到使用，不代表从未使用。本次删除基于静态查询路径分析 + 当前运行时统计共同判断。
+`toCsv(rows, columns)` — `src/lib/csv.ts`（纯函数，浏览器/服务端通用）
 
-### Migration 00033
+- UTF-8 BOM（`﻿`）Excel 兼容中文
+- 逗号分隔，RFC 4180 双引号转义
+- null/undefined → 空字符串
 
-```sql
--- ============================================
--- Migration 00033: PERF-H — 删除未使用的 inventory quantity 部分索引
--- ============================================
-DROP INDEX IF EXISTS public.idx_inventory_low_stock;
-DROP INDEX IF EXISTS public.idx_inventory_quantity;
-```
+### 页面按钮
 
-`DROP INDEX IF EXISTS` 保证幂等：即使索引已在 Supabase SQL Editor 手动删除后再执行此 Migration，也不会失败。
+`src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx`
 
-### 新增测试
+- `handleExportCsv()` 传递当前 `filters`（country/warehouse/stockStatus/search）
+- `exporting` state → disabled + "导出中..." 文案
+- `total === 0` → disabled
+- 成功：`new Blob([csv], {type: 'text/csv;charset=utf-8;'})` → `URL.createObjectURL` → `<a download>` → click → revoke
+- 失败：`toast.error`
+- 文件名：`overseas-inventory-YYYYMMDD.csv`
 
-`src/features/inventory/perf-h-drop-indexes-migration.test.ts` — 14 项静态契约测试：
+### Schema
 
-| # | 测试 | 类别 |
-|---|------|------|
-| 1 | 文件编号为 00033，存在且内容非空 | 文件存在 |
-| 2 | 注释声明 PERF-H | 标识 |
-| 3 | DROP INDEX IF EXISTS public.idx_inventory_low_stock | 目标索引 |
-| 4 | DROP INDEX IF EXISTS public.idx_inventory_quantity | 目标索引 |
-| 5 | 恰好包含两行 DROP INDEX IF EXISTS（排除 SQL 注释行） | 精确 DROP |
-| 6 | 不包含 CREATE INDEX（排除 SQL 注释行） | 无模式变更 |
-| 7 | 不包含 ALTER TABLE | 无模式变更 |
-| 8 | 不包含 INSERT / UPDATE / DELETE | 无数据变更 |
-| 9 | 不包含 CREATE OR REPLACE FUNCTION / RPC | 无 RPC |
-| 10 | 不包含 REVOKE / GRANT | 无权限变更 |
-| 11 | 00001 migration 未被修改（idx_inventory_low_stock 仍存在） | 不修改旧 migration |
-| 12 | 00001 migration 未被修改（idx_inventory_quantity 仍存在） | 不修改旧 migration |
-| 13 | 不删除 idx_inventory_warehouse_id | 不触及非目标索引 |
-| 14 | 不匹配其他 inventory 索引 | 精确索引名 |
+`exportCsvSchema` — `src/features/inventory/schema.ts`
 
-### 禁止事项（已遵守）
+- 不含 `page` / `pageSize`（分页由 action 内部控制）
+- `country` 仅海外五国（TH/ID/MY/PH/VN，不含 CN）
 
-- 不修改 `supabase/migrations/00001` 已执行 migration ✅
-- 不修改 RPC / RLS / Repository / 业务代码 ✅
-- 不修改 `.claude/context-status.json` ✅
-- 不处理 P3-S1B ✅
+### CSV 列（10 列）
 
-### 验收
+| 列头 | accessor |
+|------|----------|
+| 国家 | `r.country` |
+| 仓库 | `r.warehouseName` |
+| SKU | `r.sku` |
+| 产品名称 | `r.productName ?? '未匹配'` |
+| 当前库存 | `r.quantity` |
+| 在途 | `r.inTransitQuantity \|\| 0` — 由 `getInTransitConfirmedAggregate` 按 (variantId, warehouseId) 回填 |
+| 库存+在途 | `r.quantity + (r.inTransitQuantity \|\| 0)` — 非仅 quantity |
+| 安全库存 | matched → `r.safetyStock`，unmatched → `'—'` |
+| 库存状态 | `stockStatusLabel(r)` |
+| 最后同步时间 | `r.lastSyncAt ?? ''` |
+
+## 返修记录
+
+### 返修 1（2026-07-07）：在途数据回填
+
+**问题**：初版 `exportOverseasInventoryCsv` 仅调用 `getOverseasList()`，返回行的 `inTransitQuantity` 默认为 0，导致 CSV 在途列数据不正确。
+
+**修复**：
+- 在分页循环前调用 `inventoryRepository.getInTransitConfirmedAggregate(user.id)`
+- 构建 `whInTransitMap`（variantId → Map<warehouseId, inTransitQty>），复用 `getOverseasInventory` 的聚合逻辑
+- 每页 rows 回填 `item.inTransitQuantity` 后再 push 到 `allRows`
+- 新增 3 项测试：`getInTransitConfirmedAggregate` 调用断言 / whInTransitMap 回填逻辑 / "库存+在途"非仅 quantity
+- 修复 p3-s5b4-batch-warehouse.test.ts 预存测试：`warehouses 和 list 不使用 seal 以外的独立的 await` 检查范围收窄为仅 `getOverseasInventory` 函数体（不影响 `exportOverseasInventoryCsv` 的 while 循环 await）
+
+## 限制
+
+- ✅ 不新增 Migration（migrations/ 下无 00034）
+- ✅ 不新增 RPC / RLS
+- ✅ 不修改 `inventoryRepository` 签名（复用 `getOverseasList` + `getInTransitConfirmedAggregate`）
+- ✅ pageSize 固定 100，max 10000 行
+- ✅ 不依赖百世 API / 国内库存数据源
+
+## 测试
+
+`src/features/inventory/p6-csv-export.test.ts` — 36 项测试
+
+| # | 类别 | 测试数 |
+|---|------|--------|
+| 1 | CSV 纯函数（toCsv） | 8 |
+| 2 | Server Action 源码检查 | 14（含 3 在途回填） |
+| 3 | 页面组件源码检查 | 10 |
+| 4 | 架构边界 | 2 |
+| 5 | 修复 p3-s5b4-batch-warehouse 预存测试 | 1 |
+| **Total** | | **36** |
+
+## 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| `npm run test`（全量非并发） | 2962/2963 通过（75 文件中 73 通过，2 预存失败：concurrency / best live 缺 env）✅ |
+| `npm run test -- p6-csv-export.test.ts` | 36/36 ✅ |
+| `npm run test`（全量非并发） | 2998/2998（74 文件）✅ |
 | `npm run build` | Turbopack ✓ 通过 ✅ |
-| `npm run lint` | 5 errors / 25 warnings（均为既有）✅ |
+| `npm run lint` | **0 errors** / 25 warnings（均为既有）✅ |
 | `git diff --check` | 通过（仅 LF/CRLF warning）✅ |
 
-### 修改文件清单
+## 修改文件清单
 
 | # | 文件 | 变更 |
 |---|------|------|
-| 1 | `supabase/migrations/00033_drop_unused_inventory_quantity_indexes.sql` | 新增：DROP INDEX IF EXISTS 两个索引 |
-| 2 | `src/features/inventory/perf-h-drop-indexes-migration.test.ts` | 新增：14 项静态契约测试 |
-| 3 | `docs/current-state.md` | 更新 Phase + Task + Database Status + Recent Changes + Migration 列表 + Last Updated |
-| 4 | `docs/tasks/current-task.md` | 本文件（PERF-H 任务包） |
+| 1 | `src/lib/csv.ts` | 新增：`toCsv()` 纯函数 |
+| 2 | `src/features/inventory/actions.ts` | 新增 `exportOverseasInventoryCsv` + 10 列定义 + 在途 aggregate 回填 |
+| 3 | `src/features/inventory/schema.ts` | 新增 `exportCsvSchema` |
+| 4 | `src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx` | 导出按钮 + `handleExportCsv` |
+| 5 | `src/features/inventory/p6-csv-export.test.ts` | 新增：36 项测试 |
+| 6 | `src/features/shipments/p3-s5b4-batch-warehouse.test.ts` | 修复：`warehouses 和 list 不使用 seal 以外的独立的 await` 检查范围收窄为 `getOverseasInventory` 函数体 |
+| 7 | `docs/current-state.md` | 更新 Phase / Task / Recent Changes / Last Updated |
+| 8 | `docs/tasks/current-task.md` | 本文件（P6-CSV-EXPORT 任务包） |
 
-### 执行确认
+### 未修改
 
-**Migration 00033 已在 Supabase SQL Editor 手动执行成功（2026-07-07）。**
+- 不提交 `.claude/context-status.json`
+- 不新增 Migration / RPC / RLS
+- 不修改 `inventoryRepository` 签名
 
-执行后验证查询：
-```sql
-SELECT schemaname, relname AS table_name, indexrelname AS index_name
-FROM pg_stat_user_indexes
-WHERE schemaname = 'public'
-  AND indexrelname IN ('idx_inventory_low_stock', 'idx_inventory_quantity');
-```
+## CSV 在途列确认
 
-结果：**Success. No rows returned** — 确认两个索引已删除。
+- ✅ 在途数据已按 `get_in_transit_confirmed_aggregate` RPC 聚合后回填
+- ✅ `inTransitQuantity` 按 (variantId, warehouseId) 维度精确取值（不串仓）
+- ✅ `库存+在途` = `quantity + inTransitQuantity`（非仅 quantity）
+- ✅ 当前筛选条件仍复用
+- ✅ pageSize 仍固定 100，最大 10000 行
+- ✅ UTF-8 BOM 前缀
+- ✅ docs 已同步
 
-### 下一步
+## 下一步
 
 可选择推进新 Phase 或 P3-S1B 恢复（百世 API，仍在 BLOCKED_EXTERNAL 状态）。

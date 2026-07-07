@@ -461,9 +461,13 @@ describe('PERF-C2A — getOverseasInventory 查询编排', () => {
   });
 
   it('warehouses 和 list 不使用 seal 以外的独立的 await（不串行等待）', () => {
+    // 仅检查 getOverseasInventory 函数体（不含 exportOverseasInventoryCsv 的分页循环 await）
+    const fnStart = actionsSrc.indexOf('export async function getOverseasInventory');
+    const nextFnStart = actionsSrc.indexOf('export async function updateInventoryQuantity');
+    const fnBody = actionsSrc.slice(fnStart, nextFnStart);
     // warehouses + list 仅通过 seal() 提前启动，无独立 await getOverseasWarehouses / getOverseasList
-    expect(actionsSrc).not.toMatch(/\bawait\s+inventoryRepository\.getOverseasWarehouses\(/);
-    expect(actionsSrc).not.toMatch(/\bawait\s+inventoryRepository\.getOverseasList\(/);
+    expect(fnBody).not.toMatch(/\bawait\s+inventoryRepository\.getOverseasWarehouses\(/);
+    expect(fnBody).not.toMatch(/\bawait\s+inventoryRepository\.getOverseasList\(/);
   });
 
   it('不新增 per-warehouse N+1 查询模式', () => {

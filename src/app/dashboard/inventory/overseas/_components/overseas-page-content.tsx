@@ -5,7 +5,7 @@
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
 import { useOptimistic, startTransition, useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { toggleFavoriteAction } from '@/features/preferences/actions';
+import { exportOverseasInventoryCsv } from '@/features/inventory/actions';
 import { InTransitDetailRow } from '@/features/shipments/components/in-transit-detail-row';
 import type { InventoryItem, OverseasStats, WarehouseOption } from '@/features/inventory/types';
 import type { WarehouseSyncStatus } from '@/features/sync/types';
@@ -199,6 +200,43 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
 
   // P3-S2E: 行展开状态 — 记录展开的 (variantId, warehouseId)
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  // P6-CSV-EXPORT: 导出按钮 loading 状态
+  const [exporting, setExporting] = useState(false);
+
+  /** 触发 CSV 导出下载 */
+  async function handleExportCsv() {
+    setExporting(true);
+    try {
+      const result = await exportOverseasInventoryCsv({
+        country: filters.country || undefined,
+        warehouseId: filters.warehouse || undefined,
+        stockStatus: filters.stockStatus || undefined,
+        search: filters.search || undefined,
+      });
+
+      if (!result.success || !result.data) {
+        toast.error(result.error ?? '导出失败');
+        return;
+      }
+
+      // Blob + download
+      const blob = new Blob([result.data], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = `overseas-inventory-${today.replace(/-/g, '')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('导出失败，请稍后重试');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function toggleExpand(item: InventoryItem) {
     const key = `${item.variantId}:${item.warehouseId}`;
@@ -413,6 +451,17 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
             清除
           </Button>
         )}
+
+        {/* P6-CSV-EXPORT: 导出 CSV */}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={exporting || total === 0}
+          onClick={handleExportCsv}
+        >
+          <Download className="w-4 h-4 mr-1.5" />
+          {exporting ? '导出中...' : '导出 CSV'}
+        </Button>
       </div>
 
       {/* 空数据状态 */}
