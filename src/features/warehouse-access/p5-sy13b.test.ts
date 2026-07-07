@@ -454,9 +454,11 @@ describe('P5-SY13B — actions.ts', () => {
     expect(src).toContain('无权限：需要管理员角色');
   });
 
-  it('re-export OperatorWithAssignments 和 AssignableWarehouse', () => {
-    expect(src).toMatch(/export type.*OperatorWithAssignments/);
-    expect(src).toMatch(/export type.*AssignableWarehouse/);
+  it('从 ./types 导入 OperatorWithAssignments 和 AssignableWarehouse（非 re-export）', () => {
+    // PERF-F: Turbopack 不允许 'use server' 模块 re-export type-only 类型
+    // 类型由 ./types.ts 直接提供，actions.ts 仅导入使用
+    expect(src).toMatch(/import type.*OperatorWithAssignments.*AssignableWarehouse.*from/);
+    expect(src).not.toMatch(/export type/);
   });
 
   it('不含 any', () => {

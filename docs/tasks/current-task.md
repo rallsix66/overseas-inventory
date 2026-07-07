@@ -2,7 +2,7 @@
 
 ## Task ID
 
-`PERF-D-OVERVIEW` — 同步页仓库概览改为服务端全量聚合
+`PERF-F-TURBOPACK` — 移除 --webpack flag，切换 Next.js 16 默认 Turbopack
 
 ## 状态
 
@@ -10,96 +10,70 @@
 
 ### 背景
 
-`src/app/dashboard/sync/_components/sync-page-content.tsx` 原有 `warehouseOverview` useMemo，基于当前页 `rows` 做客户端聚合，只能反映当前分页数据，非全量最新状态。需要改为服务端 RPC 全量聚合。
+`package.json` 原有 `next dev --webpack` / `next build --webpack`，显式降级到 webpack。Next.js 16 默认使用 Turbopack（Rust 增量打包器），无需额外 flag。需要移除 `--webpack` 并验证 Turbopack 构建通过。
 
 ### 实现
 
-**Migration 00032** — `00032_sync_warehouse_overview.sql`：
+**移除 --webpack**：
+- `package.json` dev 脚本：`next dev --webpack` → `next dev`
+- `package.json` build 脚本：`next build --webpack` → `next build`
 
-- 新增 `get_sync_warehouse_overview()` RPC
-- SECURITY DEFINER + `SET search_path = ''` + `auth.uid()` 身份绑定
-- Admin：返回全部活跃海外仓概览
-- Operator：仅返回已分配仓库（通过 `user_warehouses`）+ 失败原因截断至 100 字符
-- 返回 jsonb 数组，按 country 排序
-- REVOKE FROM PUBLIC, anon / GRANT TO authenticated
+**不添加 `optimizePackageImports`**：
+- `lucide-react` 是项目唯一使用的重型多导出库，已在 Next.js 默认自动优化列表中
+- 无 `date-fns`、`lodash-es`、`recharts`、`react-use` 等其他默认列表中的库
+- 无自定义 icon/library 需要手动配置
 
-每仓返回字段：
-```json
-{
-  "warehouse_id": "uuid",
-  "warehouse_name": "仓库名",
-  "country": "XX",
-  "latest_dry_run": { "status": "completed|failed|in_progress", "run_id": "...", "time": "..." } | null,
-  "latest_real_write": { "status": "...", "run_id": "...", "time": "..." } | null,
-  "last_success_time": "..." | null,
-  "last_failure_reason": "..." | null
-}
-```
+**Turbopack 构建发现的 Bug 修复**：
+- `src/features/warehouse-access/actions.ts`：移除 `export type { OperatorWithAssignments, AssignableWarehouse }` type-only re-export
+- Turbopack 正确拒绝 `'use server'` 模块中的 type-only re-export（不产生运行时值），webpack 静默容忍
+- 无人从 `actions.ts` 导入这两个类型，全部直接从 `./types.ts` 导入，移除安全
 
-**Repository 层**：
-- `SyncRepository` 接口新增 `getSyncWarehouseOverview(): Promise<SyncWarehouseOverviewItem[]>`
-- `MockRepository` 实现：从内存 runs 聚合全量概览，按 role 区分失败原因展示
-- `SupabaseSyncRepository` 实现：调用 `get_sync_warehouse_overview` RPC，snake_case → camelCase 映射
-
-**Server Action**：
-- 新增 `getSyncWarehouseOverview()`（authenticated only，无外部输入）
-
-**页面**：
-- `page.tsx`：通过 `Promise.all` 与分页/仓库列表并行获取概览，作为 prop 传入
-- `sync-page-content.tsx`：Props 新增 `warehouseOverview: SyncWarehouseOverviewItem[]`，删除 useMemo 聚合
-
-**perf-d-overview.test.ts**：26 项测试：
+**perf-f-turbopack.test.ts**：9 项静态测试：
 
 | 分组 | 测试项 | 数量 |
 |------|--------|------|
-| Migration 00032 静态契约 | 无 DDL/RLS/POLICY/DROP；SECURITY DEFINER + search_path；auth.uid() + get_user_role()；anon 禁止/authenticated 可执行 | 6 |
-| Admin/Operator 隔离 | v_role 分支；user_warehouses 过滤；auth.uid() 绑定 | 3 |
-| 文件元数据 | 00032 命名、非空、.sql | 3 |
-| MockRepository 行为 | Admin 全量、Operator 截断、空数据 | 3 |
-| 客户端源码检查 | 无 useMemo warehouseOverview；prop 定义；无 supabase.from/createClient | 3 |
-| 服务端源码检查 | 调用 getSyncWarehouseOverview；Promise.all 并行；prop 传递 | 3 |
+| package.json | dev/build 不含 --webpack、直接调用 next dev/build、start 不变 | 5 |
+| package.json | 有效 JSON、name 正确 | 1 |
+| next.config.ts | 文件存在 | 1 |
+| 源码检查 | package.json 全文不含 --webpack 及大小写变体 | 2 |
 
-**database.ts**：添加 `get_sync_warehouse_overview` RPC 类型声明（`Args: Record<string, never>; Returns: unknown[]`）。
+**p5-sy13b.test.ts**：1 项适配（re-export 断言改为 import + 不 re-export 断言）。
 
 ### 禁止事项（已遵守）
 
-- 不修改已执行 Migration 00001~00031
-- 不改 Product/ProductVariant/Inventory 模型
-- 不改同步分页 RPC
-- 不改索引优化 00031
-- 不改 RLS
-- 不修改 `.claude/`
-- 不做 UI 大改版
-- 不处理 `--webpack`
+- 不修改 `supabase/migrations/*`
+- 不改页面业务逻辑
+- 不改 Repository / Server Actions（仅修复 type-only re-export Bug）
+- 不升级 Next.js 或依赖版本
+- 不处理 `idx_inventory_low_stock`
+- 不修改 `.claude/context-status.json`
+- 不添加 `optimizePackageImports`（无需求）
 
 ### 验收
 
 | 检查项 | 结果 |
 |--------|------|
-| `npm run test -- src/features/sync` | **863/863** 通过（27 文件）✅ |
-| `npm run test`（全量非并发） | **2939/2939** 通过（71 文件）✅ |
-| `npm run build` | ✓ Compiled + TypeScript ✅ |
+| `npm run test`（全量非并发） | **2948/2948** 通过（72 文件）✅ |
+| `npm run build`（Turbopack） | ✓ Compiled（3.9s）+ TypeScript（6.2s）+ 静态页 23/23 ✅ |
 | `npm run lint` | 5 errors / 25 warnings（均为既有，非本轮新增）✅ |
-| `git diff --check` | 通过 ✅ |
+| `git diff --check` | 通过（仅 LF/CRLF warnings）✅ |
+| 构建器确认 | `▲ Next.js 16.2.9 (Turbopack)` ✅ |
 
 ### 修改文件清单
 
 | # | 文件 | 变更 |
 |---|------|------|
-| 1 | `supabase/migrations/00032_sync_warehouse_overview.sql` | 新增 RPC + 权限收口 |
-| 2 | `src/features/sync/perf-d-overview.test.ts` | 新增 26 项测试 |
-| 3 | `src/features/sync/types.ts` | 新增 `SyncWarehouseOverviewItem` 类型 |
-| 4 | `src/features/sync/repository.ts` | 接口 + Mock 实现 |
-| 5 | `src/features/sync/supabase-repository.ts` | Supabase 实现（含类型导入） |
-| 6 | `src/features/sync/server-actions.ts` | 新增 Server Action（含类型导入） |
-| 7 | `src/app/dashboard/sync/page.tsx` | 服务端并行获取概览，prop 传入 |
-| 8 | `src/app/dashboard/sync/_components/sync-page-content.tsx` | Props 新增 warehouseOverview，删除 useMemo |
-| 9 | `src/types/database.ts` | 添加 RPC 类型声明 |
+| 1 | `package.json` | 移除 dev/build 脚本中的 `--webpack` |
+| 2 | `src/features/sync/perf-f-turbopack.test.ts` | 新增 9 项测试 |
+| 3 | `src/features/warehouse-access/actions.ts` | 移除 type-only re-export（Turbopack 拒绝）|
+| 4 | `src/features/warehouse-access/p5-sy13b.test.ts` | 适配 re-export → import 断言 |
+| 5 | `docs/current-state.md` | PERF-F 记录 + 摘要 |
+| 6 | `docs/tasks/current-task.md` | 本文件 |
 
 ### 生产启用
 
-Migration 00032 已在 Supabase SQL Editor 手动执行成功（2026-07-07）。后续如重新生成 `src/types/database.ts`，可替换当前手动添加的 RPC 类型声明。
+无需 Migration 或数据库变更。`npm run build` 已在 Turbopack 下验证通过。
 
 ### 下一步
 
-PERF-D-OVERVIEW 完成。剩余性能计划项：warehouseOverview 独立 RPC（本次已完成）、Phase F 去 --webpack、`idx_inventory_low_stock` 删除评估。可选择推进或 P3-S1B 恢复（百世 API，BLOCKED_EXTERNAL）。
+PERF-F-TURBOPACK 完成。剩余性能计划项：`idx_inventory_low_stock` 删除评估。可选择推进新 Phase 或 P3-S1B 恢复（百世 API，BLOCKED_EXTERNAL）。

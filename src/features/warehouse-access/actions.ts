@@ -9,8 +9,6 @@ import { updateUserWarehousesSchema } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { OperatorWithAssignments, AssignableWarehouse } from './types';
 
-export type { OperatorWithAssignments, AssignableWarehouse };
-
 /** Admin: 获取所有 operator 及其当前仓库分配 */
 export async function listOperatorsWithAssignments(): Promise<
   ActionResult<OperatorWithAssignments[]>
