@@ -9,77 +9,70 @@ function readSrc(relativePath: string) {
   return readFileSync(join(ROOT, relativePath), 'utf-8');
 }
 
-// ─── 1. 海外库存"已确认到仓"列 — 数据层 ──────────────────────────────────
+// ─── 1. 海外库存"已确认到仓"列 — P6 已从主表移除 ──────────────────────────
 
-describe('P3-S5B4: 海外库存"已确认到仓"列 — 数据层', () => {
+describe('P3-S5B4 → P6: 海外库存主表已移除"已确认到仓"列', () => {
   const actionsSrc = readSrc('src/features/inventory/actions.ts');
   const pageSrc = readSrc('src/app/dashboard/inventory/overseas/page.tsx');
   const contentSrc = readSrc('src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx');
 
-  it('getOverseasInventory 返回类型包含 confirmedMap', () => {
-    expect(actionsSrc).toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
+  it('getOverseasInventory 返回类型不再包含 confirmedMap', () => {
+    expect(actionsSrc).not.toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
   });
 
-  it('getOverseasInventory — PERF-S1B: 调用 getInTransitConfirmedAggregate 替代 N+1', () => {
+  it('getOverseasInventory — PERF-S1B: 仍调用 getInTransitConfirmedAggregate（用于在途数据）', () => {
     expect(actionsSrc).toMatch(/getInTransitConfirmedAggregate/);
     // 不再出现旧的 N+1 循环模式
     expect(actionsSrc).not.toMatch(/uniqueWarehouseIds/);
     expect(actionsSrc).not.toMatch(/getConfirmedWarehousedByWarehouse/);
   });
 
-  it('getOverseasInventory — confirmedMap 从 aggregate 结果构建', () => {
-    // 单次 RPC 后从 aggregateRows 构建 confirmedMap
-    expect(actionsSrc).toMatch(/confirmedMap\[row\.warehouse_id\]/);
-    expect(actionsSrc).toMatch(/row\.confirmed_quantity/);
+  it('getOverseasInventory — 不再构建 confirmedMap（P6 移除）', () => {
+    expect(actionsSrc).not.toMatch(/confirmedMap\[row\.warehouse_id\]/);
+    expect(actionsSrc).not.toMatch(/row\.confirmed_quantity/);
+    // getInTransitConfirmedAggregate 仍被调用（用于在途数据），但 confirmedMap 构建块已移除
   });
 
   it('getOverseasInventory — 聚合 RPC 失败由 repository throw，不再 per-warehouse catch', () => {
-    // 不再有 per-warehouse catch + 空 agg 降级
-    // 单次 RPC 失败由 repository 抛出中文错误
     const invRepoSrc = readSrc('src/features/inventory/repository.ts');
     expect(invRepoSrc).toMatch(/async getInTransitConfirmedAggregate/);
   });
 
-  it('page.tsx 传递 confirmedMap 到 OverseasPageContent', () => {
-    expect(pageSrc).toMatch(/confirmedMap=\{data\.confirmedMap\}/);
+  it('page.tsx 不再传递 confirmedMap 到 OverseasPageContent', () => {
+    expect(pageSrc).not.toMatch(/confirmedMap/);
   });
 
-  it('OverseasPageContent Props 接口包含 confirmedMap', () => {
-    expect(contentSrc).toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
-    expect(contentSrc).toMatch(/P3-S5B4.*warehouseId.*variantId.*confirmedQuantity/);
+  it('OverseasPageContent Props 接口不再包含 confirmedMap', () => {
+    expect(contentSrc).not.toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
   });
 
-  it('OverseasPageContent 接收 confirmedMap prop', () => {
-    expect(contentSrc).toMatch(/confirmedMap\s*[,}]/);
+  it('OverseasPageContent 不再接收 confirmedMap prop', () => {
+    expect(contentSrc).not.toMatch(/confirmedMap/);
   });
 
-  it('表格新增"已确认到仓"列头', () => {
-    expect(contentSrc).toMatch(/已确认到仓/);
+  it('表格不包含"已确认到仓"列头', () => {
+    expect(contentSrc).not.toMatch(/已确认到仓/);
   });
 
-  it('已确认到仓列从 confirmedMap 查找数据', () => {
-    expect(contentSrc).toMatch(/confirmedMap\[item\.warehouseId\]\?\.\[item\.variantId\]/);
+  it('已确认到仓列的 confirmedMap 查找逻辑已移除', () => {
+    expect(contentSrc).not.toMatch(/confirmedMap\[item\.warehouseId\]\?\.\[item\.variantId\]/);
   });
 
-  it('已确认到仓列为 0 时显示 —', () => {
-    expect(contentSrc).toMatch(/qty > 0 \? qty\.toLocaleString\(\) : '—'/);
+  it('colSpan 已从 13 更新为 12（移除 confirmed 列后）', () => {
+    expect(contentSrc).not.toMatch(/colSpan=\{13\}/);
+    expect(contentSrc).toMatch(/colSpan=\{12\}/);
   });
 
-  it('展开行 colSpan 与表头列数一致为 13', () => {
-    // 表头列：展开箭头 + 关注 + 国家 + 仓库 + 产品名称 + SKU + 当前库存 + 在途 + 已确认到仓 + 库存+在途 + 安全库存 + 库存状态 + 同步状态 = 13
-    expect(contentSrc).toMatch(/colSpan=\{13\}/);
-  });
-
-  it('表头实际列数为 13（colSpan 不得与列数不一致）', () => {
-    // 统计 <TableHead> 标签数量（排除 <TableHeader>）
+  it('表头实际列数为 12（colSpan 不得与列数不一致）', () => {
     const headMatches = contentSrc.match(/<TableHead[\s>]/g);
     expect(headMatches).not.toBeNull();
-    expect(headMatches!.length).toBe(13);
+    expect(headMatches!.length).toBe(12);
   });
 
-  it('confirmedMap 注释说明口径（不含 BigSeller 吸收）', () => {
-    // 注释说明仅 customs 或 warehoused + bigseller_absorbed_at IS NULL
-    expect(contentSrc).toMatch(/P3-S5B4.*DIS 已确认到仓/);
+  it('已确认到仓口径在在途管理/批量入仓内部保留（不在此页）', () => {
+    // RPC get_in_transit_confirmed_aggregate 仍存在（for CSV 导出 + 在途数据）
+    const invRepoSrc = readSrc('src/features/inventory/repository.ts');
+    expect(invRepoSrc).toMatch(/getInTransitConfirmedAggregate/);
   });
 });
 
@@ -438,8 +431,8 @@ describe('PERF-C2A — getOverseasInventory 查询编排', () => {
     expect(actionsSrc).toMatch(/variantTotalMap\.set\(/);
   });
 
-  it('confirmedMap 仍从 aggregateRows 构建', () => {
-    expect(actionsSrc).toMatch(/confirmedMap\[row\.warehouse_id\]/);
+  it('P6: confirmedMap 已从 getOverseasInventory 移除（不再构建）', () => {
+    expect(actionsSrc).not.toMatch(/confirmedMap\[row\.warehouse_id\]/);
   });
 
   it('stats / warehouses / list 在第二轮 Promise.all 中并行 await', () => {

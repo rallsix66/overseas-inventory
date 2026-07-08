@@ -62,8 +62,6 @@ interface Props {
     pageSize: number;
   };
   syncStatus: Record<string, WarehouseSyncStatus>;
-  /** P3-S5B4: warehouseId → variantId → confirmedQuantity (DIS 已确认到仓，不含 BigSeller 吸收) */
-  confirmedMap: Record<string, Record<string, number>>;
   filters: Filters;
 }
 
@@ -73,15 +71,23 @@ function StatCard({
   value,
   sub,
   colorClass,
+  onClick,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
   sub?: string;
   colorClass?: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card p-4">
+    <div
+      className={`flex items-center gap-3 rounded-lg border bg-card p-4 ${onClick ? 'cursor-pointer hover:shadow-md hover:border-gray-300 transition-shadow' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+    >
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${
           colorClass ?? 'bg-blue-50 text-blue-600'
@@ -101,7 +107,7 @@ function StatCard({
 /**
  * P5-SY12: 星标关注按钮 — 乐观更新
  *
- * PERF-S1D: 移除 router.refresh()，仅乐观更新。关注状态不改变库存数量/统计/已确认到仓。
+ * PERF-S1D: 移除 router.refresh()，仅乐观更新。关注状态不改变库存数量/统计/在途数据。
  * toggleFavoriteAction 内 revalidatePath 已处理缓存失效，下次导航自动获取最新数据。
  *
  * - 乐观更新即时切换星标 UI
@@ -193,7 +199,7 @@ function SyncStatusBadge({ status, failureReason }: { status: string; failureRea
   }
 }
 
-export function OverseasPageContent({ stats, warehouses, result, syncStatus, confirmedMap, filters }: Props) {
+export function OverseasPageContent({ stats, warehouses, result, syncStatus, filters }: Props) {
   const router = useRouter();
   const { data, total, page, pageSize } = result;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -203,6 +209,20 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
 
   // P6-CSV-EXPORT: 导出按钮 loading 状态
   const [exporting, setExporting] = useState(false);
+
+  /** P6-UI-CLARITY: 统计卡片点击 → 设置对应筛选 */
+  function handleStatCardClick(type: 'all' | 'low') {
+    if (type === 'low') {
+      router.push(buildUrl({ stockStatus: 'low' }), { scroll: false });
+    } else {
+      router.push('/dashboard/inventory/overseas', { scroll: false });
+    }
+  }
+
+  /** P6-UI-CLARITY: "绑定产品"入口 — 仅 UI 占位，不实现真实绑定 */
+  function handleBindProduct(variantId: string) {
+    toast.info('产品绑定功能即将上线', { description: `SKU ${variantId} 绑定到 DIS 标准产品后将自动匹配库存状态。` });
+  }
 
   /** 触发 CSV 导出下载 */
   async function handleExportCsv() {
@@ -259,7 +279,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const q = (formData.get('search') as string)?.trim() ?? '';
-    router.push(buildUrl({ search: q }));
+    router.push(buildUrl({ search: q }), { scroll: false });
   }
 
   const formatTime = (iso: string | null) => {
@@ -344,12 +364,14 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
           label="库存总量"
           value={stats.totalQuantity.toLocaleString()}
           colorClass="bg-blue-50 text-blue-600"
+          onClick={() => handleStatCardClick('all')}
         />
         <StatCard
           icon={Package}
           label="SKU 数量"
           value={stats.skuCount.toLocaleString()}
           colorClass="bg-indigo-50 text-indigo-600"
+          onClick={() => handleStatCardClick('all')}
         />
         <StatCard
           icon={AlertTriangle}
@@ -357,6 +379,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
           value={stats.lowStockCount.toLocaleString()}
           sub={stats.skuCount > 0 ? `占比 ${Math.round((stats.lowStockCount / stats.skuCount) * 100)}%` : undefined}
           colorClass={stats.lowStockCount > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}
+          onClick={() => handleStatCardClick('low')}
         />
         <StatCard
           icon={Clock}
@@ -393,10 +416,10 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
 
         <Select
           value={filters.country || 'all'}
-          onValueChange={(v) => router.push(buildUrl({ country: !v || v === 'all' ? '' : v }))}
+          onValueChange={(v) => router.push(buildUrl({ country: !v || v === 'all' ? '' : v }), { scroll: false })}
         >
           <SelectTrigger size="sm" className="w-[110px]">
-            <SelectValue placeholder="国家" />
+            <SelectValue placeholder="全部国家" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部国家</SelectItem>
@@ -410,10 +433,10 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
 
         <Select
           value={filters.warehouse || 'all'}
-          onValueChange={(v) => router.push(buildUrl({ warehouse: !v || v === 'all' ? '' : v }))}
+          onValueChange={(v) => router.push(buildUrl({ warehouse: !v || v === 'all' ? '' : v }), { scroll: false })}
         >
           <SelectTrigger size="sm" className="w-[130px]">
-            <SelectValue placeholder="仓库" />
+            <SelectValue placeholder="全部仓库" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部仓库</SelectItem>
@@ -427,10 +450,10 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
 
         <Select
           value={filters.stockStatus || 'all'}
-          onValueChange={(v) => router.push(buildUrl({ stockStatus: !v || v === 'all' ? '' : v }))}
+          onValueChange={(v) => router.push(buildUrl({ stockStatus: !v || v === 'all' ? '' : v }), { scroll: false })}
         >
           <SelectTrigger size="sm" className="w-[110px]">
-            <SelectValue placeholder="状态" />
+            <SelectValue placeholder="全部状态" />
           </SelectTrigger>
           <SelectContent>
             {STOCK_STATUSES.map((s) => (
@@ -446,7 +469,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push('/dashboard/inventory/overseas')}
+            onClick={() => router.push('/dashboard/inventory/overseas', { scroll: false })}
           >
             清除
           </Button>
@@ -496,7 +519,6 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                   <TableHead>SKU</TableHead>
                   <TableHead className="text-right">当前库存</TableHead>
                   <TableHead className="text-right">在途</TableHead>
-                  <TableHead className="text-right">已确认到仓</TableHead>
                   <TableHead className="text-right">库存+在途</TableHead>
                   <TableHead className="text-right">安全库存</TableHead>
                   <TableHead>库存状态</TableHead>
@@ -540,6 +562,14 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                         <span className="inline-flex items-center gap-1.5">
                           <span className="text-muted-foreground">未匹配产品</span>
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 shrink-0">未匹配</span>
+                          {/* P6-UI-CLARITY: "绑定产品"入口 — 仅 UI 占位，不实现真实绑定 */}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId); }}
+                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 hover:border-gray-400 shrink-0 transition-colors"
+                          >
+                            绑定产品
+                          </button>
                         </span>
                       )}
                     </TableCell>
@@ -559,13 +589,6 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                       {item.inTransitQuantity > 0 ? item.inTransitQuantity : '—'}
-                    </TableCell>
-                    {/* P3-S5B4: DIS 已确认到仓数量（仅 customs 或 warehoused + bigseller_absorbed_at IS NULL 的 shipment） */}
-                    <TableCell className="text-right tabular-nums text-sm">
-                      {(() => {
-                        const qty = confirmedMap[item.warehouseId]?.[item.variantId] ?? 0;
-                        return qty > 0 ? qty.toLocaleString() : '—';
-                      })()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm">
                       {item.inTransitQuantity > 0
@@ -592,7 +615,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                   {/* P3-S2E: 展开行 — 在途明细 */}
                   {isExpanded && (
                     <TableRow key={`${item.id}-expand`} className="hover:bg-transparent">
-                      <TableCell colSpan={13} className="p-0 border-t-0">
+                      <TableCell colSpan={12} className="p-0 border-t-0">
                         <InTransitDetailRow
                           variantId={item.variantId}
                           warehouseId={item.warehouseId}
@@ -618,7 +641,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                 variant="outline"
                 size="sm"
                 disabled={page <= 1}
-                onClick={() => router.push(buildUrl({ page: page - 1 }))}
+                onClick={() => router.push(buildUrl({ page: page - 1 }), { scroll: false })}
               >
                 上一页
               </Button>
@@ -626,7 +649,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                 variant="outline"
                 size="sm"
                 disabled={page >= totalPages}
-                onClick={() => router.push(buildUrl({ page: page + 1 }))}
+                onClick={() => router.push(buildUrl({ page: page + 1 }), { scroll: false })}
               >
                 下一页
               </Button>

@@ -186,6 +186,8 @@ export interface InTransitDetailItem {
   quantity: number;
   /** 预计到货时间 */
   estimatedArrival: string | null;
+  /** P6-UI-CLARITY: 最近物流更新时间（tracking_event.occurred_at 或 shipment.updated_at，用于展示物流时效） */
+  latestTrackingAt: string | null;
 }
 
 // ─── P3-S5B2: 批量入仓 / BigSeller 吸收确认 ────────────────────────────────

@@ -326,7 +326,7 @@ export const shipmentRepository = {
     // Step 1: Get non-warehoused shipments for this warehouse
     const { data: shipments, error: shipErr } = await supabase
       .from('shipment')
-      .select('id, shipment_no, purchase_order_no, estimated_arrival')
+      .select('id, shipment_no, purchase_order_no, estimated_arrival, updated_at')
       .eq('warehouse_id', warehouseId)
       .neq('status', 'warehoused');
 
@@ -336,6 +336,28 @@ export const shipmentRepository = {
     if (!shipments || shipments.length === 0) return [];
 
     const shipmentIds = shipments.map((s) => s.id);
+
+    // Step 1.5 (P6-UI-CLARITY): Get latest tracking_event.occurred_at per shipment
+    // Fallback: shipment.updated_at for shipments with no tracking events
+    const { data: trackingRows, error: trackingErr } = await supabase
+      .from('tracking_event')
+      .select('shipment_id, occurred_at')
+      .in('shipment_id', shipmentIds)
+      .order('occurred_at', { ascending: false });
+
+    if (trackingErr) {
+      throw new ShipmentError('查询在途明细失败', 'DB_ERROR');
+    }
+
+    // Build shipment_id → latestTrackingAt map (first row per shipment is the latest due to order desc)
+    const trackingMap = new Map<string, string>();
+    if (trackingRows) {
+      for (const t of trackingRows) {
+        if (!trackingMap.has(t.shipment_id)) {
+          trackingMap.set(t.shipment_id, t.occurred_at);
+        }
+      }
+    }
 
     // Step 2: Get shipment_items for this variant
     const { data: items, error: itemsErr } = await supabase
@@ -368,6 +390,8 @@ export const shipmentRepository = {
         purchaseOrderNo: ship.purchase_order_no,
         quantity: inTransit,
         estimatedArrival: ship.estimated_arrival,
+        // P6-UI-CLARITY: 优先 tracking_event.occurred_at，fallback 到 shipment.updated_at
+        latestTrackingAt: trackingMap.get(ship.id) ?? ship.updated_at ?? null,
       });
     }
 

@@ -30,8 +30,6 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
   stats: OverseasStats;
   warehouses: WarehouseOption[];
   result: { data: InventoryItem[]; total: number; page: number; pageSize: number };
-  /** P3-S5B4: warehouseId → variantId → confirmedQuantity */
-  confirmedMap: Record<string, Record<string, number>>;
 }> {
   const user = await requireAuth();
 
@@ -56,13 +54,11 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
   // 此时 warehouses + list 已在并行执行
   const aggregateRows = await aggregatePromise;
 
-  // 从聚合结果构建三个数据结构
+  // 从聚合结果构建两个数据结构
   // whInTransitMap: variantId → Map<warehouseId, inTransitQty>（用于每行 inTransitQuantity）
   const whInTransitMap = new Map<string, Map<string, number>>();
   // variantTotalMap: variantId → totalInTransit（用于统计卡片）
   const variantTotalMap = new Map<string, number>();
-  // confirmedMap: warehouseId → { variantId: confirmedQuantity }
-  const confirmedMap: Record<string, Record<string, number>> = {};
 
   for (const row of aggregateRows) {
     // 在途数据
@@ -79,14 +75,6 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
         (variantTotalMap.get(row.variant_id) ?? 0) + row.in_transit_quantity,
       );
     }
-
-    // 已确认到仓数据
-    if (row.confirmed_quantity > 0) {
-      if (!confirmedMap[row.warehouse_id]) {
-        confirmedMap[row.warehouse_id] = {};
-      }
-      confirmedMap[row.warehouse_id][row.variant_id] = row.confirmed_quantity;
-    }
   }
 
   // stats 需要 variantTotalMap，此时才启动；warehouses + list 已在并行执行
@@ -102,7 +90,7 @@ export async function getOverseasInventory(filters: InventoryFilters): Promise<{
     item.inTransitQuantity = whInTransitMap.get(item.variantId)?.get(item.warehouseId) ?? 0;
   }
 
-  return { stats, warehouses, result, confirmedMap };
+  return { stats, warehouses, result };
 }
 
 export async function updateInventoryQuantity(

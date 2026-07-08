@@ -41,10 +41,10 @@ describe('P6-PRODUCT-NAME: 表头列顺序', () => {
     expect(idxWarehouse).toBeLessThan(idxSku);
   });
 
-  it('表头仍为 13 列（列数未增减）', () => {
+  it('表头仍为 12 列（P6 移除已确认到仓，列数未增减）', () => {
     const headMatches = contentSrc.match(/<TableHead[\s>]/g);
     expect(headMatches).not.toBeNull();
-    expect(headMatches!.length).toBe(13);
+    expect(headMatches!.length).toBe(12);
   });
 
   it('产品名称列头存在', () => {
@@ -195,9 +195,9 @@ describe('P6-PRODUCT-NAME: 回归检查', () => {
     expect(contentSrc).toMatch(/\{item\.inTransitQuantity/);
   });
 
-  it('已确认到仓列保留', () => {
-    expect(contentSrc).toMatch(/已确认到仓/);
-    expect(contentSrc).toMatch(/confirmedMap\[item\.warehouseId\]/);
+  it('P6: 已确认到仓列已从主表移除', () => {
+    expect(contentSrc).not.toMatch(/已确认到仓/);
+    expect(contentSrc).not.toMatch(/confirmedMap/);
   });
 
   it('库存+在途列保留', () => {
@@ -219,8 +219,9 @@ describe('P6-PRODUCT-NAME: 回归检查', () => {
     expect(contentSrc).toMatch(/SyncStatusBadge/);
   });
 
-  it('展开行 colSpan 仍为 13（列数未变）', () => {
-    expect(contentSrc).toMatch(/colSpan=\{13\}/);
+  it('展开行 colSpan 已更新为 12（P6 移除已确认到仓）', () => {
+    expect(contentSrc).not.toMatch(/colSpan=\{13\}/);
+    expect(contentSrc).toMatch(/colSpan=\{12\}/);
   });
 
   it('导出 CSV 按钮保留', () => {

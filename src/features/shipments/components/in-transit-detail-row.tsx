@@ -100,6 +100,29 @@ export function InTransitDetailRow({ variantId, warehouseId, open }: Props) {
               <ChevronRightIcon className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 ml-auto" />
             </Link>
           ))}
+          {/* P6-UI-CLARITY: 最近物流更新时间 — 取所有明细中最新的 tracking_event.occurred_at */}
+          {(() => {
+            const latestTs = details.reduce<string | null>((best, d) => {
+              if (!d.latestTrackingAt) return best;
+              if (!best || d.latestTrackingAt > best) return d.latestTrackingAt;
+              return best;
+            }, null);
+            return latestTs ? (
+              <p className="text-xs text-muted-foreground pt-1 border-t border-gray-200 mt-1">
+                最近物流更新{' '}
+                {new Date(latestTs).toLocaleString('zh-CN', {
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground pt-1 border-t border-gray-200 mt-1">
+                最近物流更新 —
+              </p>
+            );
+          })()}
         </div>
       )}
     </div>

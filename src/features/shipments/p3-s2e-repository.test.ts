@@ -12,7 +12,9 @@
 // Mock 调用顺序（getInTransitDetailsByVariantAndWarehouse 内部）：
 //   1. supabase.from('profiles')   — getUserRole（仅 userId 存在时）
 //   2. supabase.from('shipment')    — 按 warehouse_id 过滤，neq warehoused
-//   3. supabase.from('shipment_item') — 按 shipment_ids + variant_id
+//   3. supabase.from('tracking_event') — P6: 获取最近物流更新时间（仅在 shipments 非空时）
+//   4. supabase.from('shipment_item') — 按 shipment_ids + variant_id
+//   queueFallback: tracking_event 在现有测试未提供时会返回空数据
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -52,7 +54,29 @@ function createQueryMock(result: { data?: unknown; error?: unknown; count?: numb
 function pushResults(
   ...results: Array<{ data?: unknown; error?: unknown; count?: number }>
 ) {
-  const blds = results.map((r) => createQueryMock(r));
+  // P6: 在 shipment 和 shipment_item 之间自动插入 tracking_event 空结果
+  // 通过 data 类型判断：array=shipment，object=profile
+  function isProfileEntry(e: { data?: unknown; error?: unknown }): boolean {
+    return e.data !== null && e.data !== undefined && !Array.isArray(e.data) && typeof e.data === 'object';
+  }
+  function isShipmentWithData(e: { data?: unknown; error?: unknown }): boolean {
+    return Array.isArray(e.data) && e.data.length > 0 && !e.error;
+  }
+  const firstIsProfile = results.length >= 1 && isProfileEntry(results[0]);
+  const shipIdx = firstIsProfile ? 1 : 0;
+  const shipEntry = results[shipIdx];
+  const shouldInject =
+    shipEntry &&
+    isShipmentWithData(shipEntry) &&
+    results.length > shipIdx + 1; // 后面还有 entry (shipment_item)
+  const injected: typeof results = [];
+  for (let i = 0; i < results.length; i++) {
+    injected.push(results[i]);
+    if (i === shipIdx && shouldInject) {
+      injected.push({ data: [] as Array<Record<string, unknown>> });
+    }
+  }
+  const blds = injected.map((r) => createQueryMock(r));
   let cursor = 0;
   mockFrom.mockImplementation(() => {
     if (cursor >= blds.length)
@@ -187,7 +211,7 @@ describe('P3-S2E: getInTransitDetailsByVariantAndWarehouse', () => {
   // ── 返回字段校验 ───────────────────────────────────────────────────
 
   describe('返回字段', () => {
-    it('展开字段仅含：shipmentId/shipmentNo/purchaseOrderNo/quantity/estimatedArrival', async () => {
+    it('展开字段仅含：shipmentId/shipmentNo/purchaseOrderNo/quantity/estimatedArrival/latestTrackingAt', async () => {
       pushResults(
         adminProfile,
         { data: [
@@ -208,6 +232,7 @@ describe('P3-S2E: getInTransitDetailsByVariantAndWarehouse', () => {
       const d = details[0];
       expect(Object.keys(d).sort()).toEqual([
         'estimatedArrival',
+        'latestTrackingAt',
         'purchaseOrderNo',
         'quantity',
         'shipmentId',

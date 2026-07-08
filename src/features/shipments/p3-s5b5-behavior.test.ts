@@ -487,14 +487,14 @@ describe('P3-S5B5: validateEntry 校验逻辑', () => {
 });
 
 // ============================================================================
-// 4. 海外库存 confirmedMap — 数据构建与单仓失败隔离
+// 4. 海外库存 confirmedMap — P6 已从主表移除
 // ============================================================================
 
-describe('P3-S5B5: 海外库存 confirmedMap', () => {
+describe('P3-S5B5 → P6: 海外库存主表已移除 confirmedMap', () => {
   const actionsSrc = readSrc('src/features/inventory/actions.ts');
 
-  describe('confirmedMap 构建 — PERF-S1B: 由单次 RPC 聚合', () => {
-    it('调用 inventoryRepository.getInTransitConfirmedAggregate（替代 N+1 循环）', () => {
+  describe('confirmedMap 移除验证', () => {
+    it('仍调用 inventoryRepository.getInTransitConfirmedAggregate（用于在途数据）', () => {
       expect(actionsSrc).toMatch(/getInTransitConfirmedAggregate/);
     });
 
@@ -503,38 +503,29 @@ describe('P3-S5B5: 海外库存 confirmedMap', () => {
       expect(actionsSrc).not.toMatch(/getConfirmedWarehousedByWarehouse/);
     });
 
-    it('confirmedMap 从 aggregateRows 构建（warehouse_id → variant_id → confirmed_quantity）', () => {
-      expect(actionsSrc).toMatch(/confirmedMap\[row\.warehouse_id\]/);
-      expect(actionsSrc).toMatch(/row\.confirmed_quantity/);
+    it('P6: confirmedMap 不再从 aggregateRows 构建', () => {
+      expect(actionsSrc).not.toMatch(/confirmedMap\[row\.warehouse_id\]/);
     });
 
-    it('confirmedMap 类型：Record<string, Record<string, number>>', () => {
-      expect(actionsSrc).toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
+    it('P6: getOverseasInventory 返回类型不再包含 confirmedMap', () => {
+      expect(actionsSrc).not.toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
     });
 
-    it('返回类型包含 confirmedMap', () => {
-      expect(actionsSrc).toMatch(/confirmedMap:\s*Record<string,\s*Record<string,\s*number>>/);
+    it('P6: 页面不再使用 confirmedMap 查找数据', () => {
+      const overseasContentSrc = readSrc(
+        'src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx',
+      );
+      expect(overseasContentSrc).not.toMatch(/confirmedMap/);
     });
   });
 
-  describe('单仓失败隔离 — PERF-S1B: 单次 RPC，整体失败→throw', () => {
+  describe('单仓失败隔离（RPC 层）', () => {
     it('getInTransitConfirmedAggregate 失败时由 repository 抛出 ShipmentError', () => {
-      // 不再有 per-warehouse catch，单次 RPC 失败整个操作失败
       const invRepoSrc = readSrc('src/features/inventory/repository.ts');
       const fnStart = invRepoSrc.indexOf('async getInTransitConfirmedAggregate(');
       const fnEnd = invRepoSrc.indexOf('};', fnStart);
       const fnBody = invRepoSrc.slice(fnStart, fnEnd);
-      // RPC error 被捕获并转换为中文错误
       expect(fnBody).toMatch(/throw new Error/);
-    });
-
-    it('失败仓库在 confirmedMap 中为 undefined（不存在该 key）', () => {
-      // 失败时 confirmedMap[whId] 不会被赋值（不进入 for...of）
-      // 页面侧读取 confirmedMap[item.warehouseId]?.[item.variantId] 返回 undefined
-      const overseasContentSrc = readSrc(
-        'src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx',
-      );
-      expect(overseasContentSrc).toMatch(/confirmedMap\[item\.warehouseId\]\?\.\[item\.variantId\]/);
     });
   });
 
@@ -870,19 +861,20 @@ describe('P3-S5B5: 海外库存页列数与展开行', () => {
     'src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx',
   );
 
-  it('表头 13 列', () => {
+  it('表头 12 列（P6 移除已确认到仓）', () => {
     const headMatches = contentSrc.match(/<TableHead[\s>]/g);
     expect(headMatches).not.toBeNull();
-    expect(headMatches!.length).toBe(13);
+    expect(headMatches!.length).toBe(12);
   });
 
-  it('展开行 colSpan=13', () => {
-    expect(contentSrc).toMatch(/colSpan=\{13\}/);
+  it('展开行 colSpan=12（P6 移除已确认到仓）', () => {
+    expect(contentSrc).not.toMatch(/colSpan=\{13\}/);
+    expect(contentSrc).toMatch(/colSpan=\{12\}/);
   });
 
-  it('表头列为：展开/关注/国家/仓库/产品名称/SKU/当前库存/在途/已确认到仓/库存+在途/安全库存/库存状态/同步状态', () => {
-    // Check key column labels exist
-    expect(contentSrc).toMatch(/已确认到仓/);
+  it('表头列为：展开/关注/国家/仓库/产品名称/SKU/当前库存/在途/库存+在途/安全库存/库存状态/同步状态（P6 移除已确认到仓）', () => {
+    // 已确认到仓已从主表移除
+    expect(contentSrc).not.toMatch(/已确认到仓/);
     expect(contentSrc).toMatch(/在途/);
     expect(contentSrc).toMatch(/库存\+在途/);
     expect(contentSrc).toMatch(/当前库存/);
