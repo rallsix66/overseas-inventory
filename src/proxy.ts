@@ -1,9 +1,9 @@
-// Next.js 中间件 — 路由守卫
+// Next.js Proxy — 路由守卫
 // 所有 /dashboard/* 请求需登录，/auth/login 已登录用户自动跳转
 import { updateSession } from '@/lib/supabase/middleware';
 import type { NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   return updateSession(request);
 }
 

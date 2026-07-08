@@ -1,4 +1,4 @@
-// Supabase Auth 中间件 — 用于 Next.js middleware.ts
+// Supabase Auth 辅助函数 — 用于 Next.js proxy.ts
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 

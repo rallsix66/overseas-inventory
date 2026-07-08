@@ -84,7 +84,7 @@ src/features/<module>/
 
 权限分为三层：
 
-1. Proxy / middleware：刷新 Session，保护受限路由
+1. Proxy：刷新 Session，保护受限路由
 2. Server Action：校验登录状态、启用状态、角色和输入
 3. Supabase RLS：数据库最终权限兜底
 
@@ -120,7 +120,7 @@ ProductVariant 是库存、物流与标准产品之间的必要映射层。
 
 ## 当前限制
 
-- `middleware.ts` 在 Next.js 16 已弃用，后续迁移为 `proxy.ts`
+- `middleware.ts` 已于 2026-07-08 迁移为 `proxy.ts`（NEXTJS16-PROXY-MIGRATION）
 - `database.ts` 当前由 Migration DDL 解析生成
 - 当前部分页面仍为占位实现
 

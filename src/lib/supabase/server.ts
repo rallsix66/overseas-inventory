@@ -24,7 +24,7 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Server Component 中不能设置 cookie，在 middleware 或 route handler 中处理
+            // Server Component 中不能设置 cookie，在 proxy 或 route handler 中处理
           }
         },
       },

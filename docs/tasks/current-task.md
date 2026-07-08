@@ -2,144 +2,103 @@
 
 ## Task ID
 
-`P6-CSV-EXPORT` — 海外库存 CSV 导出
+`NEXTJS16-PROXY-MIGRATION` — `middleware.ts` 迁移至 `proxy.ts`
 
 ## 状态
 
-**DONE**（2026-07-07）。
+**DONE**（2026-07-08）。
 
 ## 功能概述
 
-海外库存页面新增"导出 CSV"按钮，复用当前筛选条件（国家/仓库/库存状态/搜索），通过分页循环拉取全量数据生成 UTF-8 BOM CSV 文件。
+将 `src/middleware.ts` 迁移到 Next.js 16 推荐的 `src/proxy.ts`，消除 middleware deprecation warning，保持现有登录拦截和 Supabase session 刷新行为完全不变。
 
 ## 核心设计
 
-### Server Action
+### 迁移策略
 
-`exportOverseasInventoryCsv(filters)` — `src/features/inventory/actions.ts`
+手动迁移（不使用 codemod），保持完全控制：
 
-1. `requireAuth()` → `exportCsvSchema.safeParse(filters)` 校验
-2. `inventoryRepository.getInTransitConfirmedAggregate(user.id)` 获取在途聚合
-3. 构建 `whInTransitMap`（variantId → Map<warehouseId, inTransitQty>），复用 `getOverseasInventory` 的维度映射逻辑
-4. `while(true)` 分页循环调用 `inventoryRepository.getOverseasList({pageSize: CSV_EXPORT_PAGE_SIZE=100})`
-5. 每页 rows 回填 `item.inTransitQuantity = whInTransitMap.get(item.variantId)?.get(item.warehouseId) ?? 0`
-6. 累计到 `allRows`，超 `CSV_EXPORT_MAX_ROWS=10000` → 返回中文错误
-7. 空数据 → 返回中文错误
-8. `toCsv(allRows, exportColumns)` 生成 CSV 字符串
+1. 创建 `src/proxy.ts`，函数 `middleware` → `proxy`，其余完全不变
+2. 删除 `src/middleware.ts`
+3. 更新 `src/lib/supabase/middleware.ts` 和 `server.ts` 中的注释
+4. 新增结构测试覆盖 proxy 存在、matcher 完整、认证逻辑未丢失
 
-### CSV 工具
+### Proxy 文件
 
-`toCsv(rows, columns)` — `src/lib/csv.ts`（纯函数，浏览器/服务端通用）
+`src/proxy.ts`：
 
-- UTF-8 BOM（`﻿`）Excel 兼容中文
-- 逗号分隔，RFC 4180 双引号转义
-- null/undefined → 空字符串
+- `export async function proxy(request: NextRequest)` 替代 `middleware`
+- `return updateSession(request)` 调用不变
+- `config.matcher: ['/dashboard/:path*', '/auth/login']` 不变
 
-### 页面按钮
+### updateSession 逻辑
 
-`src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx`
+`src/lib/supabase/middleware.ts` 中的 `updateSession()` 完全不变：
 
-- `handleExportCsv()` 传递当前 `filters`（country/warehouse/stockStatus/search）
-- `exporting` state → disabled + "导出中..." 文案
-- `total === 0` → disabled
-- 成功：`new Blob([csv], {type: 'text/csv;charset=utf-8;'})` → `URL.createObjectURL` → `<a download>` → click → revoke
-- 失败：`toast.error`
-- 文件名：`overseas-inventory-YYYYMMDD.csv`
-
-### Schema
-
-`exportCsvSchema` — `src/features/inventory/schema.ts`
-
-- 不含 `page` / `pageSize`（分页由 action 内部控制）
-- `country` 仅海外五国（TH/ID/MY/PH/VN，不含 CN）
-
-### CSV 列（10 列）
-
-| 列头 | accessor |
-|------|----------|
-| 国家 | `r.country` |
-| 仓库 | `r.warehouseName` |
-| SKU | `r.sku` |
-| 产品名称 | `r.productName ?? '未匹配'` |
-| 当前库存 | `r.quantity` |
-| 在途 | `r.inTransitQuantity \|\| 0` — 由 `getInTransitConfirmedAggregate` 按 (variantId, warehouseId) 回填 |
-| 库存+在途 | `r.quantity + (r.inTransitQuantity \|\| 0)` — 非仅 quantity |
-| 安全库存 | matched → `r.safetyStock`，unmatched → `'—'` |
-| 库存状态 | `stockStatusLabel(r)` |
-| 最后同步时间 | `r.lastSyncAt ?? ''` |
-
-## 返修记录
-
-### 返修 1（2026-07-07）：在途数据回填
-
-**问题**：初版 `exportOverseasInventoryCsv` 仅调用 `getOverseasList()`，返回行的 `inTransitQuantity` 默认为 0，导致 CSV 在途列数据不正确。
-
-**修复**：
-- 在分页循环前调用 `inventoryRepository.getInTransitConfirmedAggregate(user.id)`
-- 构建 `whInTransitMap`（variantId → Map<warehouseId, inTransitQty>），复用 `getOverseasInventory` 的聚合逻辑
-- 每页 rows 回填 `item.inTransitQuantity` 后再 push 到 `allRows`
-- 新增 3 项测试：`getInTransitConfirmedAggregate` 调用断言 / whInTransitMap 回填逻辑 / "库存+在途"非仅 quantity
-- 修复 p3-s5b4-batch-warehouse.test.ts 预存测试：`warehouses 和 list 不使用 seal 以外的独立的 await` 检查范围收窄为仅 `getOverseasInventory` 函数体（不影响 `exportOverseasInventoryCsv` 的 while 循环 await）
-
-## 限制
-
-- ✅ 不新增 Migration（migrations/ 下无 00034）
-- ✅ 不新增 RPC / RLS
-- ✅ 不修改 `inventoryRepository` 签名（复用 `getOverseasList` + `getInTransitConfirmedAggregate`）
-- ✅ pageSize 固定 100，max 10000 行
-- ✅ 不依赖百世 API / 国内库存数据源
-
-## 测试
-
-`src/features/inventory/p6-csv-export.test.ts` — 36 项测试
-
-| # | 类别 | 测试数 |
-|---|------|--------|
-| 1 | CSV 纯函数（toCsv） | 8 |
-| 2 | Server Action 源码检查 | 14（含 3 在途回填） |
-| 3 | 页面组件源码检查 | 10 |
-| 4 | 架构边界 | 2 |
-| 5 | 修复 p3-s5b4-batch-warehouse 预存测试 | 1 |
-| **Total** | | **36** |
-
-## 验收
-
-| 检查项 | 结果 |
-|--------|------|
-| `npm run test -- p6-csv-export.test.ts` | 36/36 ✅ |
-| `npm run test`（全量非并发） | 2998/2998（74 文件）✅ |
-| `npm run build` | Turbopack ✓ 通过 ✅ |
-| `npm run lint` | **0 errors** / 25 warnings（均为既有）✅ |
-| `git diff --check` | 通过（仅 LF/CRLF warning）✅ |
+- `createServerClient` + cookies `getAll`/`setAll` session 刷新
+- `supabase.auth.getUser()` 获取当前用户
+- 未登录 `/dashboard/*` → redirect `/auth/login?redirect=...`
+- 已登录 `/auth/login` → redirect `/dashboard`
 
 ## 修改文件清单
 
 | # | 文件 | 变更 |
 |---|------|------|
-| 1 | `src/lib/csv.ts` | 新增：`toCsv()` 纯函数 |
-| 2 | `src/features/inventory/actions.ts` | 新增 `exportOverseasInventoryCsv` + 10 列定义 + 在途 aggregate 回填 |
-| 3 | `src/features/inventory/schema.ts` | 新增 `exportCsvSchema` |
-| 4 | `src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx` | 导出按钮 + `handleExportCsv` |
-| 5 | `src/features/inventory/p6-csv-export.test.ts` | 新增：36 项测试 |
-| 6 | `src/features/shipments/p3-s5b4-batch-warehouse.test.ts` | 修复：`warehouses 和 list 不使用 seal 以外的独立的 await` 检查范围收窄为 `getOverseasInventory` 函数体 |
-| 7 | `docs/current-state.md` | 更新 Phase / Task / Recent Changes / Last Updated |
-| 8 | `docs/tasks/current-task.md` | 本文件（P6-CSV-EXPORT 任务包） |
+| 1 | `src/proxy.ts` | 新增：`middleware.ts` → `proxy.ts`，函数 `middleware` → `proxy` |
+| 2 | `src/middleware.ts` | 删除：已迁移至 `proxy.ts` |
+| 3 | `src/lib/supabase/middleware.ts` | 修改：注释"用于 Next.js middleware.ts"→"用于 Next.js proxy.ts" |
+| 4 | `src/lib/supabase/server.ts` | 修改：注释"在 middleware 或 route handler"→"在 proxy 或 route handler" |
+| 5 | `src/proxy.test.ts` | 新增：21 项测试 |
+| 6 | `docs/current-state.md` | 更新 Phase / Task / Completed Tasks / Authentication / Deferred / Technical Debt |
+| 7 | `docs/tasks/current-task.md` | 本文件（NEXTJS16-PROXY-MIGRATION 任务包） |
+| 8 | `docs/architecture.md` | 更新认证层描述 + 移除旧迁移注释 |
 
-### 未修改
+## 未修改
 
-- 不提交 `.claude/context-status.json`
-- 不新增 Migration / RPC / RLS
-- 不修改 `inventoryRepository` 签名
+- 登录页面 UI
+- 认证业务语义
+- 数据库、Migration、RPC、RLS
+- 同步真实写入逻辑
+- 国内库存页面
 
-## CSV 在途列确认
+## 测试
 
-- ✅ 在途数据已按 `get_in_transit_confirmed_aggregate` RPC 聚合后回填
-- ✅ `inTransitQuantity` 按 (variantId, warehouseId) 维度精确取值（不串仓）
-- ✅ `库存+在途` = `quantity + inTransitQuantity`（非仅 quantity）
-- ✅ 当前筛选条件仍复用
-- ✅ pageSize 仍固定 100，最大 10000 行
-- ✅ UTF-8 BOM 前缀
-- ✅ docs 已同步
+`src/proxy.test.ts` — 21 项测试
+
+| # | 类别 | 测试数 |
+|---|------|--------|
+| 1 | 文件存在性（proxy.ts 存在 / middleware.ts 已删除） | 2 |
+| 2 | proxy.ts 导出（函数名 proxy / config / named export） | 3 |
+| 3 | matcher 配置（/dashboard/:path* / /auth/login / 数组 / 数量=2） | 4 |
+| 4 | 认证保护逻辑（import updateSession / 调用 updateSession / NextRequest 签名） | 3 |
+| 5 | updateSession 逻辑完整性（getUser / 未登录重定向 / 已登录重定向 / cookie / 注释） | 5 |
+| 6 | server.ts 注释更新 | 1 |
+| 7 | 架构合规（无直接 supabase / 无 service_role / 无 Migration/RLS） | 3 |
+| **Total** | | **21** |
+
+## 验收
+
+| 检查项 | 结果 |
+|--------|------|
+| `npm run test -- proxy.test.ts` | 21/21 ✅ |
+| `npm run test`（全量非并发） | 3018/3019 ✅（1 预存失败：WEBSYNC_REAL_WRITE_ENABLED=true） |
+| `npm run build` | Turbopack ✓ 通过，middleware deprecation warning **已消失** ✅ |
+| `npm run lint` | **0 errors** / 25 warnings（均为既有）✅ |
+| `git diff --check` | 通过（仅 LF/CRLF warning）✅ |
+
+## 功能验证
+
+| 场景 | 预期 | 验证方式 |
+|------|------|----------|
+| `/dashboard` 未登录 | 重定向 `/auth/login?redirect=...` | proxy.ts → updateSession 逻辑不变 |
+| `/dashboard` 已登录 | 正常放行 | proxy.ts → updateSession 逻辑不变 |
+| `/auth/login` 已登录 | 重定向 `/dashboard` | proxy.ts → updateSession 逻辑不变 |
+| 退出登录后访问 `/dashboard` | 重定向 `/auth/login` | proxy.ts → updateSession 逻辑不变 |
+| Session cookie 刷新 | Supabase SSR cookie 自动刷新 | createServerClient + cookies 逻辑不变 |
+
+## middleware.ts 删除原因
+
+Next.js 16 中 `middleware.ts` 文件约定已弃用并重命名为 `proxy.ts`。保留 `middleware.ts` 会导致 build 输出 deprecation warning。删除后 `build` 中 middleware deprecation warning 完全消失。
 
 ## 下一步
 
