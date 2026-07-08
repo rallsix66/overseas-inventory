@@ -4,6 +4,7 @@
 // 客户端交互（筛选/表格/分页）委托给 OverseasPageContent
 import { getOverseasInventory } from '@/features/inventory/actions';
 import { getOverseasWarehouseSyncStatus } from '@/features/sync/server-actions';
+import { getCurrentUser } from '@/lib/auth';
 import { OverseasPageContent } from './_components/overseas-page-content';
 import type { Metadata } from 'next';
 
@@ -14,20 +15,23 @@ export const metadata: Metadata = {
 export default async function OverseasInventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; country?: string; warehouse?: string; stockStatus?: string; page?: string }>;
+  searchParams: Promise<{ search?: string; country?: string; warehouse?: string; stockStatus?: string; page?: string; pageSize?: string }>;
 }) {
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
+  const pageSize = [20, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 20;
 
-  const [data, syncStatus] = await Promise.all([
+  const [data, syncStatus, currentUser] = await Promise.all([
     getOverseasInventory({
       search: sp.search,
       country: sp.country,
       warehouseId: sp.warehouse,
       stockStatus: sp.stockStatus as 'normal' | 'low' | 'out_of_stock' | undefined,
       page,
+      pageSize,
     }),
     getOverseasWarehouseSyncStatus().catch(() => ({})),
+    getCurrentUser(),
   ]);
 
   return (
@@ -42,6 +46,7 @@ export default async function OverseasInventoryPage({
         warehouse: sp.warehouse ?? '',
         stockStatus: sp.stockStatus ?? '',
       }}
+      canBindProduct={currentUser?.roleName === 'admin'}
     />
   );
 }

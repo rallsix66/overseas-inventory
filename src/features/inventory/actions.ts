@@ -2,9 +2,11 @@
 
 // 库存模块 Server Actions
 import { revalidatePath } from 'next/cache';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireActiveAdmin } from '@/lib/auth';
 import { inventoryRepository } from './repository';
 import { inventoryUpdateSchema, inventorySearchSchema, exportCsvSchema } from './schema';
+import { variantRepository, VariantError } from '@/features/variants/repository';
+import { variantMatchSchema } from '@/features/variants/schema';
 import { toCsv } from '@/lib/csv';
 import type { CsvColumn } from '@/lib/csv';
 import type { ActionResult } from '@/types/common';
@@ -129,7 +131,7 @@ const exportColumns: CsvColumn<InventoryItem>[] = [
   { header: '国家', accessor: (r) => r.country },
   { header: '仓库', accessor: (r) => r.warehouseName },
   { header: 'SKU', accessor: (r) => r.sku },
-  { header: '产品名称', accessor: (r) => r.productName ?? '未匹配' },
+  { header: '产品名称', accessor: (r) => r.variantName ?? r.productName ?? '—' },
   { header: '当前库存', accessor: (r) => r.quantity },
   { header: '在途', accessor: (r) => r.inTransitQuantity || 0 },
   { header: '库存+在途', accessor: (r) => r.quantity + (r.inTransitQuantity || 0) },
@@ -221,5 +223,71 @@ export async function exportOverseasInventoryCsv(filters: {
     return { success: true, data: csv };
   } catch {
     return { success: false, error: '导出失败，请稍后重试' };
+  }
+}
+
+/**
+ * P6-UX-V2-D: 海外库存绑定产品到 Variant
+ *
+ * Admin-only 操作。将未匹配的海外库存 SKU (ProductVariant) 绑定到标准 Product。
+ * 绑定后 variant.match_status 变为 'matched'，product_id 设为目标产品。
+ * 保持 Product → ProductVariant → Inventory 三层模型，禁止 Inventory 直接关联 Product。
+ *
+ * P6-UX-V2-D 返工：绑定成功后增加写后读回校验 —
+ *   1. 读取该 variant 的 product_id、match_status、关联 product.name/product.code
+ *   2. 确认 product_id === 目标 productId
+ *   3. 确认 match_status === 'matched'
+ *   4. 确认关联 product 存在且可读
+ *   5. 校验失败返回中文错误，不假成功
+ */
+export async function bindOverseasVariant(
+  variantId: string,
+  productId: string,
+): Promise<ActionResult> {
+  try {
+    await requireActiveAdmin();
+
+    const parsed = variantMatchSchema.safeParse({ variantId, productId });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '参数校验失败' };
+    }
+
+    await variantRepository.match(parsed.data.variantId, parsed.data.productId);
+
+    // ── 写后读回校验（P6-UX-V2-D 返工） ──
+    const verified = await variantRepository.getById(parsed.data.variantId);
+    if (!verified) {
+      return { success: false, error: '绑定后校验失败：SKU 读取不到' };
+    }
+    if (verified.product_id !== parsed.data.productId) {
+      return { success: false, error: '绑定后校验失败：产品 ID 不一致' };
+    }
+    if (verified.match_status !== 'matched') {
+      return { success: false, error: '绑定后校验失败：匹配状态未更新' };
+    }
+    // getById 通过 product:product_id join 获取 productName/productCode，
+    // 若 join 为空则 productName 为 null（关联 product 不存在或不可读）
+    if (verified.productName === null && verified.productCode === null) {
+      // 仅当两者都为空时才认为关联 product 不可读（product.id 可能被 RLS 过滤或已删除）
+      return { success: false, error: '绑定后校验失败：关联产品不可读或已删除' };
+    }
+
+    // 刷新海外库存页缓存，使绑定后的 matchStatus 在下一次导航中更新
+    revalidatePath('/dashboard/inventory/overseas');
+
+    return { success: true };
+  } catch (error) {
+    if (error instanceof VariantError) {
+      return { success: false, error: error.message };
+    }
+    if (error instanceof Error) {
+      if (error.message === '未登录或账户已停用') {
+        return { success: false, error: '未登录或账户已停用' };
+      }
+      if (error.message === '无权限：需要管理员角色') {
+        return { success: false, error: '无权限：需要管理员角色' };
+      }
+    }
+    return { success: false, error: '绑定产品失败，请稍后重试' };
   }
 }

@@ -3,9 +3,9 @@
 // 产品模块 Server Actions
 // 所有产品写操作均需 admin 权限
 import { revalidatePath } from 'next/cache';
-import { requireAdmin } from '@/lib/auth';
+import { requireAdmin, requireActiveAuth } from '@/lib/auth';
 import { productRepository, ProductError } from './repository';
-import { productFormSchema } from './schema';
+import { productFormSchema, productSearchSchema } from './schema';
 import type { ActionResult } from '@/types/common';
 import type { ProductFormData, ProductItem } from './types';
 
@@ -107,5 +107,46 @@ export async function toggleProductActive(
       return { success: false, error: '无权限：需要管理员角色' };
     }
     return { success: false, error: '操作失败，请稍后重试' };
+  }
+}
+
+/**
+ * P6-UX-V2-D: 模糊/分词搜索产品列表（供绑定产品 Dialog 使用）
+ *
+ * 任何已登录用户均可搜索产品列表；绑定操作的权限校验在 bindOverseasVariant 中完成。
+ * 仅返回启用状态的产品，避免绑定到已停用产品。
+ *
+ * 搜索增强（P6-UX-V2-D 返工）：
+ *   - 分词：按空格/连字符/下划线/斜杠/括号等拆分 token
+ *   - 多 token 命中（code + name ILIKE）
+ *   - 通过 product_variant.sku 反向查找关联 Product
+ *   - 特殊字符转义，不破坏 Supabase .or() 语法
+ */
+export async function searchProducts(
+  query: string,
+): Promise<ActionResult<ProductItem[]>> {
+  try {
+    await requireActiveAuth();
+
+    if (!query || !query.trim()) {
+      return { success: true, data: [] };
+    }
+
+    const parsed = productSearchSchema.safeParse({ search: query, pageSize: 20 });
+    if (!parsed.success) {
+      return { success: false, error: '搜索参数校验失败' };
+    }
+
+    const result = await productRepository.search(parsed.data.search ?? '', parsed.data.pageSize);
+
+    return { success: true, data: result };
+  } catch (error) {
+    if (error instanceof ProductError) {
+      return { success: false, error: error.message };
+    }
+    if (error instanceof Error && error.message === '未登录或账户已停用') {
+      return { success: false, error: '未登录或账户已停用' };
+    }
+    return { success: false, error: '搜索产品失败，请稍后重试' };
   }
 }

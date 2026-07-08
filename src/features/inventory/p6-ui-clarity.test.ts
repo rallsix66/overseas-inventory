@@ -58,25 +58,39 @@ describe('P6-UI-CLARITY: "绑定产品"UI 占位入口', () => {
     expect(contentSrc).toMatch(/绑定产品/);
   });
 
-  it('"绑定产品"按钮在 productName 为空时渲染（三元表达式 false 分支）', () => {
-    // 在 : ( 的分支中
-    expect(contentSrc).toMatch(/绑定产品/);
+  it('"绑定产品"按钮以 matchStatus !== "matched" 为入口（P6-UX-V2-D 修正：不再以 productName 为空为准）', () => {
+    // 源码使用 item.matchStatus === 'matched' 三元分派
+    expect(contentSrc).toMatch(/item\.matchStatus === 'matched'/);
+    // 不再使用 item.productName 三元判断
+    expect(contentSrc).not.toMatch(/\{item\.productName \?/);
   });
 
-  it('handleBindProduct 使用 toast.info 弹出提示', () => {
-    expect(contentSrc).toMatch(/toast\.info\(/);
-    expect(contentSrc).toMatch(/产品绑定功能即将上线/);
+  it('matchStatus === "matched" 但 standardProductName 为空 → 显示"已匹配标准品缺失"只读异常状态', () => {
+    expect(contentSrc).toMatch(/已匹配标准品缺失/);
   });
 
-  it('handleBindProduct 不调用任何 binding API', () => {
-    // 函数体内没有 supabase / createClient / repository / action 调用
+  it('handleBindProduct 设置 bindTarget 打开 BindProductDialog（P6-UX-V2-D 真实绑定）', () => {
+    // P6-UX-V2-D: 替代了 P6-UI-CLARITY 的 toast 占位实现
+    expect(contentSrc).toMatch(/function handleBindProduct/);
     const fnStart = contentSrc.indexOf('function handleBindProduct');
     const fnEnd = contentSrc.indexOf('\n  }', fnStart);
     const fnBody = contentSrc.slice(fnStart, fnEnd);
+    // 设置 bindTarget 状态，不再使用 toast.info
+    expect(fnBody).toMatch(/setBindTarget/);
+    expect(fnBody).not.toMatch(/toast\.info/);
+    expect(fnBody).not.toMatch(/即将上线/);
+  });
+
+  it('handleBindProduct 不在页面内直接调用 binding API（通过 Dialog 组件间接调用 Server Action）', () => {
+    // handleBindProduct 仅负责打开 Dialog，绑定逻辑委托给 BindProductDialog
+    const fnStart = contentSrc.indexOf('function handleBindProduct');
+    const fnEnd = contentSrc.indexOf('\n  }', fnStart);
+    const fnBody = contentSrc.slice(fnStart, fnEnd);
+    // 不直接调 supabase / Server Action / repository
     expect(fnBody).not.toMatch(/supabase/);
     expect(fnBody).not.toMatch(/createClient/);
     expect(fnBody).not.toMatch(/repository/);
-    expect(fnBody).not.toMatch(/action/);
+    expect(fnBody).not.toMatch(/bindOverseasVariant/);
   });
 
   it('"绑定产品"按钮有 stopPropagation 防止触发行展开', () => {
@@ -170,11 +184,16 @@ describe('P6-UI-CLARITY: 防页面跳顶', () => {
   });
 
   it('分页按钮使用 scroll: false', () => {
-    // 上一页/下一页的 router.push 都带 scroll: false
-    const prevCount = (contentSrc.match(/上一页/g) || []).length;
-    const nextCount = (contentSrc.match(/下一页/g) || []).length;
-    expect(prevCount).toBeGreaterThanOrEqual(1);
-    expect(nextCount).toBeGreaterThanOrEqual(1);
+    // P6-UX-V2: Pagination 组件 onPageChange / onPageSizeChange 回调均使用 scroll: false
+    const onPageChangeIdx = contentSrc.indexOf('onPageChange');
+    const onPageSizeChangeIdx = contentSrc.indexOf('onPageSizeChange');
+    expect(onPageChangeIdx).toBeGreaterThan(-1);
+    expect(onPageSizeChangeIdx).toBeGreaterThan(-1);
+    // 两个回调行都应包含 scroll: false
+    const pageChangeLine = contentSrc.slice(onPageChangeIdx, onPageChangeIdx + 160);
+    const sizeChangeLine = contentSrc.slice(onPageSizeChangeIdx, onPageSizeChangeIdx + 160);
+    expect(pageChangeLine).toMatch(/\{\s*scroll:\s*false\s*\}/);
+    expect(sizeChangeLine).toMatch(/\{\s*scroll:\s*false\s*\}/);
   });
 
   it('筛选器变更使用 scroll: false', () => {
@@ -254,13 +273,17 @@ describe('P6-UI-CLARITY: 架构合规', () => {
     expect(invRepoSrc).toMatch(/async getInTransitConfirmedAggregate/);
   });
 
-  it('"绑定产品"功能不调用任何真实 API', () => {
-    // handleBindProduct 只调用 toast.info, 无 server action / repository / DB
+  it('"绑定产品"功能已升级为真实绑定（P6-UX-V2-D）', () => {
+    // handleBindProduct 通过 setBindTarget 打开 Dialog，绑定逻辑经 Server Action 完成
+    // 页面内 handleBindProduct 不直接调 await/fetch/createClient
     const fnStart = contentSrc.indexOf('function handleBindProduct');
     const fnEnd = contentSrc.indexOf('\n  }', fnStart);
     const fnBody = contentSrc.slice(fnStart, fnEnd);
     expect(fnBody).not.toMatch(/await/);
     expect(fnBody).not.toMatch(/fetch/);
     expect(fnBody).not.toMatch(/createClient/);
+    // 绑定通过 BindProductDialog → bindOverseasVariant Server Action 完成
+    expect(contentSrc).toMatch(/BindProductDialog/);
+    expect(contentSrc).toMatch(/onSuccess/);
   });
 });

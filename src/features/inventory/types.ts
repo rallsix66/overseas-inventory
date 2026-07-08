@@ -13,8 +13,20 @@ export interface InventoryItem {
   warehouseId: string;
   quantity: number;
   lastSyncAt: string | null;
-  // 关联信息
+  // 关联信息 — 字段语义（P6-UX-V2-D 修正）：
+  //   variantName        = product_variant.name  → BigSeller 原始品名（海外库存主品名）
+  //   standardProductName = product.name         → DIS 标准产品名（绑定辅助信息）
+  //   standardProductCode = product.code         → DIS 标准产品编码（绑定辅助信息）
+  //   productName / productCode 保持向后兼容：productName=variantName, productCode=standardProductCode
+  /** BigSeller 原始商品名（来自 product_variant.name），用作海外库存主品名 */
+  variantName: string | null;
+  /** DIS 标准产品名称（来自 product.name），绑定成功后展示为辅助信息 */
+  standardProductName: string | null;
+  /** DIS 标准产品编码（来自 product.code），绑定成功后展示为辅助信息 */
+  standardProductCode: string | null;
+  /** @deprecated 使用 variantName；保留兼容，值等同于 variantName */
   productName: string | null;
+  /** @deprecated 使用 standardProductCode；保留兼容，值等同于 standardProductCode */
   productCode: string | null;
   sku: string;
   country: string;

@@ -9,8 +9,8 @@ export const inventoryColumns: ColumnDef<InventoryItem>[] = [
     sortable: true,
     render: (item) => (
       <span>
-        {item.productName || item.sku}
-        {item.matchStatus === 'unmatched' && (
+        {item.variantName || item.productName || item.sku}
+        {item.matchStatus !== 'matched' && (
           <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">
             未匹配
           </span>
@@ -53,13 +53,13 @@ export const inventoryColumns: ColumnDef<InventoryItem>[] = [
     key: 'safetyStock',
     header: '安全水位',
     className: 'text-right',
-    render: (item) => (item.productName ? item.safetyStock : '—'),
+    render: (item) => (item.matchStatus === 'matched' ? item.safetyStock : '—'),
   },
   {
     key: 'status',
     header: '状态',
     render: (item) => {
-      if (!item.productName) return null;
+      if (item.matchStatus !== 'matched') return null;
       const isLow = item.quantity <= item.safetyStock;
       return isLow ? (
         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">
@@ -77,7 +77,7 @@ export const inventoryColumns: ColumnDef<InventoryItem>[] = [
     header: '缺口',
     className: 'text-right',
     render: (item) => {
-      if (!item.productName) return '—';
+      if (item.matchStatus !== 'matched') return '—';
       const gap = item.safetyStock - item.quantity;
       if (gap <= 0) return <span className="text-green-600">正常</span>;
       return <span className="text-red-600 font-semibold">{gap}</span>;

@@ -15,7 +15,8 @@ const PAGE_SIZE = 20;
 
 // ---- 类型 ----
 
-/** get_overseas_inventory RPC 返回的原始行（snake_case） */
+/** get_overseas_inventory RPC 返回的原始行（snake_case）
+ *  P6-UX-V2-D: Migration 00034 新增 variant_name 字段（BigSeller 原始品名） */
 interface RawOverseasInventoryRow {
   id: string;
   variant_id: string;
@@ -25,8 +26,9 @@ interface RawOverseasInventoryRow {
   sku: string;
   country: string;
   match_status: string;
-  product_name: string | null;
-  product_code: string | null;
+  variant_name: string | null;     // ★ BigSeller 原始品名（product_variant.name）
+  product_name: string | null;     // DIS 标准产品名（product.name）
+  product_code: string | null;     // DIS 标准产品编码（product.code）
   safety_stock: number;
   warehouse_name: string;
   warehouse_type: string;
@@ -43,16 +45,29 @@ interface RawAggregateRow {
 
 // ---- 工具 ----
 
-/** snake_case → camelCase 映射一条 RPC 返回行 */
+/** snake_case → camelCase 映射一条 RPC 返回行
+ *  P6-UX-V2-D 字段语义修正：
+ *    variant_name → variantName（BigSeller 原始品名，用作海外库存主品名）
+ *    product_name → standardProductName（DIS 标准产品名，绑定辅助信息）
+ *    product_code → standardProductCode（DIS 标准产品编码，绑定辅助信息）
+ *    productName / productCode 保持向后兼容 */
 function mapOverseasRow(row: RawOverseasInventoryRow): InventoryItem {
+  const variantName = row.variant_name ?? null;
+  const standardProductName = row.product_name ?? null;
+  const standardProductCode = row.product_code ?? null;
+
   return {
     id: row.id,
     variantId: row.variant_id,
     warehouseId: row.warehouse_id,
     quantity: row.quantity,
     lastSyncAt: row.last_sync_at,
-    productName: row.product_name ?? null,
-    productCode: row.product_code ?? null,
+    variantName,
+    standardProductName,
+    standardProductCode,
+    // 向后兼容：productName = BigSeller 品名，productCode = DIS 标准编码
+    productName: variantName,
+    productCode: standardProductCode,
     sku: row.sku ?? '',
     country: row.country ?? '',
     warehouseName: row.warehouse_name ?? '',
@@ -72,7 +87,7 @@ export const inventoryRepository = {
 
     let query = supabase.from('inventory').select(
       `id, variant_id, warehouse_id, quantity, last_sync_at,
-       variant:variant_id (sku, country, match_status, product:product_id (name, code, safety_stock)),
+       variant:variant_id (sku, country, name, match_status, product:product_id (name, code, safety_stock)),
        warehouse:warehouse_id (name, type)`,
       { count: 'exact' }
     );
@@ -106,9 +121,13 @@ export const inventoryRepository = {
     }
 
     const items: InventoryItem[] = data.map((row) => {
-      const variant = unwrapJoin<{ sku: string; country: string; match_status: string; product: unknown }>(row.variant);
+      const variant = unwrapJoin<{ sku: string; country: string; name: string; match_status: string; product: unknown }>(row.variant);
       const product = unwrapJoin<{ name: string; code: string; safety_stock: number }>(variant?.product);
       const warehouse = unwrapJoin<{ name: string; type: string }>(row.warehouse);
+
+      const variantName = variant?.name ?? null;
+      const standardProductName = product?.name ?? null;
+      const standardProductCode = product?.code ?? null;
 
       return {
         id: row.id,
@@ -116,8 +135,11 @@ export const inventoryRepository = {
         warehouseId: row.warehouse_id,
         quantity: row.quantity as number,
         lastSyncAt: row.last_sync_at,
-        productName: product?.name ?? null,
-        productCode: product?.code ?? null,
+        variantName,
+        standardProductName,
+        standardProductCode,
+        productName: variantName,
+        productCode: standardProductCode,
         sku: variant?.sku ?? '',
         country: variant?.country ?? '',
         warehouseName: warehouse?.name ?? '',
@@ -210,7 +232,7 @@ export const inventoryRepository = {
     const supabase = await createClient();
     const { data, error } = await supabase.from('inventory').select(
       `id, variant_id, warehouse_id, quantity, last_sync_at,
-       variant:variant_id!inner (sku, country, match_status, product_id),
+       variant:variant_id!inner (sku, country, name, match_status, product:product_id (name, code)),
        warehouse:warehouse_id (name, type)`
     ).eq('variant.product_id', productId);
 
@@ -221,8 +243,13 @@ export const inventoryRepository = {
     if (!data) return [];
 
     return data.map((row) => {
-      const variant = unwrapJoin<{ sku: string; country: string; match_status: string; product_id: string }>(row.variant);
+      const variant = unwrapJoin<{ sku: string; country: string; name: string; match_status: string; product: unknown }>(row.variant);
+      const product = unwrapJoin<{ name: string; code: string }>(variant?.product);
       const warehouse = unwrapJoin<{ name: string; type: string }>(row.warehouse);
+
+      const variantName = variant?.name ?? null;
+      const standardProductName = product?.name ?? null;
+      const standardProductCode = product?.code ?? null;
 
       return {
         id: row.id,
@@ -230,8 +257,11 @@ export const inventoryRepository = {
         warehouseId: row.warehouse_id,
         quantity: row.quantity as number,
         lastSyncAt: row.last_sync_at,
-        productName: null,
-        productCode: null,
+        variantName,
+        standardProductName,
+        standardProductCode,
+        productName: variantName,
+        productCode: standardProductCode,
         sku: variant?.sku ?? '',
         country: variant?.country ?? '',
         warehouseName: warehouse?.name ?? '',

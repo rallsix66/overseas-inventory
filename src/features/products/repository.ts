@@ -65,6 +65,28 @@ function extractInventoryRows(rows: unknown[] | null): InventoryBrief[] {
     .filter((item): item is InventoryBrief => item !== null);
 }
 
+// ---- 搜索工具 ----
+
+/** P6-UX-V2-D: 输入规范化 + 分词 */
+const TOKEN_SPLIT_RE = /[\s\-_/()（）,，]+/;
+
+/** 需要过滤的噪声 token（仅含标点或太短） */
+function isNoiseToken(t: string): boolean {
+  return t.length === 0 || /^[\s\-_/()（）,，.]+$/.test(t);
+}
+
+/** 转义 PostgreSQL LIKE 特殊字符和 Supabase .or() 分隔符 */
+function escapeLike(s: string): string {
+  return s.replace(/%/g, '\\%').replace(/_/g, '\\_').replace(/,/g, '\\,');
+}
+
+/** 将搜索字符串拆为去重 token 列表 */
+function tokenize(input: string): string[] {
+  const trimmed = input.trim().replace(/\s+/g, ' ');
+  const raw = trimmed.split(TOKEN_SPLIT_RE).filter((t) => !isNoiseToken(t));
+  return [...new Set(raw)];
+}
+
 // ---- Repository ----
 
 export const productRepository = {
@@ -120,6 +142,110 @@ export const productRepository = {
       page,
       pageSize,
     };
+  },
+
+  /**
+   * P6-UX-V2-D: 模糊/分词搜索产品（供绑定 Dialog 使用）
+   *
+   * 将输入分词后按 code/name 做多 token ILIKE 搜索，
+   * 同时通过 product_variant.sku 反向查找关联产品。
+   * 仅返回启用产品（is_active=true）。
+   *
+   * 搜索逻辑说明：
+   * 1. 输入 normalize：trim + 合并空白
+   * 2. 按空格、连字符、下划线、斜杠、括号等分词
+   * 3. 去重 + 过滤噪声 token
+   * 4. 每个 token 对 code/name 做 ILIKE 匹配
+   * 5. 同时在 product_variant.sku 中搜索匹配 token，收集关联 product_id
+   * 6. 合并两个结果集（OR 语义）
+   * 7. Special chars 已 escape，防止破坏 .or() 语法
+   */
+  async search(query: string, pageSize: number = 20): Promise<ProductItem[]> {
+    if (!query || !query.trim()) {
+      return [];
+    }
+
+    const tokens = tokenize(query);
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    const supabase = await createClient();
+
+    // 收集 SKU 搜索匹配的 product_id
+    const skuMatchedProductIds: string[] = [];
+    for (const token of tokens) {
+      const escaped = escapeLike(token);
+      const { data: skuVariants, error: skuError } = await supabase
+        .from('product_variant')
+        .select('product_id')
+        .ilike('sku', `%${escaped}%`)
+        .not('product_id', 'is', null)
+        .limit(50);
+
+      if (!skuError && skuVariants) {
+        for (const v of skuVariants) {
+          if (v.product_id && !skuMatchedProductIds.includes(v.product_id)) {
+            skuMatchedProductIds.push(v.product_id);
+          }
+        }
+      }
+    }
+
+    // 构建 .or() 条件：每个 token 匹配 code OR name
+    const orParts: string[] = [];
+    for (const token of tokens) {
+      const escaped = escapeLike(token);
+      orParts.push(`code.ilike.%${escaped}%,name.ilike.%${escaped}%`);
+    }
+
+    let query_builder = supabase.from('product').select('*', { count: 'exact' });
+
+    // 构建复合条件
+    if (orParts.length > 0 && skuMatchedProductIds.length > 0) {
+      // 同时有 token 匹配和 SKU 匹配 → OR 组合
+      const orFilters = orParts.join(',');
+      query_builder = query_builder.or(`${orFilters},id.in.(${skuMatchedProductIds.join(',')})`);
+    } else if (orParts.length > 0) {
+      query_builder = query_builder.or(orParts.join(','));
+    } else if (skuMatchedProductIds.length > 0) {
+      query_builder = query_builder.in('id', skuMatchedProductIds);
+    }
+
+    // 仅启用产品
+    query_builder = query_builder.eq('is_active', true);
+
+    const { data: products, error } = await query_builder
+      .order('created_at', { ascending: false })
+      .limit(pageSize);
+
+    if (error) {
+      throw new ProductError('搜索产品失败', 'DB_ERROR');
+    }
+
+    if (!products || products.length === 0) {
+      return [];
+    }
+
+    // 批量获取 SKU 计数
+    const productIds = products.map((p) => p.id);
+    const { data: variantCounts, error: vcError } = await supabase
+      .from('product_variant')
+      .select('product_id')
+      .in('product_id', productIds)
+      .not('product_id', 'is', null);
+
+    if (vcError) {
+      throw new ProductError('查询产品 SKU 计数失败', 'DB_ERROR');
+    }
+
+    const countMap = new Map<string, number>();
+    productIds.forEach((id) => countMap.set(id, 0));
+    variantCounts?.forEach((v) => {
+      countMap.set(v.product_id, (countMap.get(v.product_id) ?? 0) + 1);
+    });
+
+    return products.map((p) => ({ ...p, skuCount: countMap.get(p.id) ?? 0 }));
   },
 
   /** 根据 code 查询产品 */

@@ -3,9 +3,9 @@
 // 海外库存页 — 客户端交互层
 // 处理筛选、表格渲染和分页导航
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
-import { useOptimistic, startTransition, useState, Fragment } from 'react';
+import { useOptimistic, startTransition, useState, useRef, useEffect, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck, ChevronDown, ChevronRight, Download, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,9 +24,11 @@ import {
   TableRow,
   TableCell,
 } from '@/components/ui/table';
+import { Pagination } from '@/components/ui/pagination';
 import { toggleFavoriteAction } from '@/features/preferences/actions';
 import { exportOverseasInventoryCsv } from '@/features/inventory/actions';
 import { InTransitDetailRow } from '@/features/shipments/components/in-transit-detail-row';
+import { BindProductDialog } from '@/features/inventory/components/bind-product-dialog';
 import type { InventoryItem, OverseasStats, WarehouseOption } from '@/features/inventory/types';
 import type { WarehouseSyncStatus } from '@/features/sync/types';
 
@@ -63,6 +65,8 @@ interface Props {
   };
   syncStatus: Record<string, WarehouseSyncStatus>;
   filters: Filters;
+  /** P6-UX-V2-D: Admin 才允许绑定产品。Operator 不显示绑定入口（Server Action 另有 requireActiveAdmin 双重保护）。 */
+  canBindProduct: boolean;
 }
 
 function StatCard({
@@ -199,16 +203,117 @@ function SyncStatusBadge({ status, failureReason }: { status: string; failureRea
   }
 }
 
-export function OverseasPageContent({ stats, warehouses, result, syncStatus, filters }: Props) {
+// ── P6-UX-V2-D: 列宽拖拽伸缩（模块级常量，不依赖 component props/state）──
+
+const COL_STORAGE_KEY = 'overseasInventoryColumnWidths';
+
+const COL_DEFAULTS: Record<string, number> = {
+  expand: 28, favorite: 36, country: 70, warehouse: 100,
+  productName: 320, sku: 140, quantity: 80, inTransit: 60,
+  total: 85, safetyStock: 75, status: 80, syncStatus: 110,
+};
+
+const COL_MIN: Record<string, number> = {
+  expand: 28, favorite: 36, country: 50, warehouse: 70,
+  productName: 220, sku: 80, quantity: 60, inTransit: 50,
+  total: 60, safetyStock: 60, status: 60, syncStatus: 80,
+};
+
+const COL_MAX: Record<string, number> = {
+  expand: 28, favorite: 36, country: 150, warehouse: 300,
+  productName: 640, sku: 300, quantity: 150, inTransit: 120,
+  total: 150, safetyStock: 120, status: 150, syncStatus: 200,
+};
+
+export function OverseasPageContent({ stats, warehouses, result, syncStatus, filters, canBindProduct }: Props) {
   const router = useRouter();
   const { data, total, page, pageSize } = result;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // P3-S2E: 行展开状态 — 记录展开的 (variantId, warehouseId)
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   // P6-CSV-EXPORT: 导出按钮 loading 状态
   const [exporting, setExporting] = useState(false);
+
+  // P6-UX-V2-D: 产品绑定 Dialog 状态
+  const [bindTarget, setBindTarget] = useState<{ variantId: string; sku: string } | null>(null);
+
+  // ── P6-UX-V2-D: 列宽拖拽伸缩 ────────────────────────────────────────────
+
+  // 初始化不读 localStorage，避免 SSR hydration mismatch
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({ ...COL_DEFAULTS });
+
+  const resizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  const colWidthsRef = useRef(columnWidths);
+  colWidthsRef.current = columnWidths;
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const state = resizeRef.current;
+      if (!state) return;
+      const delta = e.clientX - state.startX;
+      const min = COL_MIN[state.key] ?? 50;
+      const max = COL_MAX[state.key] ?? 640;
+      const newWidth = Math.min(max, Math.max(min, state.startWidth + delta));
+      setColumnWidths((prev) => {
+        const next = { ...prev, [state.key]: newWidth };
+        try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        return next;
+      });
+    };
+    const onMouseUp = () => {
+      resizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  // Hydrate 列宽：客户端 mount 后从 localStorage 读取并 clamp
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(COL_STORAGE_KEY);
+      if (!stored) return;
+      const parsed: unknown = JSON.parse(stored);
+      if (typeof parsed !== 'object' || parsed === null) return;
+      const next: Record<string, number> = { ...COL_DEFAULTS };
+      let hasValid = false;
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof value === 'number' && key in COL_DEFAULTS) {
+          const min = COL_MIN[key] ?? 50;
+          const max = COL_MAX[key] ?? 640;
+          next[key] = Math.min(max, Math.max(min, value));
+          hasValid = true;
+        }
+      }
+      if (hasValid) startTransition(() => setColumnWidths(next));
+    } catch { /* ignore */ }
+  }, []);
+
+  function handleResizeStart(key: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = {
+      key,
+      startX: e.clientX,
+      startWidth: colWidthsRef.current[key] ?? COL_DEFAULTS[key] ?? 100,
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function resetColumnWidth(key: string) {
+    setColumnWidths((prev) => {
+      const next = { ...prev, [key]: COL_DEFAULTS[key] ?? 100 };
+      try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   /** P6-UI-CLARITY: 统计卡片点击 → 设置对应筛选 */
   function handleStatCardClick(type: 'all' | 'low') {
@@ -219,9 +324,9 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
     }
   }
 
-  /** P6-UI-CLARITY: "绑定产品"入口 — 仅 UI 占位，不实现真实绑定 */
-  function handleBindProduct(variantId: string) {
-    toast.info('产品绑定功能即将上线', { description: `SKU ${variantId} 绑定到 DIS 标准产品后将自动匹配库存状态。` });
+  /** P6-UX-V2-D: "绑定产品"入口 — 打开 BindProductDialog 执行真实绑定 */
+  function handleBindProduct(variantId: string, sku: string) {
+    setBindTarget({ variantId, sku });
   }
 
   /** 触发 CSV 导出下载 */
@@ -263,14 +368,19 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
     setExpandedKey((prev) => (prev === key ? null : key));
   }
 
-  function buildUrl(overrides: Partial<Filters> & { page?: number }) {
-    const next = { ...filters, page: 1, ...overrides };
+  function buildUrl(overrides: Partial<Filters> & { page?: number; pageSize?: number }) {
+    // pageSize 变更时 page 重置为 1
+    const pageToUse = 'pageSize' in overrides ? 1 : (overrides.page ?? 1);
+    const next = { ...filters, ...overrides, page: pageToUse };
     const params = new URLSearchParams();
     if (next.search) params.set('search', next.search);
     if (next.country) params.set('country', next.country);
     if (next.warehouse) params.set('warehouse', next.warehouse);
     if (next.stockStatus) params.set('stockStatus', next.stockStatus);
     if ((next.page ?? 1) > 1) params.set('page', String(next.page));
+    // pageSize 非默认值时才写入 URL
+    const ps = next.pageSize ?? pageSize;
+    if (ps !== 20) params.set('pageSize', String(ps));
     const qs = params.toString();
     return `/dashboard/inventory/overseas${qs ? `?${qs}` : ''}`;
   }
@@ -291,6 +401,20 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
       minute: '2-digit',
     });
   };
+
+  /** P6-UX-V2: 筛选状态标签中文映射 */
+  const STOCK_STATUS_LABELS: Record<string, string> = {
+    low: '低库存',
+    normal: '正常',
+    out_of_stock: '缺货',
+  };
+
+  const countryLabel = COUNTRIES.find((c) => c.value === filters.country)?.label;
+  const warehouseLabel = warehouses.find((w) => w.id === filters.warehouse)?.name;
+  const stockStatusLabel = STOCK_STATUS_LABELS[filters.stockStatus];
+
+  /** 是否有任何生效的筛选条件 */
+  const hasActiveFilters = !!(filters.search || filters.country || filters.warehouse || filters.stockStatus);
 
   /**
    * 库存状态标签
@@ -387,6 +511,10 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           value={formatTime(stats.lastSyncAt)}
           colorClass="bg-slate-50 text-slate-600"
         />
+        {/* P6-UX-V2-B: 在途库存卡片不可点击。
+            在途数据来自 shipment 聚合（getInTransitConfirmedAggregate），
+            不是 inventory 表的筛选维度。后端不支持按 "有在途数量" 筛选 inventory 列表，
+            需扩展 Repository 和数据查询后才能实现真实联动。避免制造无效跳转。 */}
         <StatCard
           icon={Truck}
           label="在途库存"
@@ -464,17 +592,6 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           </SelectContent>
         </Select>
 
-        {/* 清除全部筛选 */}
-        {(filters.search || filters.country || filters.warehouse || filters.stockStatus) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push('/dashboard/inventory/overseas', { scroll: false })}
-          >
-            清除
-          </Button>
-        )}
-
         {/* P6-CSV-EXPORT: 导出 CSV */}
         <Button
           variant="outline"
@@ -486,6 +603,73 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           {exporting ? '导出中...' : '导出 CSV'}
         </Button>
       </div>
+
+      {/* P6-UX-V2: 筛选状态标签 — 不受 data.length 影响，有筛选条件即显示 */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="text-xs text-muted-foreground mr-1">当前筛选：</span>
+          {filters.country && countryLabel && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+              国家：{countryLabel}
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ country: '' }), { scroll: false })}
+                className="inline-flex items-center ml-0.5 hover:text-blue-900"
+                aria-label={`清除国家筛选 ${countryLabel}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {filters.warehouse && warehouseLabel && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+              仓库：{warehouseLabel}
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ warehouse: '' }), { scroll: false })}
+                className="inline-flex items-center ml-0.5 hover:text-blue-900"
+                aria-label={`清除仓库筛选 ${warehouseLabel}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {filters.stockStatus && stockStatusLabel && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
+              状态：{stockStatusLabel}
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ stockStatus: '' }), { scroll: false })}
+                className="inline-flex items-center ml-0.5 hover:text-amber-900"
+                aria-label={`清除状态筛选 ${stockStatusLabel}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {filters.search && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+              搜索：{filters.search}
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl({ search: '' }), { scroll: false })}
+                className="inline-flex items-center ml-0.5 hover:text-gray-900"
+                aria-label={`清除搜索 ${filters.search}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => router.push('/dashboard/inventory/overseas', { scroll: false })}
+            className="h-5 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            清空筛选
+          </Button>
+        </div>
+      )}
 
       {/* 空数据状态 */}
       {data.length === 0 && (
@@ -509,20 +693,105 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
         <>
           <div className="rounded-md border overflow-x-auto">
             <Table>
+              {/* P6-UX-V2-D: colgroup 控制列宽，支持拖拽伸缩 */}
+              <colgroup>
+                <col style={{ width: columnWidths.expand }} />
+                <col style={{ width: columnWidths.favorite }} />
+                <col style={{ width: columnWidths.country }} />
+                <col style={{ width: columnWidths.warehouse }} />
+                <col style={{ width: columnWidths.productName }} />
+                <col style={{ width: columnWidths.sku }} />
+                <col style={{ width: columnWidths.quantity }} />
+                <col style={{ width: columnWidths.inTransit }} />
+                <col style={{ width: columnWidths.total }} />
+                <col style={{ width: columnWidths.safetyStock }} />
+                <col style={{ width: columnWidths.status }} />
+                <col style={{ width: columnWidths.syncStatus }} />
+              </colgroup>
               <TableHeader>
                 <TableRow className="bg-gray-50">
-                  <TableHead className="w-[28px]" />
-                  <TableHead className="w-[36px]">关注</TableHead>
-                  <TableHead>国家</TableHead>
-                  <TableHead>仓库</TableHead>
-                  <TableHead>产品名称</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead className="text-right">当前库存</TableHead>
-                  <TableHead className="text-right">在途</TableHead>
-                  <TableHead className="text-right">库存+在途</TableHead>
-                  <TableHead className="text-right">安全库存</TableHead>
-                  <TableHead>库存状态</TableHead>
-                  <TableHead>同步状态</TableHead>
+                  <TableHead />
+                  <TableHead>关注</TableHead>
+                  <TableHead className="relative">
+                    <span>国家</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('country', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('country'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative">
+                    <span>仓库</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('warehouse', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('warehouse'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative">
+                    <span>产品名称</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('productName', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('productName'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative">
+                    <span>SKU</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('sku', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('sku'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative text-right">
+                    <span>当前库存</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('quantity', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('quantity'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative text-right">
+                    <span>在途</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('inTransit', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('inTransit'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative text-right">
+                    <span>库存+在途</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('total', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('total'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative text-right">
+                    <span>安全库存</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('safetyStock', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('safetyStock'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative">
+                    <span>库存状态</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('status', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('status'); }}
+                    />
+                  </TableHead>
+                  <TableHead className="relative">
+                    <span>同步状态</span>
+                    <div
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
+                      onMouseDown={(e) => handleResizeStart('syncStatus', e)}
+                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('syncStatus'); }}
+                    />
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -555,21 +824,42 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                       </span>
                     </TableCell>
                     <TableCell className="text-sm">{item.warehouseName}</TableCell>
-                    <TableCell className="max-w-[180px] truncate text-sm">
-                      {item.productName ? (
-                        item.productName
+                    <TableCell className="text-sm min-w-0">
+                      {item.matchStatus === 'matched' ? (
+                        <div className="flex flex-col min-w-0">
+                          {/* 主行：BigSeller 原始品名（始终显示） */}
+                          <span className="min-w-0 truncate">
+                            {item.variantName ?? item.productName ?? <span className="text-muted-foreground">—</span>}
+                          </span>
+                          {/* 辅助信息：标准产品绑定信息 */}
+                          {item.standardProductName ? (
+                            <span className="text-xs text-muted-foreground truncate">
+                              标准品：{item.standardProductName}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground truncate italic">
+                              已匹配标准品缺失
+                            </span>
+                          )}
+                        </div>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className="text-muted-foreground">未匹配产品</span>
+                        <span className="flex w-full min-w-0 items-center gap-1.5">
+                          {/* 主行：BigSeller 原始品名 */}
+                          <span className="min-w-0 flex-1 truncate">
+                            {item.variantName ?? item.productName ?? <span className="text-muted-foreground">未匹配产品</span>}
+                          </span>
+                          {/* 未匹配 Badge — 始终在未匹配/待确认行显示 */}
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 shrink-0">未匹配</span>
-                          {/* P6-UI-CLARITY: "绑定产品"入口 — 仅 UI 占位，不实现真实绑定 */}
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId); }}
-                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 hover:border-gray-400 shrink-0 transition-colors"
-                          >
-                            绑定产品
-                          </button>
+                          {/* P6-UX-V2-D: "绑定产品"入口 — Admin-only，真实绑定到 DIS 标准产品 */}
+                          {canBindProduct && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId, item.sku); }}
+                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 hover:border-gray-400 shrink-0 transition-colors"
+                            >
+                              绑定产品
+                            </button>
+                          )}
                         </span>
                       )}
                     </TableCell>
@@ -631,31 +921,31 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
             </Table>
           </div>
 
-          {/* 分页 */}
-          <div className="flex items-center justify-between mt-5">
-            <p className="text-sm text-muted-foreground">
-              共 {total} 条，第 {page} / {totalPages} 页
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => router.push(buildUrl({ page: page - 1 }), { scroll: false })}
-              >
-                上一页
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => router.push(buildUrl({ page: page + 1 }), { scroll: false })}
-              >
-                下一页
-              </Button>
-            </div>
-          </div>
+          {/* P6-UX-V2: BigSeller 风格分页 */}
+          <Pagination
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={(p) => router.push(buildUrl({ page: p }), { scroll: false })}
+            onPageSizeChange={(ps) => router.push(buildUrl({ pageSize: ps }), { scroll: false })}
+          />
         </>
+      )}
+
+      {/* P6-UX-V2-D: 产品绑定 Dialog */}
+      {bindTarget && (
+        <BindProductDialog
+          open={!!bindTarget}
+          variantId={bindTarget.variantId}
+          sku={bindTarget.sku}
+          onOpenChange={(open) => { if (!open) setBindTarget(null); }}
+          onSuccess={() => {
+            setBindTarget(null);
+            // router.refresh 保留当前 URL（筛选/分页/pageSize/滚动位置），
+            // 配合 Server Action 的 revalidatePath 刷新数据
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

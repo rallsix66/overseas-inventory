@@ -16,10 +16,13 @@ const repoSrc = readSrc('src/features/inventory/repository.ts');
 
 describe('P6-PRODUCT-NAME: 表头列顺序', () => {
   it('表头列顺序：国家 → 仓库 → 产品名称 → SKU → ...', () => {
-    // 提取所有 <TableHead> 标签内容（不含子标签）
+    // 提取所有 <TableHead> 标签内容（P6-UX-V2-D: 列宽 resize 后标签内嵌 <span>）
     const heads = contentSrc.match(/<TableHead[^>]*>([\s\S]*?)<\/TableHead>/g);
     expect(heads).not.toBeNull();
     const labels = heads!.map((h) => {
+      // 优先提取 <span> 内文本（新格式），回退到直接文本（旧格式/无 resize handle 的列）
+      const spanMatch = h.match(/<span>([^<]*)<\/span>/);
+      if (spanMatch) return spanMatch[1].trim();
       const match = h.match(/<TableHead[^>]*>([\s\S]*?)<\/TableHead>/);
       return match ? match[1].trim() : '';
     }).filter(Boolean);
@@ -47,51 +50,52 @@ describe('P6-PRODUCT-NAME: 表头列顺序', () => {
     expect(headMatches!.length).toBe(12);
   });
 
-  it('产品名称列头存在', () => {
-    expect(contentSrc).toMatch(/<TableHead[^>]*>产品名称<\/TableHead>/);
+  it('产品名称列头存在（位于 <span> 内）', () => {
+    expect(contentSrc).toMatch(/<TableHead[^>]*>[\s\S]*?<span>产品名称<\/span>/);
   });
 
   it('SKU 列头存在且在 <TableHead> 中出现', () => {
-    expect(contentSrc).toMatch(/<TableHead[^>]*>SKU<\/TableHead>/);
+    expect(contentSrc).toMatch(/<TableHead[^>]*>[\s\S]*?<span>SKU<\/span>/);
   });
 });
 
-// ─── 2. productName 显示逻辑 ──────────────────────────────────────────────
+// ─── 2. 品名显示逻辑（P6-UX-V2-D 字段语义修正） ─────────────────────────
 
-describe('P6-PRODUCT-NAME: productName 显示逻辑', () => {
-  it('productName 有值时直接渲染 item.productName', () => {
-    // 三元表达式：item.productName ? ... item.productName ... :
-    // JSX 可能跨行，用 [\s\S] 匹配
-    expect(contentSrc).toMatch(/item\.productName\s*\?[\s\S]*?item\.productName/);
+describe('P6-PRODUCT-NAME: 品名显示逻辑', () => {
+  it('主品名列使用 variantName（BigSeller 原始品名优先）', () => {
+    expect(contentSrc).toMatch(/item\.variantName/);
   });
 
-  it('productName 为空时显示"未匹配产品"文字', () => {
+  it('matched 状态下主品名仍是 BigSeller 原始品名（variantName）', () => {
+    const matchedIdx = contentSrc.indexOf('item.matchStatus === \'matched\'');
+    const afterMatched = contentSrc.slice(matchedIdx, matchedIdx + 300);
+    expect(afterMatched).toMatch(/item\.variantName/);
+  });
+
+  it('matched 状态下显示标准品辅助信息"标准品：xxx"', () => {
+    expect(contentSrc).toMatch(/标准品：/);
+    expect(contentSrc).toMatch(/item\.standardProductName/);
+  });
+
+  it('standardProductName 为空时显示"已匹配标准品缺失"（不再显示"已匹配产品缺失"）', () => {
+    expect(contentSrc).toMatch(/已匹配标准品缺失/);
+    expect(contentSrc).not.toMatch(/已匹配产品缺失/);
+  });
+
+  it('unmatched 状态显示 BigSeller 品名或"未匹配产品" fallback', () => {
     expect(contentSrc).toMatch(/未匹配产品/);
   });
 
-  it('productName 为空时显示"未匹配" Badge', () => {
-    // 应该有一个 "未匹配" 的 Badge 标记
-    // 查找 "未匹配" 在 Badge 上下文中（bg-yellow-50 text-yellow-700）
-    expect(contentSrc).toMatch(/bg-yellow-50 text-yellow-700/);
-  });
-
-  it('productName 为空时的 fallback 不在同一处重复"未匹配"作为文字', () => {
-    // "未匹配产品" 文本 + "未匹配" Badge 是两种不同的展示（完整中文短语 + 标签）
-    // 验证两者同时出现（不是只有旧的 "未匹配" 灰色文字）
-    const hasUnmatchedProduct = contentSrc.includes('未匹配产品');
-    const hasYellowBadge = /bg-yellow-50/.test(contentSrc) && /text-yellow-700/.test(contentSrc);
-    expect(hasUnmatchedProduct).toBe(true);
-    expect(hasYellowBadge).toBe(true);
-  });
-
-  it('productName 列使用 truncate 防止撑破表格', () => {
-    // productName 渲染的 TableCell 必须有 truncate class
-    // 在三元表达式之前的 TableCell 包含 truncate
-    expect(contentSrc).toMatch(/max-w-\[180px\]\s+truncate/);
+  it('品名列不再使用 max-w-[180px] 固定宽度（已改为 colgroup + resize 控制列宽）', () => {
+    // 旧实现使用 TableCell max-w-[180px] 截断，新实现使用 colgroup 控制列宽 + min-w-0
+    expect(contentSrc).not.toMatch(/max-w-\[180px\]\s+truncate/);
+    // colgroup 控制产品名称列宽
+    expect(contentSrc).toMatch(/col style=\{\{ width: columnWidths\.productName \}\}/);
+    // 产品名称单元格使用 min-w-0 配合内部 flex truncate
+    expect(contentSrc).toMatch(/min-w-0/);
   });
 
   it('SKU 列使用 font-mono 样式', () => {
-    // SKU 单元格保持等宽字体
     const skuCells = contentSrc.match(/font-mono text-xs.*\{item\.sku\}/g);
     expect(skuCells).not.toBeNull();
     expect(skuCells!.length).toBeGreaterThanOrEqual(1);
@@ -100,22 +104,38 @@ describe('P6-PRODUCT-NAME: productName 显示逻辑', () => {
 
 // ─── 3. Repository 映射 ───────────────────────────────────────────────────
 
-describe('P6-PRODUCT-NAME: Repository product_name → productName 映射', () => {
-  it('mapOverseasRow 正确映射 product_name → productName', () => {
-    expect(repoSrc).toMatch(/productName:\s*row\.product_name\s*\?\?\s*null/);
+describe('P6-PRODUCT-NAME: Repository 字段映射', () => {
+  it('mapOverseasRow 新增 variantName 映射（variant_name → variantName）', () => {
+    expect(repoSrc).toMatch(/variantName,\s*$/m);
   });
 
-  it('mapOverseasRow 映射 product_code → productCode', () => {
-    expect(repoSrc).toMatch(/productCode:\s*row\.product_code\s*\?\?\s*null/);
+  it('mapOverseasRow 新增 standardProductName 映射（product_name → standardProductName）', () => {
+    expect(repoSrc).toMatch(/standardProductName,\s*$/m);
   });
 
-  it('getOverseasList 返回类型包含 productName 字段', () => {
-    // RawOverseasInventoryRow 包含 product_name
-    expect(repoSrc).toMatch(/product_name:\s*string\s*\|\s*null/);
+  it('mapOverseasRow 新增 standardProductCode 映射（product_code → standardProductCode）', () => {
+    expect(repoSrc).toMatch(/standardProductCode,\s*$/m);
+  });
+
+  it('mapOverseasRow productName 向后兼容 = variantName（BigSeller 品名）', () => {
+    expect(repoSrc).toMatch(/productName:\s*variantName/);
+  });
+
+  it('mapOverseasRow productCode 向后兼容 = standardProductCode', () => {
+    expect(repoSrc).toMatch(/productCode:\s*standardProductCode/);
+  });
+
+  it('RawOverseasInventoryRow 包含 variant_name 字段', () => {
+    expect(repoSrc).toMatch(/variant_name:\s*string\s*\|\s*null/);
+    expect(repoSrc).toMatch(/BigSeller 原始品名/);
+  });
+
+  it('RawOverseasInventoryRow product_name 注释标注为 DIS 标准产品名', () => {
+    expect(repoSrc).toMatch(/product_name:.*DIS 标准产品名/);
   });
 
   it('mapOverseasRow 未丢失其他关键字段', () => {
-    // 确保重构 Column 顺序时没有意外丢失其他字段映射
+    // 确保重构字段映射时没有意外丢失其他字段映射
     expect(repoSrc).toMatch(/id:\s*row\.id/);
     expect(repoSrc).toMatch(/variantId:\s*row\.variant_id/);
     expect(repoSrc).toMatch(/sku:\s*row\.sku/);
