@@ -492,8 +492,8 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                   <TableHead className="w-[36px]">关注</TableHead>
                   <TableHead>国家</TableHead>
                   <TableHead>仓库</TableHead>
-                  <TableHead>SKU</TableHead>
                   <TableHead>产品名称</TableHead>
+                  <TableHead>SKU</TableHead>
                   <TableHead className="text-right">当前库存</TableHead>
                   <TableHead className="text-right">在途</TableHead>
                   <TableHead className="text-right">已确认到仓</TableHead>
@@ -533,12 +533,17 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, con
                       </span>
                     </TableCell>
                     <TableCell className="text-sm">{item.warehouseName}</TableCell>
-                    <TableCell className="font-mono text-xs">{item.sku}</TableCell>
                     <TableCell className="max-w-[180px] truncate text-sm">
-                      {item.productName || (
-                        <span className="text-muted-foreground">未匹配</span>
+                      {item.productName ? (
+                        item.productName
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="text-muted-foreground">未匹配产品</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 shrink-0">未匹配</span>
+                        </span>
                       )}
                     </TableCell>
+                    <TableCell className="font-mono text-xs">{item.sku}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       <span
                         className={

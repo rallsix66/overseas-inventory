@@ -880,7 +880,7 @@ describe('P3-S5B5: 海外库存页列数与展开行', () => {
     expect(contentSrc).toMatch(/colSpan=\{13\}/);
   });
 
-  it('表头列为：展开/关注/国家/仓库/SKU/产品名称/当前库存/在途/已确认到仓/库存+在途/安全库存/库存状态/同步状态', () => {
+  it('表头列为：展开/关注/国家/仓库/产品名称/SKU/当前库存/在途/已确认到仓/库存+在途/安全库存/库存状态/同步状态', () => {
     // Check key column labels exist
     expect(contentSrc).toMatch(/已确认到仓/);
     expect(contentSrc).toMatch(/在途/);
