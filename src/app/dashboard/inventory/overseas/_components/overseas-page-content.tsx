@@ -205,24 +205,24 @@ function SyncStatusBadge({ status, failureReason }: { status: string; failureRea
 
 // ── P6-UX-V2-D: 列宽拖拽伸缩（模块级常量，不依赖 component props/state）──
 
-const COL_STORAGE_KEY = 'overseasInventoryColumnWidths';
+const COL_STORAGE_KEY = 'overseasInventoryColumnWidths:v2';
 
 const COL_DEFAULTS: Record<string, number> = {
-  expand: 28, favorite: 36, country: 70, warehouse: 100,
-  productName: 320, sku: 140, quantity: 80, inTransit: 60,
-  total: 85, safetyStock: 75, status: 80, syncStatus: 110,
+  expand: 32, favorite: 44, country: 72, warehouse: 180,
+  productName: 420, sku: 156, quantity: 104, inTransit: 90,
+  total: 116, safetyStock: 96, status: 112, syncStatus: 132,
 };
 
 const COL_MIN: Record<string, number> = {
-  expand: 28, favorite: 36, country: 50, warehouse: 70,
-  productName: 220, sku: 80, quantity: 60, inTransit: 50,
-  total: 60, safetyStock: 60, status: 60, syncStatus: 80,
+  expand: 32, favorite: 44, country: 56, warehouse: 140,
+  productName: 280, sku: 100, quantity: 80, inTransit: 70,
+  total: 88, safetyStock: 80, status: 88, syncStatus: 104,
 };
 
 const COL_MAX: Record<string, number> = {
-  expand: 28, favorite: 36, country: 150, warehouse: 300,
-  productName: 640, sku: 300, quantity: 150, inTransit: 120,
-  total: 150, safetyStock: 120, status: 150, syncStatus: 200,
+  expand: 32, favorite: 44, country: 150, warehouse: 360,
+  productName: 720, sku: 320, quantity: 170, inTransit: 150,
+  total: 180, safetyStock: 150, status: 180, syncStatus: 220,
 };
 
 /** 可见列宽拖拽分隔线 — 模块级组件，不在 render 内创建 */
@@ -241,17 +241,17 @@ function ResizeHandle({
 }) {
   return (
     <div
-      className="absolute right-0 top-0 bottom-0 w-6 z-10 cursor-col-resize flex items-center justify-center group"
+      className="absolute right-0 top-1 bottom-1 z-10 flex w-3 cursor-col-resize items-center justify-center rounded-sm group"
       onMouseDown={(e) => onResizeStart(columnKey, e)}
       onDoubleClick={(e) => { e.stopPropagation(); onReset(columnKey); }}
       title="拖拽调整列宽，双击恢复默认"
       aria-label={`调整${label}列宽`}
     >
       <div
-        className={`h-full transition-colors ${
+        className={`h-6 rounded-full transition-colors ${
           isActive
             ? 'w-0.5 bg-blue-500'
-            : 'w-px bg-gray-200 group-hover:w-0.5 group-hover:bg-blue-400'
+            : 'w-px bg-gray-300/70 group-hover:w-0.5 group-hover:bg-blue-400'
         }`}
       />
     </div>
@@ -269,7 +269,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
   const [exporting, setExporting] = useState(false);
 
   // P6-UX-V2-D: 产品绑定 Dialog 状态
-  const [bindTarget, setBindTarget] = useState<{ variantId: string; sku: string } | null>(null);
+  const [bindTarget, setBindTarget] = useState<{ variantId: string; sku: string; variantName?: string } | null>(null);
 
   // ── P6-UX-V2-D: 列宽拖拽伸缩 ────────────────────────────────────────────
 
@@ -367,8 +367,8 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
   }
 
   /** P6-UX-V2-D: "绑定产品"入口 — 打开 BindProductDialog 执行真实绑定 */
-  function handleBindProduct(variantId: string, sku: string) {
-    setBindTarget({ variantId, sku });
+  function handleBindProduct(variantId: string, sku: string, variantName?: string) {
+    setBindTarget({ variantId, sku, variantName });
   }
 
   /** 触发 CSV 导出下载 */
@@ -454,6 +454,9 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
   const countryLabel = COUNTRIES.find((c) => c.value === filters.country)?.label;
   const warehouseLabel = warehouses.find((w) => w.id === filters.warehouse)?.name;
   const stockStatusLabel = STOCK_STATUS_LABELS[filters.stockStatus];
+  const countrySelectLabel = countryLabel ?? '全部国家';
+  const warehouseSelectLabel = warehouseLabel ?? '全部仓库';
+  const stockStatusSelectLabel = stockStatusLabel ?? '全部状态';
 
   /** 是否有任何生效的筛选条件 */
   const hasActiveFilters = !!(filters.search || filters.country || filters.warehouse || filters.stockStatus);
@@ -589,7 +592,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           onValueChange={(v) => router.push(buildUrl({ country: !v || v === 'all' ? '' : v }), { scroll: false })}
         >
           <SelectTrigger size="sm" className="w-[110px]">
-            <SelectValue placeholder="全部国家" />
+            <SelectValue placeholder="全部国家">{countrySelectLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部国家</SelectItem>
@@ -606,7 +609,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           onValueChange={(v) => router.push(buildUrl({ warehouse: !v || v === 'all' ? '' : v }), { scroll: false })}
         >
           <SelectTrigger size="sm" className="w-[130px]">
-            <SelectValue placeholder="全部仓库" />
+            <SelectValue placeholder="全部仓库">{warehouseSelectLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部仓库</SelectItem>
@@ -623,7 +626,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           onValueChange={(v) => router.push(buildUrl({ stockStatus: !v || v === 'all' ? '' : v }), { scroll: false })}
         >
           <SelectTrigger size="sm" className="w-[110px]">
-            <SelectValue placeholder="全部状态" />
+            <SelectValue placeholder="全部状态">{stockStatusSelectLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {STOCK_STATUSES.map((s) => (
@@ -754,44 +757,44 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                 <TableRow className="bg-gray-50">
                   <TableHead />
                   <TableHead>关注</TableHead>
-                  <TableHead className="relative">
-                    <span>国家</span>
+                  <TableHead className="relative pr-5">
+                    <span className="block truncate">国家</span>
                     <ResizeHandle columnKey="country" label="国家" isActive={activeResizeKey === 'country'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>仓库</span>
+                  <TableHead className="relative pr-5">
+                    <span className="block truncate">仓库</span>
                     <ResizeHandle columnKey="warehouse" label="仓库" isActive={activeResizeKey === 'warehouse'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>产品名称</span>
+                  <TableHead className="relative pr-5">
+                    <span className="block truncate">产品名称</span>
                     <ResizeHandle columnKey="productName" label="产品名称" isActive={activeResizeKey === 'productName'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>SKU</span>
+                  <TableHead className="relative pr-5">
+                    <span className="block truncate">SKU</span>
                     <ResizeHandle columnKey="sku" label="SKU" isActive={activeResizeKey === 'sku'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>当前库存</span>
+                  <TableHead className="relative pr-5 text-right">
+                    <span className="block truncate">当前库存</span>
                     <ResizeHandle columnKey="quantity" label="当前库存" isActive={activeResizeKey === 'quantity'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>在途</span>
+                  <TableHead className="relative pr-5 text-right">
+                    <span className="block truncate">在途</span>
                     <ResizeHandle columnKey="inTransit" label="在途" isActive={activeResizeKey === 'inTransit'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>库存+在途</span>
+                  <TableHead className="relative pr-5 text-right">
+                    <span className="block truncate">库存+在途</span>
                     <ResizeHandle columnKey="total" label="库存+在途" isActive={activeResizeKey === 'total'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>安全库存</span>
+                  <TableHead className="relative pr-5 text-right">
+                    <span className="block truncate">安全库存</span>
                     <ResizeHandle columnKey="safetyStock" label="安全库存" isActive={activeResizeKey === 'safetyStock'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>库存状态</span>
+                  <TableHead className="relative pr-5">
+                    <span className="block truncate">库存状态</span>
                     <ResizeHandle columnKey="status" label="库存状态" isActive={activeResizeKey === 'status'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>同步状态</span>
+                  <TableHead className="relative pr-5">
+                    <span className="block truncate">同步状态</span>
                     <ResizeHandle columnKey="syncStatus" label="同步状态" isActive={activeResizeKey === 'syncStatus'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                 </TableRow>
@@ -825,7 +828,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                         {item.country}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm">{item.warehouseName}</TableCell>
+                    <TableCell className="text-sm overflow-hidden truncate">{item.warehouseName}</TableCell>
                     <TableCell className="text-sm min-w-0">
                       {item.matchStatus === 'matched' ? (
                         <div className="flex flex-col min-w-0">
@@ -856,7 +859,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                           {canBindProduct && (
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId, item.sku); }}
+                              onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId, item.sku, item.variantName ?? undefined); }}
                               className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 hover:border-gray-400 shrink-0 transition-colors"
                             >
                               绑定产品
@@ -940,6 +943,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           open={!!bindTarget}
           variantId={bindTarget.variantId}
           sku={bindTarget.sku}
+          variantName={bindTarget.variantName}
           onOpenChange={(open) => { if (!open) setBindTarget(null); }}
           onSuccess={() => {
             setBindTarget(null);

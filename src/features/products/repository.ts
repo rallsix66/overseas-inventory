@@ -20,6 +20,8 @@ import type {
 import type { PaginatedResult } from '@/types/common';
 
 const PAGE_SIZE = 20;
+const PRODUCT_SEARCH_FETCH_LIMIT = 200;
+const VARIANT_SEARCH_FETCH_LIMIT = 500;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---- 自定义错误 ----
@@ -147,8 +149,8 @@ export const productRepository = {
   /**
    * P6-UX-V2-D: 模糊/分词搜索产品（供绑定 Dialog 使用）
    *
-   * 将输入分词后按 code/name 做多 token ILIKE 搜索，
-   * 同时通过 product_variant.sku 反向查找关联产品。
+   * 在 DIS 标准产品库中搜索：product.code、product.name、product_variant.sku。
+   * 不搜索 BigSeller 原始品名（product_variant.name 为供应商原始数据，非标准变体名称）。
    * 仅返回启用产品（is_active=true）。
    *
    * 搜索逻辑说明：
@@ -156,9 +158,10 @@ export const productRepository = {
    * 2. 按空格、连字符、下划线、斜杠、括号等分词
    * 3. 去重 + 过滤噪声 token
    * 4. 每个 token 对 code/name 做 ILIKE 匹配
-   * 5. 同时在 product_variant.sku 中搜索匹配 token，收集关联 product_id
+   * 5. 同时通过 product_variant.sku 反向查找关联 product_id
    * 6. 合并两个结果集（OR 语义）
    * 7. Special chars 已 escape，防止破坏 .or() 语法
+   * 8. 按匹配质量排序：code 精确 > code 部分 > name > sku
    */
   async search(query: string, pageSize: number = 20): Promise<ProductItem[]> {
     if (!query || !query.trim()) {
@@ -172,63 +175,115 @@ export const productRepository = {
 
     const supabase = await createClient();
 
-    // 收集 SKU 搜索匹配的 product_id
-    const skuMatchedProductIds: string[] = [];
+    // ── 阶段 1：在 product_variant 中搜索（仅 sku）──────────────────
+    // 收集 product_id 并记录匹配层级
+    const rankMap = new Map<string, number>(); // productId → rank (0~4，越高越优先)
+    const variantOrParts: string[] = [];
     for (const token of tokens) {
       const escaped = escapeLike(token);
-      const { data: skuVariants, error: skuError } = await supabase
-        .from('product_variant')
-        .select('product_id')
-        .ilike('sku', `%${escaped}%`)
-        .not('product_id', 'is', null)
-        .limit(50);
+      variantOrParts.push(`sku.ilike.%${escaped}%`);
+    }
 
-      if (!skuError && skuVariants) {
-        for (const v of skuVariants) {
-          if (v.product_id && !skuMatchedProductIds.includes(v.product_id)) {
-            skuMatchedProductIds.push(v.product_id);
-          }
+    if (variantOrParts.length > 0) {
+      const { data: variants, error: varError } = await supabase
+        .from('product_variant')
+        .select('product_id, sku')
+        .or(variantOrParts.join(','))
+        .not('product_id', 'is', null)
+        .limit(VARIANT_SEARCH_FETCH_LIMIT);
+
+      if (varError) {
+        throw new ProductError('搜索产品失败', 'DB_ERROR');
+      }
+
+      for (const v of variants ?? []) {
+        if (!v.product_id) continue;
+        let variantRank = -1;
+        for (const token of tokens) {
+          const t = token.toLowerCase();
+          if (v.sku?.toLowerCase().includes(t)) variantRank = Math.max(variantRank, 1); // SKU 命中 rank=1
         }
+        const existing = rankMap.get(v.product_id) ?? -1;
+        rankMap.set(v.product_id, Math.max(existing, variantRank));
       }
     }
 
-    // 构建 .or() 条件：每个 token 匹配 code OR name
-    const orParts: string[] = [];
+    // ── 阶段 2：在 product 中搜索（code + name）─────────────────────────
+    const productOrParts: string[] = [];
     for (const token of tokens) {
       const escaped = escapeLike(token);
-      orParts.push(`code.ilike.%${escaped}%,name.ilike.%${escaped}%`);
+      productOrParts.push(`code.ilike.%${escaped}%,name.ilike.%${escaped}%`);
     }
 
-    let query_builder = supabase.from('product').select('*', { count: 'exact' });
+    const variantProductIds = Array.from(rankMap.keys());
 
-    // 构建复合条件
-    if (orParts.length > 0 && skuMatchedProductIds.length > 0) {
-      // 同时有 token 匹配和 SKU 匹配 → OR 组合
-      const orFilters = orParts.join(',');
-      query_builder = query_builder.or(`${orFilters},id.in.(${skuMatchedProductIds.join(',')})`);
-    } else if (orParts.length > 0) {
-      query_builder = query_builder.or(orParts.join(','));
-    } else if (skuMatchedProductIds.length > 0) {
-      query_builder = query_builder.in('id', skuMatchedProductIds);
-    }
+    const productsById = new Map<string, ProductRow>();
 
-    // 仅启用产品
-    query_builder = query_builder.eq('is_active', true);
-
-    const { data: products, error } = await query_builder
+    const { data: directProducts, error } = await supabase
+      .from('product')
+      .select('*')
+      .or(productOrParts.join(','))
+      .eq('is_active', true)
       .order('created_at', { ascending: false })
-      .limit(pageSize);
+      .limit(PRODUCT_SEARCH_FETCH_LIMIT);
 
     if (error) {
       throw new ProductError('搜索产品失败', 'DB_ERROR');
     }
 
-    if (!products || products.length === 0) {
+    for (const product of directProducts ?? []) {
+      productsById.set(product.id, product);
+    }
+
+    if (variantProductIds.length > 0) {
+      const { data: variantProducts, error: variantProductsError } = await supabase
+        .from('product')
+        .select('*')
+        .in('id', variantProductIds)
+        .eq('is_active', true);
+
+      if (variantProductsError) {
+        throw new ProductError('搜索产品失败', 'DB_ERROR');
+      }
+
+      for (const product of variantProducts ?? []) {
+        productsById.set(product.id, product);
+      }
+    }
+
+    const products = Array.from(productsById.values());
+    if (products.length === 0) {
       return [];
     }
 
-    // 批量获取 SKU 计数
-    const productIds = products.map((p) => p.id);
+    // ── 阶段 3：计算排名 — code 命中权重高于 variant 命中 ──────────────
+    for (const p of products) {
+      let rank = rankMap.get(p.id) ?? -1;
+      for (const token of tokens) {
+        const t = token.toLowerCase();
+        if (p.code?.toLowerCase() === t) {
+          rank = Math.max(rank, 4); // code 精确匹配
+        } else if (p.code?.toLowerCase().includes(t)) {
+          rank = Math.max(rank, 3); // code 部分匹配
+        }
+        if (p.name?.toLowerCase().includes(t)) {
+          rank = Math.max(rank, 2); // product.name 命中
+        }
+      }
+      rankMap.set(p.id, rank);
+    }
+
+    // ── 阶段 4：排序 — rank 降序（高优先生），同 rank 按 created_at 降序 ──
+    products.sort((a, b) => {
+      const rankDiff = (rankMap.get(b.id) ?? -1) - (rankMap.get(a.id) ?? -1);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    const ranked = products.slice(0, pageSize);
+
+    // ── 阶段 5：批量获取 SKU 计数 ─────────────────────────────────────────
+    const productIds = ranked.map((p) => p.id);
     const { data: variantCounts, error: vcError } = await supabase
       .from('product_variant')
       .select('product_id')
@@ -245,7 +300,7 @@ export const productRepository = {
       countMap.set(v.product_id, (countMap.get(v.product_id) ?? 0) + 1);
     });
 
-    return products.map((p) => ({ ...p, skuCount: countMap.get(p.id) ?? 0 }));
+    return ranked.map((p) => ({ ...p, skuCount: countMap.get(p.id) ?? 0 }));
   },
 
   /** 根据 code 查询产品 */

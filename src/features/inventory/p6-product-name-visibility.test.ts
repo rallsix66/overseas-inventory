@@ -21,7 +21,7 @@ describe('P6-PRODUCT-NAME: 表头列顺序', () => {
     expect(heads).not.toBeNull();
     const labels = heads!.map((h) => {
       // 优先提取 <span> 内文本（新格式），回退到直接文本（旧格式/无 resize handle 的列）
-      const spanMatch = h.match(/<span>([^<]*)<\/span>/);
+      const spanMatch = h.match(/<span[^>]*>([^<]*)<\/span>/);
       if (spanMatch) return spanMatch[1].trim();
       const match = h.match(/<TableHead[^>]*>([\s\S]*?)<\/TableHead>/);
       return match ? match[1].trim() : '';
@@ -51,11 +51,11 @@ describe('P6-PRODUCT-NAME: 表头列顺序', () => {
   });
 
   it('产品名称列头存在（位于 <span> 内）', () => {
-    expect(contentSrc).toMatch(/<TableHead[^>]*>[\s\S]*?<span>产品名称<\/span>/);
+    expect(contentSrc).toMatch(/<TableHead[^>]*>[\s\S]*?<span[^>]*>产品名称<\/span>/);
   });
 
   it('SKU 列头存在且在 <TableHead> 中出现', () => {
-    expect(contentSrc).toMatch(/<TableHead[^>]*>[\s\S]*?<span>SKU<\/span>/);
+    expect(contentSrc).toMatch(/<TableHead[^>]*>[\s\S]*?<span[^>]*>SKU<\/span>/);
   });
 });
 

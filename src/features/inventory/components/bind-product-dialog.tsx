@@ -6,7 +6,7 @@
 // 绑定后 variant.match_status → 'matched'，product_id → 目标产品。
 // 保持 Product → ProductVariant → Inventory 三层模型。
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -34,11 +34,13 @@ interface Props {
   open: boolean;
   variantId: string;
   sku: string;
+  /** BigSeller 原始品名，用于打开弹窗时自动搜索推荐候选产品 */
+  variantName?: string;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
 
-export function BindProductDialog({ open, variantId, sku, onOpenChange, onSuccess }: Props) {
+export function BindProductDialog({ open, variantId, sku, variantName, onOpenChange, onSuccess }: Props) {
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -80,6 +82,20 @@ export function BindProductDialog({ open, variantId, sku, onOpenChange, onSucces
       setSearching(false);
     }
   }, []);
+
+  /** 弹窗打开时，用当前行 BigSeller 原始品名预填搜索关键词，在 DIS 标准产品库中搜索候选 */
+  const autoSearchedRef = useRef(false);
+
+  useEffect(() => {
+    if (open && variantName && !autoSearchedRef.current) {
+      autoSearchedRef.current = true;
+      setQuery(variantName);
+      handleSearch(variantName);
+    }
+    if (!open) {
+      autoSearchedRef.current = false;
+    }
+  }, [open, variantName, handleSearch]);
 
   /** 确认绑定 */
   async function handleConfirm() {
@@ -137,7 +153,7 @@ export function BindProductDialog({ open, variantId, sku, onOpenChange, onSucces
         <div className="space-y-3">
           {/* 搜索框 */}
           <Input
-            placeholder="搜索产品编码或名称…"
+            placeholder="搜索标准产品名称、编码或 SKU…"
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
             autoFocus
@@ -159,14 +175,14 @@ export function BindProductDialog({ open, variantId, sku, onOpenChange, onSucces
             {!searching && !error && hasSearched && products.length === 0 && (
               <div className="py-8 text-center text-sm text-muted-foreground">
                 <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                未找到匹配的产品
+                未找到匹配的标准产品
               </div>
             )}
 
             {!searching && products.length > 0 && (
               <Command>
                 <CommandList>
-                  <CommandEmpty>未找到匹配的产品</CommandEmpty>
+                  <CommandEmpty>未找到匹配的标准产品</CommandEmpty>
                   <CommandGroup heading="标准产品">
                     {products.map((p) => (
                       <CommandItem

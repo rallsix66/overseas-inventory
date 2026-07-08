@@ -398,7 +398,16 @@ git diff --check      # 无 trailing whitespace / 冲突标记
 - **00035** 解决搜索准确性：连续子串 + 分词 AND 语义
 - **00036** 通过 pg_trgm GIN trigram index 优化 ILIKE 模糊搜索性能（product_variant.sku/name + product.name/code）
 - 不修改 00034/00035，不改变 RPC 函数签名/搜索逻辑/RLS/权限模型
+- **注意**：00036 的 product_variant.name 索引不用于绑定产品搜索（绑定搜索仅使用 code/name/sku）。name 索引仍服务于 RPC 00035 的库存列表 p_search
 - **未来**：如果数据量继续增大，再考虑 dedicated search_vector / materialized search_text，不在本轮实现
+
+### 绑定搜索语义收口审查（2026-07-08）
+
+- **搜索字段**：绑定产品搜索最终确认为 product.code / product.name / product_variant.sku（三个字段）
+- **移除字段**：product_variant.name 已从绑定搜索中移除（BigSeller 原始品名非标准变体名称）
+- **variantName**：仅作为 query seed，打开弹窗时用当前行 BigSeller 原始品名预填搜索关键词，在 DIS 标准产品库中搜索候选
+- **UI 文案**：搜索框 placeholder「搜索标准产品名称、编码或 SKU」；空结果「未找到匹配的标准产品」
+- **后续**：如需 BigSeller 品名提升召回，应独立实现 alias / keyword mapping / search_document
 
 ### 列宽拖拽修复
 
@@ -406,3 +415,10 @@ git diff --check      # 无 trailing whitespace / 冲突标记
 - ResizeHandle 组件：可见分隔线（w-6 命中区 + w-px 竖线，默认灰 hover/drag 蓝，title/aria-label）
 - activeResizeKey 追踪拖拽中列，高亮对应 divider
 - 未匹配分支保持 flex w-full min-w-0 + badge/button shrink-0
+
+### 列宽防重叠修复（2026-07-08）
+
+- 仓库列 TableCell：`overflow-hidden truncate`（根因：shadcn TableCell 无 overflow 包容，长仓库名溢出到产品名列）
+- COL_MIN.warehouse：110 → 140；COL_MIN.productName：260 → 280
+- localStorage key 版本：`overseasInventoryColumnWidths:v2`（旧 key 坏列宽不污染）
+- 列结构核对：colgroup/TableHead/TableRow 均为 12 列，展开行 colSpan=12

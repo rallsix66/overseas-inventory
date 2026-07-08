@@ -113,14 +113,10 @@ export async function toggleProductActive(
 /**
  * P6-UX-V2-D: 模糊/分词搜索产品列表（供绑定产品 Dialog 使用）
  *
- * 任何已登录用户均可搜索产品列表；绑定操作的权限校验在 bindOverseasVariant 中完成。
- * 仅返回启用状态的产品，避免绑定到已停用产品。
+ * 任何已登录用户均可搜索标准产品库；绑定操作的权限校验在 bindOverseasVariant 中完成。
+ * 仅返回启用状态的产品（is_active=true），避免绑定到已停用产品。
  *
- * 搜索增强（P6-UX-V2-D 返工）：
- *   - 分词：按空格/连字符/下划线/斜杠/括号等拆分 token
- *   - 多 token 命中（code + name ILIKE）
- *   - 通过 product_variant.sku 反向查找关联 Product
- *   - 特殊字符转义，不破坏 Supabase .or() 语法
+ * 搜索范围：product.code、product.name、product_variant.sku（不搜索 BigSeller 原始品名）。
  */
 export async function searchProducts(
   query: string,

@@ -42,12 +42,12 @@ describe('P6-UX-V2-D: 未匹配行绑定入口', () => {
     expect(contentSrc).toMatch(/stopPropagation\(\)/);
   });
 
-  it('"绑定产品"按钮传递 variantId 和 sku 给 handleBindProduct', () => {
-    expect(contentSrc).toMatch(/handleBindProduct\(item\.variantId, item\.sku\)/);
+  it('"绑定产品"按钮传递 variantId、sku、variantName 给 handleBindProduct', () => {
+    expect(contentSrc).toMatch(/handleBindProduct\(item\.variantId, item\.sku, item\.variantName \?\? undefined\)/);
   });
 
-  it('handleBindProduct 签名接受 (variantId: string, sku: string)', () => {
-    expect(contentSrc).toMatch(/function handleBindProduct\(variantId: string, sku: string\)/);
+  it('handleBindProduct 签名接受 (variantId: string, sku: string, variantName?: string)', () => {
+    expect(contentSrc).toMatch(/function handleBindProduct\(variantId: string, sku: string, variantName\?: string\)/);
   });
 
   it('handleBindProduct 设置 bindTarget state 打开 Dialog', () => {
@@ -103,10 +103,11 @@ describe('P6-UX-V2-D: 产品搜索 UI', () => {
     expect(dialogSrc).toMatch(/'use client'/);
   });
 
-  it('BindProductDialog 接受 open / variantId / sku / onOpenChange / onSuccess props', () => {
+  it('BindProductDialog 接受 open / variantId / sku / variantName / onOpenChange / onSuccess props', () => {
     expect(dialogSrc).toMatch(/open: boolean/);
     expect(dialogSrc).toMatch(/variantId: string/);
     expect(dialogSrc).toMatch(/sku: string/);
+    expect(dialogSrc).toMatch(/variantName\?: string/);
     expect(dialogSrc).toMatch(/onOpenChange: \(open: boolean\) => void/);
     expect(dialogSrc).toMatch(/onSuccess: \(\) => void/);
   });
@@ -133,7 +134,7 @@ describe('P6-UX-V2-D: 产品搜索 UI', () => {
   });
 
   it('BindProductDialog 处理搜索空结果状态', () => {
-    expect(dialogSrc).toMatch(/未找到匹配的产品/);
+    expect(dialogSrc).toMatch(/未找到匹配的标准产品/);
   });
 
   it('BindProductDialog 处理搜索中 loading 状态', () => {
@@ -147,7 +148,7 @@ describe('P6-UX-V2-D: 产品搜索 UI', () => {
   });
 
   it('BindProductDialog 有搜索输入框', () => {
-    expect(dialogSrc).toMatch(/搜索产品编码或名称/);
+    expect(dialogSrc).toMatch(/搜索标准产品名称、编码或 SKU/);
     expect(dialogSrc).toMatch(/handleSearch/);
   });
 });
@@ -607,13 +608,14 @@ describe('P6-UX-V2-D: searchProducts 分词/模糊搜索', () => {
     expect(fnBody).toMatch(/name\.ilike/);
   });
 
-  it('productRepository.search 通过 product_variant.sku 反向查找 Product', () => {
+  it('productRepository.search 通过 product_variant.sku 和 name 反向查找 Product', () => {
     const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
     const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
     const fnBody = productRepoSrc.slice(fnStart, fnEnd);
     expect(fnBody).toMatch(/product_variant/);
-    expect(fnBody).toMatch(/sku/);
-    expect(fnBody).toMatch(/skuMatchedProductIds/);
+    expect(fnBody).toMatch(/sku\.ilike/);
+    expect(fnBody).toMatch(/name\.ilike/);
+    expect(fnBody).toMatch(/variantProductIds/);
   });
 
   it('escapeLike 转义 %、_、, 防止破坏 .or() 语法', () => {
@@ -629,11 +631,13 @@ describe('P6-UX-V2-D: searchProducts 分词/模糊搜索', () => {
     expect(fnBody).toMatch(/is_active.*true/);
   });
 
-  it('productRepository.search limit 使用 pageSize 参数', () => {
+  it('productRepository.search 使用固定 fetch limit，排序后再截断到 pageSize', () => {
     const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
     const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
     const fnBody = productRepoSrc.slice(fnStart, fnEnd);
-    expect(fnBody).toMatch(/\.limit\(pageSize\)/);
+    expect(productRepoSrc).toMatch(/PRODUCT_SEARCH_FETCH_LIMIT/);
+    expect(productRepoSrc).toMatch(/VARIANT_SEARCH_FETCH_LIMIT/);
+    expect(fnBody).toMatch(/\.slice\(0, pageSize\)/);
   });
 
   it('searchProducts 不绕过 Repository Pattern（通过 productRepository.search）', () => {
@@ -897,20 +901,24 @@ describe('P6-UX-V2-D: 列宽拖拽伸缩', () => {
     expect(contentSrc).toMatch(/key in COL_DEFAULTS/);
   });
 
-  it('产品名称默认宽度为 320px', () => {
-    expect(contentSrc).toMatch(/productName:\s*320/);
+  it('产品名称默认宽度为 420px', () => {
+    expect(contentSrc).toMatch(/productName:\s*420/);
   });
 
-  it('产品名称最小宽度为 220px，最大宽度为 640px', () => {
-    const colMinMatch = contentSrc.match(/productName:\s*220/);
+  it('产品名称最小宽度为 280px，最大宽度为 720px', () => {
+    const colMinMatch = contentSrc.match(/productName:\s*280/);
     expect(colMinMatch).not.toBeNull();
-    const colMaxMatch = contentSrc.match(/productName:\s*640/);
+    const colMaxMatch = contentSrc.match(/productName:\s*720/);
     expect(colMaxMatch).not.toBeNull();
   });
 
   it('产品名称单元格使用 min-w-0 配合内部 flex truncate', () => {
     // TableCell 使用 min-w-0，内部 flex/truncate/shrink-0 正常生效
     expect(contentSrc).toMatch(/min-w-0/);
+  });
+
+  it('仓库单元格使用 overflow-hidden truncate 防止文字溢出覆盖产品名称列', () => {
+    expect(contentSrc).toMatch(/overflow-hidden\s+truncate.*warehouseName/);
   });
 
   it('未匹配分支"绑定产品"按钮使用 shrink-0（不会被文本覆盖）', () => {
@@ -986,8 +994,8 @@ describe('P6-UX-V2-D: 列宽拖拽伸缩', () => {
     expect(contentSrc).toMatch(/Object\.values\(columnWidths\)\.reduce/);
   });
 
-  it('ResizeHandle 组件渲染 visible divider（w-px bg-gray-200）', () => {
-    expect(contentSrc).toMatch(/w-px bg-gray-200/);
+  it('ResizeHandle 组件渲染更轻的 visible divider（w-px bg-gray-300/70）', () => {
+    expect(contentSrc).toMatch(/w-px bg-gray-300\/70/);
   });
 
   it('ResizeHandle 存在 title="拖拽调整列宽，双击恢复默认"', () => {
@@ -1022,5 +1030,159 @@ describe('P6-UX-V2-D: 列宽拖拽伸缩', () => {
     const mouseUpMatch = contentSrc.match(/const onMouseUp = \(\) => \{[\s\S]*?\};/);
     expect(mouseUpMatch).not.toBeNull();
     expect(mouseUpMatch![0]).toMatch(/setActiveResizeKey\(null\)/);
+  });
+});
+
+// ─── 14. productRepository.search variant.sku 反向搜索 ──────────
+
+describe('P6-UX-V2-D: productRepository.search 通过 product_variant.sku 反向搜索', () => {
+  it('productRepository.search 在 product_variant 查询中仅搜索 sku 字段（不搜索 BigSeller 原始品名 name）', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    // variantOrParts 仅构建 sku.ilike，不包含 name.ilike
+    const variantSectionStart = fnBody.indexOf('variantOrParts');
+    const variantSectionEnd = fnBody.indexOf('if (variantOrParts.length', variantSectionStart);
+    const variantSection = fnBody.slice(variantSectionStart, variantSectionEnd);
+    expect(variantSection).toMatch(/sku\.ilike/);
+    expect(variantSection).not.toMatch(/name\.ilike/);
+  });
+
+  it('productRepository.search 的 variant 查询仅 select product_id 和 sku', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/select\('product_id, sku'\)/);
+  });
+
+  it('productRepository.search 按 variant.sku 命中时分配 rank=1', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/sku.*rank.*1/);
+  });
+});
+
+// ─── 15. productRepository.search 结果排序 ──────────────────────────
+
+describe('P6-UX-V2-D: productRepository.search 结果按匹配质量排序', () => {
+  it('productRepository.search 包含 rankMap 用于追踪匹配层级', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/rankMap/);
+  });
+
+  it('code 精确命中 rank=4（最高优先级）', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/code 精确匹配/);
+    expect(fnBody).toMatch(/Math\.max\(rank, 4\)/);
+  });
+
+  it('code 部分命中 rank=3', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/code 部分匹配/);
+    expect(fnBody).toMatch(/Math\.max\(rank, 3\)/);
+  });
+
+  it('product.name 命中 rank=2', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/product\.name 命中/);
+    expect(fnBody).toMatch(/Math\.max\(rank, 2\)/);
+  });
+
+  it('结果按 rank 降序排序（高优先在前）', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/\.sort\(/);
+    expect(fnBody).toMatch(/rankDiff/);
+  });
+
+  it('同 rank 按 created_at 降序排序', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/created_at/);
+  });
+
+  it('排序后截断到 pageSize', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/\.slice\(0, pageSize\)/);
+  });
+
+  it('product 查询使用固定上限，多取后排序截断，避免 pageSize 过早截断', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/\.limit\(PRODUCT_SEARCH_FETCH_LIMIT\)/);
+    expect(fnBody).toMatch(/\.slice\(0, pageSize\)/);
+  });
+
+  it('variant 搜索合并所有 token 到一次 .or() 查询', () => {
+    const fnStart = productRepoSrc.indexOf('async search(query: string, pageSize');
+    const fnEnd = productRepoSrc.indexOf('\n  },', fnStart);
+    const fnBody = productRepoSrc.slice(fnStart, fnEnd);
+    // 不应再对每个 token 分别查询（无 .ilike('sku') 在循环中）
+    expect(fnBody).toMatch(/variantOrParts\.join/);
+  });
+});
+
+// ─── 16. BindProductDialog 打开时自动搜索 ──────────────────────────
+
+describe('P6-UX-V2-D: BindProductDialog 自动搜索推荐候选', () => {
+  it('BindProductDialog 使用 useEffect 在 open && variantName 时自动搜索', () => {
+    const effectIdx = dialogSrc.indexOf('useEffect((');
+    expect(effectIdx).toBeGreaterThan(-1);
+    const afterEffect = dialogSrc.slice(effectIdx, effectIdx + 400);
+    expect(afterEffect).toMatch(/open && variantName && !autoSearchedRef\.current/);
+    expect(afterEffect).toMatch(/autoSearchedRef\.current = true/);
+    expect(afterEffect).toMatch(/handleSearch\(variantName\)/);
+  });
+
+  it('autoSearchedRef 在 dialog 关闭时重置', () => {
+    const effectIdx = dialogSrc.indexOf('useEffect((');
+    expect(effectIdx).toBeGreaterThan(-1);
+    const afterEffect = dialogSrc.slice(effectIdx, effectIdx + 500);
+    expect(afterEffect).toMatch(/!open/);
+    expect(afterEffect).toMatch(/autoSearchedRef\.current = false/);
+  });
+
+  it('BindProductDialog 定义 autoSearchedRef = useRef(false)', () => {
+    expect(dialogSrc).toMatch(/autoSearchedRef = useRef\(false\)/);
+  });
+
+  it('BindProductDialog 导入 useEffect 和 useRef', () => {
+    expect(dialogSrc).toMatch(/useEffect/);
+    expect(dialogSrc).toMatch(/useRef/);
+  });
+});
+
+// ─── 17. overseas-page-content 传递 variantName ───────────────────
+
+describe('P6-UX-V2-D: overseas-page-content 传递 variantName 给 Dialog', () => {
+  it('bindTarget state 类型包含 variantName 字段', () => {
+    expect(contentSrc).toMatch(/variantName\?: string/);
+  });
+
+  it('handleBindProduct 设置 variantName 到 bindTarget', () => {
+    const fnStart = contentSrc.indexOf('function handleBindProduct');
+    const fnEnd = contentSrc.indexOf('\n  }', fnStart);
+    const fnBody = contentSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/variantName/);
+  });
+
+  it('BindProductDialog JSX 传递 variantName prop', () => {
+    const bindTargetIdx = contentSrc.indexOf('bindTarget &&');
+    const after = contentSrc.slice(bindTargetIdx, bindTargetIdx + 600);
+    expect(after).toMatch(/variantName=\{bindTarget\.variantName\}/);
   });
 });
