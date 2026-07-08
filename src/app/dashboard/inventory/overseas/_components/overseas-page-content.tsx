@@ -3,7 +3,7 @@
 // 海外库存页 — 客户端交互层
 // 处理筛选、表格渲染和分页导航
 // 查询错误由 error.tsx 边界处理，本组件不渲染错误状态
-import { useOptimistic, startTransition, useState, useRef, useEffect, Fragment } from 'react';
+import { useOptimistic, startTransition, useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Package, AlertTriangle, Clock, RefreshCw, Star, Truck, ChevronDown, ChevronRight, Download, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -225,6 +225,39 @@ const COL_MAX: Record<string, number> = {
   total: 150, safetyStock: 120, status: 150, syncStatus: 200,
 };
 
+/** 可见列宽拖拽分隔线 — 模块级组件，不在 render 内创建 */
+function ResizeHandle({
+  columnKey,
+  label,
+  isActive,
+  onResizeStart,
+  onReset,
+}: {
+  columnKey: string;
+  label: string;
+  isActive: boolean;
+  onResizeStart: (key: string, e: React.MouseEvent) => void;
+  onReset: (key: string) => void;
+}) {
+  return (
+    <div
+      className="absolute right-0 top-0 bottom-0 w-6 z-10 cursor-col-resize flex items-center justify-center group"
+      onMouseDown={(e) => onResizeStart(columnKey, e)}
+      onDoubleClick={(e) => { e.stopPropagation(); onReset(columnKey); }}
+      title="拖拽调整列宽，双击恢复默认"
+      aria-label={`调整${label}列宽`}
+    >
+      <div
+        className={`h-full transition-colors ${
+          isActive
+            ? 'w-0.5 bg-blue-500'
+            : 'w-px bg-gray-200 group-hover:w-0.5 group-hover:bg-blue-400'
+        }`}
+      />
+    </div>
+  );
+}
+
 export function OverseasPageContent({ stats, warehouses, result, syncStatus, filters, canBindProduct }: Props) {
   const router = useRouter();
   const { data, total, page, pageSize } = result;
@@ -242,6 +275,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
 
   // 初始化不读 localStorage，避免 SSR hydration mismatch
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({ ...COL_DEFAULTS });
+  const [activeResizeKey, setActiveResizeKey] = useState<string | null>(null);
 
   const resizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const colWidthsRef = useRef(columnWidths);
@@ -263,6 +297,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
     };
     const onMouseUp = () => {
       resizeRef.current = null;
+      setActiveResizeKey(null);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -298,6 +333,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
   function handleResizeStart(key: string, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    setActiveResizeKey(key);
     resizeRef.current = {
       key,
       startX: e.clientX,
@@ -314,6 +350,12 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
       return next;
     });
   }
+
+  // 表格固定布局总宽度
+  const totalTableWidth = useMemo(
+    () => Object.values(columnWidths).reduce((sum, w) => sum + w, 0),
+    [columnWidths],
+  );
 
   /** P6-UI-CLARITY: 统计卡片点击 → 设置对应筛选 */
   function handleStatCardClick(type: 'all' | 'low') {
@@ -692,7 +734,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
       {data.length > 0 && (
         <>
           <div className="rounded-md border overflow-x-auto">
-            <Table>
+            <Table style={{ tableLayout: 'fixed', width: totalTableWidth, minWidth: totalTableWidth }}>
               {/* P6-UX-V2-D: colgroup 控制列宽，支持拖拽伸缩 */}
               <colgroup>
                 <col style={{ width: columnWidths.expand }} />
@@ -714,83 +756,43 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                   <TableHead>关注</TableHead>
                   <TableHead className="relative">
                     <span>国家</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('country', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('country'); }}
-                    />
+                    <ResizeHandle columnKey="country" label="国家" isActive={activeResizeKey === 'country'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative">
                     <span>仓库</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('warehouse', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('warehouse'); }}
-                    />
+                    <ResizeHandle columnKey="warehouse" label="仓库" isActive={activeResizeKey === 'warehouse'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative">
                     <span>产品名称</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('productName', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('productName'); }}
-                    />
+                    <ResizeHandle columnKey="productName" label="产品名称" isActive={activeResizeKey === 'productName'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative">
                     <span>SKU</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('sku', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('sku'); }}
-                    />
+                    <ResizeHandle columnKey="sku" label="SKU" isActive={activeResizeKey === 'sku'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative text-right">
                     <span>当前库存</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('quantity', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('quantity'); }}
-                    />
+                    <ResizeHandle columnKey="quantity" label="当前库存" isActive={activeResizeKey === 'quantity'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative text-right">
                     <span>在途</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('inTransit', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('inTransit'); }}
-                    />
+                    <ResizeHandle columnKey="inTransit" label="在途" isActive={activeResizeKey === 'inTransit'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative text-right">
                     <span>库存+在途</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('total', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('total'); }}
-                    />
+                    <ResizeHandle columnKey="total" label="库存+在途" isActive={activeResizeKey === 'total'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative text-right">
                     <span>安全库存</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('safetyStock', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('safetyStock'); }}
-                    />
+                    <ResizeHandle columnKey="safetyStock" label="安全库存" isActive={activeResizeKey === 'safetyStock'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative">
                     <span>库存状态</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('status', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('status'); }}
-                    />
+                    <ResizeHandle columnKey="status" label="库存状态" isActive={activeResizeKey === 'status'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                   <TableHead className="relative">
                     <span>同步状态</span>
-                    <div
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-200 transition-colors rounded"
-                      onMouseDown={(e) => handleResizeStart('syncStatus', e)}
-                      onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth('syncStatus'); }}
-                    />
+                    <ResizeHandle columnKey="syncStatus" label="同步状态" isActive={activeResizeKey === 'syncStatus'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                 </TableRow>
               </TableHeader>

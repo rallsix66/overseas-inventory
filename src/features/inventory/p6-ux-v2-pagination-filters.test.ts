@@ -491,3 +491,96 @@ describe('P6-UX-V2 B: 统计卡片真实联动列表', () => {
     expect(afterTransit).not.toMatch(/buildUrl/);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// P6-UX-V2: Migration 00036 — pg_trgm 搜索性能索引
+// ────────────────────────────────────────────────────────────────────────────
+
+const MIGRATIONS_DIR = join(ROOT, 'supabase', 'migrations');
+
+function readMigration(filename: string) {
+  return readFileSync(join(MIGRATIONS_DIR, filename), 'utf-8');
+}
+
+const mig36Src = readMigration('00036_pg_trgm_search_indexes.sql');
+const mig34Src = readMigration('00034_add_variant_name_to_rpcs.sql');
+const mig35Src = readMigration('00035_tokenized_overseas_inventory_search.sql');
+
+describe('P6-UX-V2: Migration 00036 pg_trgm 索引', () => {
+  it('00036 启用 pg_trgm 扩展', () => {
+    expect(mig36Src).toMatch(/CREATE EXTENSION IF NOT EXISTS pg_trgm/);
+  });
+
+  it('00036 为 product_variant.sku 建 trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_variant_sku_trgm/);
+    expect(mig36Src).toMatch(/USING gin \(sku gin_trgm_ops\)/);
+  });
+
+  it('00036 为 product_variant.name 建 trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_variant_name_trgm/);
+    expect(mig36Src).toMatch(/USING gin \(name gin_trgm_ops\)/);
+  });
+
+  it('00036 为 product.name 建 trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_product_name_trgm/);
+    expect(mig36Src).toMatch(/USING gin \(name gin_trgm_ops\)/);
+  });
+
+  it('00036 为 product.code 建 trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_product_code_trgm/);
+    expect(mig36Src).toMatch(/USING gin \(code gin_trgm_ops\)/);
+  });
+
+  // ── 路径 B：expression index 覆盖 lower(COALESCE(col, '')) LIKE 分词路径 ──
+
+  it('00036 为 lower(COALESCE(v.sku, \'\')) 建 expression trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_variant_sku_lower_trgm/);
+    expect(mig36Src).toMatch(/lower\(COALESCE\(sku/);
+    expect(mig36Src).toMatch(/gin_trgm_ops\)/);
+  });
+
+  it('00036 为 lower(COALESCE(v.name, \'\')) 建 expression trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_variant_name_lower_trgm/);
+    expect(mig36Src).toMatch(/lower\(COALESCE\(name/);
+  });
+
+  it('00036 为 lower(COALESCE(p.name, \'\')) 建 expression trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_product_name_lower_trgm/);
+    expect(mig36Src).toMatch(/lower\(COALESCE\(name/);
+  });
+
+  it('00036 为 lower(COALESCE(p.code, \'\')) 建 expression trigram 索引', () => {
+    expect(mig36Src).toMatch(/CREATE INDEX IF NOT EXISTS idx_product_code_lower_trgm/);
+    expect(mig36Src).toMatch(/lower\(COALESCE\(code/);
+  });
+
+  it('00036 注释说明路径 A（ILIKE bare column）与路径 B（lower-coalesce LIKE）', () => {
+    expect(mig36Src).toMatch(/路径 A/);
+    expect(mig36Src).toMatch(/路径 B/);
+    expect(mig36Src).toMatch(/lower\(COALESCE/);
+  });
+
+  it('00036 不使用 CONCURRENTLY（Supabase Migration 在事务内执行）', () => {
+    // 仅检查 SQL 语句本身，不检查注释中的说明文字
+    const sqlLines = mig36Src.split('\n').filter((l) => !l.trim().startsWith('--'));
+    const sqlBody = sqlLines.join('\n');
+    expect(sqlBody).not.toMatch(/CONCURRENTLY/);
+  });
+
+  it('00036 包含搜索优化设计决策注释', () => {
+    expect(mig36Src).toMatch(/00035.*搜索准确/);
+    expect(mig36Src).toMatch(/00036.*trigram.*优化.*模糊搜索性能/);
+    expect(mig36Src).toMatch(/search_vector/);
+  });
+
+  it('00034 未被修改（字段语义仍然存在）', () => {
+    expect(mig34Src).toMatch(/variant_name/);
+    expect(mig34Src).toMatch(/BigSeller 原始品名/);
+  });
+
+  it('00035 未被修改（分词搜索仍然存在）', () => {
+    expect(mig35Src).toMatch(/token/);
+    expect(mig35Src).toMatch(/regexp_split_to_array/);
+    expect(mig35Src).toMatch(/NOT EXISTS/);
+  });
+});

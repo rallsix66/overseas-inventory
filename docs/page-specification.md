@@ -113,7 +113,7 @@
 | 操作 | 触发条件 | 权限 |
 |---|---|---|
 | 点击缺货行 | 任意 | 跳转 `/inventory/overseas` 对应筛选 |
-| 点击在途行 | 任意 | 跳转 `/shipments/[id]` |
+| 点击在途行 | 任意 | 跳转 `/dashboard/shipments/[id]` |
 | 查看全部 SKU | 点击按钮 | 展开缺货列表为全量 |
 
 #### 页面状态
@@ -266,8 +266,16 @@
 | **路由** | `/dashboard/variants` |
 | **开发阶段** | Phase 1 |
 | **权限** | admin 全部操作；operator 只读 |
-| **数据来源** | `product_variant`、`product` |
-| **页面目标** | 查看所有国家 SKU 的匹配状态，支持按产品和状态筛选 |
+| **数据来源** | `product_variant`、`product`、`user_variant_preference` |
+| **页面目标** | 管理各国家 ProductVariant，负责绑定/解除绑定内部 Product、SKU 归档与恢复 |
+
+#### 业务定位
+
+- 管理各国家 ProductVariant。
+- 展示国家 SKU、来源品名、所属国家和匹配状态。
+- 负责绑定/解除绑定内部 Product。
+- 负责 SKU 归档与恢复。
+- **归档语义**：归档基于 `user_variant_preference` 表，为当前用户个人偏好。归档操作不影响其他用户、不影响库存同步、不修改底层 SKU 数据。同一 SKU 可被用户 A 归档而用户 B 正常查看。
 
 #### 页面组件
 
@@ -314,7 +322,15 @@
 | **开发阶段** | Phase 1 |
 | **权限** | admin 全部操作；operator 可查看但不可操作 |
 | **数据来源** | `product_variant`(match_status IN ('unmatched', 'pending'))、`product` |
-| **页面目标** | 管理员集中处理未匹配和待确认的 SKU |
+| **页面目标** | 集中处理尚未匹配内部 Product 的国家 SKU |
+
+#### 业务定位
+
+- 集中处理尚未匹配内部 Product 的国家 SKU。
+- 未来外部供应商（如百世）返回但无法自动匹配的 SKU 也进入该流程。
+- 人工可以选择已有 Product/ProductVariant；确实不存在时再创建对应国家 ProductVariant。
+- 外部 SKU 映射键至少区分：`provider + country + external_sku`。
+- 人工匹配完成后，相同供应商、国家和外部 SKU 可以复用已确认的映射。
 
 #### 页面组件
 
@@ -456,8 +472,16 @@
 | **路由** | `/dashboard/inventory/overseas` |
 | **开发阶段** | Phase 2 |
 | **权限** | admin、operator |
-| **数据来源** | `inventory` + `product_variant` + `product` + `warehouse`(type='overseas') |
-| **页面目标** | 查看 5 个海外仓库存，按国家分组展示 |
+| **数据来源** | `inventory` + `product_variant` + `product` + `warehouse`(type='overseas') + `shipment_item`（在途数量汇总） |
+| **页面目标** | 运营日常使用的核心工作台，查看海外仓库存与在途状态 |
+
+#### 页面定位
+
+- 海外库存为运营日常核心工作台。
+- 保留关注星标功能。
+- 归档/恢复按钮统一在 SKU 管理页处理，本页面不放。
+- 默认隐藏当前用户已归档的 SKU（`user_variant_preference` 表，按用户隔离）。
+- 不显示"预计库存"（当前库存和在途数量分开显示，不做合并预估）。
 
 #### 页面组件
 
@@ -465,21 +489,71 @@
 - 按国家分组的库存表格（每个国家一个区块）
 - 分页器
 
-#### 表格字段
+#### 表格字段（P6-UX-V2 已实现）
 
-与 `/inventory` 相同，数据限定 `warehouse.type = 'overseas'`，按 `warehouse.country` 分组，每个分组有独立标题行。统计卡片显示该国家低库存数。
+| 字段 | 来源 | 可编辑 | 显示规则 |
+|---|---|---|---|
+| 展开/折叠 | — | 否 | 展开显示在途明细（船名航次/在途数量/预计到仓） |
+| 关注星标 | `user_variant_preference`（preference_type='favorited'） | 是（乐观更新） | 已关注填充星标，未关注空心 |
+| 国家 | `warehouse.country` | 否 | 标签 |
+| 仓库 | `warehouse.name` | 否 | — |
+| 产品名称 | BigSeller 原始品名（`variantName`）+ DIS 标准品名（`standardProductName`）辅助行 | 否 | 未匹配显示「未匹配」黄色 Badge + 「绑定产品」按钮（Admin） |
+| SKU | `product_variant.sku` | 否 | 等宽字体 |
+| 当前库存 | `inventory.quantity` | 否 | 低库存红色加粗 |
+| 在途 | `SUM(shipment_item.quantity - warehoused_quantity)` 按 (variantId, warehouseId) | 否 | 0 显示「—」 |
+| 库存+在途 | `quantity + inTransitQuantity` | 否 | — |
+| 安全库存 | `product.safety_stock` | 否 | 未匹配显示「—」 |
+| 库存状态 | 计算（缺货/低库存/正常/未匹配） | 否 | 四色 Badge |
+| 同步状态 | `sync_run` 最近一次状态 | 否 | 成功绿/失败红/同步中蓝/未同步灰 |
+
+**已实现功能**：
+- BigSeller 风格分页（页码按钮 + 省略号 + 每页 20/50/100）
+- 筛选状态标签（国家/仓库/状态/搜索各带 × 清除 + 清空筛选）
+- 统计卡片真实联动（库存总量/SKU 清除筛选；低库存 → stockStatus=low；在途不可点击）
+- 列宽拖拽（可见分隔线，hover 蓝色，双击恢复默认）
+- 产品绑定 Dialog（搜索 DIS 标准产品 → 确认绑定 → 写后校验）
+- CSV 导出（含在途数据回填）
+- 搜索：连续子串 ILIKE + 分词 AND（00035）+ pg_trgm trigram 索引（00036，未执行）
+
+**字段命名规则**：使用供应商中立命名（`variantName` / `standardProductName`），禁止命名为 `bigSellerProductName`。
+
+**在途数量规则**：
+- 剩余在途数量 = `shipment_item.quantity - shipment_item.warehoused_quantity`，按 `warehouse_id + variant_id` 聚合。
+- 没有目标 `warehouse_id` 的在途记录显示为"待分配"，不计入具体仓库的在途数量。
+- 在途货物到仓前不得提前增加 `inventory.quantity`。
+
+#### 后续规划（不在 P6 范围）
+
+| 项目 | 说明 |
+|---|---|
+| 日均销量 | 计算字段，依赖 BigSeller 抓取数据中的 daily_sales |
+| 可售天数 | estimated_days = quantity / daily_sales，依赖日均销量 |
+| 补货周期 | `warehouse.lead_time_days`，已写入但前端未展示 |
+| 产品看板 | 标准产品 → 国内外库存 → 在途 → 周期的总览方向，独立任务（P7+） |
 
 #### 页面操作
 
-与 `/inventory` 相同。
+| 操作 | 触发条件 | 权限 |
+|---|---|---|
+| 筛选 | 选择国家/仓库/状态/搜索产品 | admin / operator |
+| 筛选标签清除 | 点击标签 × / 「清空筛选」 | admin / operator |
+| 分页导航 | 点击页码 / 每页条数切换 | admin / operator |
+| 导出 CSV | 点击「导出 CSV」 | admin / operator |
+| 点击展开行 | 点击行 | admin / operator |
+| 点击在途明细 | 展开行中点击详情链接 | admin / operator |
+| 星标关注 | 点击星标图标 | admin / operator（个人偏好） |
+| 绑定产品 | 未匹配行点击「绑定产品」→ Dialog 搜索确认 | **仅 Admin** |
+| 列宽拖拽 | 拖拽表头分隔线 / 双击恢复默认 | 任意（本地存储） |
 
 #### 页面状态
 
 | 状态 | 表现 |
 |---|---|
-| 空数据 | 「海外仓暂无库存数据」 |
-| 某国无数据 | 该国分组显示「暂无库存数据」 |
-| 同步失败 | 国家分组标题旁黄色警告「最后同步：YYYY-MM-DD HH:mm」 |
+| 空数据（无筛选） | 「暂无海外库存数据，请执行数据同步以导入库存数据」 |
+| 空数据（有筛选） | 「未找到匹配的库存记录，请尝试调整筛选条件」 |
+| 加载中 | 骨架屏（Skeleton） |
+| 查询错误 | error.tsx 边界捕获 |
+| 导出失败 | Toast 错误提示 |
 
 ---
 
@@ -531,7 +605,7 @@
 
 ---
 
-### /shipments
+### /dashboard/shipments
 
 | 项目 | 内容 |
 |---|---|
@@ -539,38 +613,45 @@
 | **路由** | `/dashboard/shipments` |
 | **开发阶段** | Phase 3 |
 | **权限** | admin、operator |
-| **数据来源** | `shipment`、`shipment_item`、`product_variant`、`product` |
-| **页面目标** | 查看所有在途货件，推进物流状态 |
+| **数据来源** | `shipment`、`shipment_item`、`product_variant`、`product`、`tracking_event` |
+| **页面目标** | 查看内部手动在途记录（P3-S3 数据），查看详情和物流轨迹 |
+
+#### P3-S2 范围说明
+
+- P3-S2（DESIGN COMPLETE / AWAITING CODE）：列表与详情只读展示，数据来源为内部手动 shipment（P3-S3 已建数据）。
+- 不做外部 supplier 双源展示（P3-S1C/D 暂停，外部供应商为独立扩展线）。
+- 不做新建（P3-S3 已完成，来自已完成的 P3-S3）。
 
 #### 页面组件
 
 - 筛选栏（国家、状态）
 - 在途表格
-- 新增在途按钮
+- 新增在途按钮（功能来自已完成的 P3-S3，跳转 `/dashboard/shipments/new`）
 
-#### 表格字段
+#### 表格字段（P3-S2 只读）
 
 | 字段 | 来源表 | 可编辑 | 显示规则 |
 |---|---|---|---|
 | 船名航次 | `shipment.vessel_name` + `shipment.voyage_number` | 否 | 无数据显示「—」 |
 | 目的国 | `shipment.country` | 否 | 标签 |
-| 状态 | `shipment.status` | 是（推进按钮） | 六色标签 |
-| 产品数 | `COUNT(shipment_item)` | 否 | — |
-| 总件数 | `SUM(shipment_item.quantity)` | 否 | — |
-| 在途剩余 | `SUM(quantity - warehoused_quantity)` | 否 | — |
-| 预计到港 | `shipment.estimated_arrival` | 否 | 无数据显示「—」 |
+| 目标仓库 | `shipment.warehouse_id` → `warehouse.name` | 否 | null 时显示「待分配」 |
+| 当前状态 | `shipment.status` | **否（只读）** | 六色标签 |
+| 产品行数 | `COUNT(shipment_item)` | 否 | — |
+| 发运总数量 | `SUM(shipment_item.quantity)` | 否 | — |
+| 剩余在途数量 | `SUM(quantity - warehoused_quantity)` | 否 | — |
+| 预计到仓 | `shipment.estimated_arrival` | 否 | 无数据显示「—」 |
 | 创建人 | `profiles.display_name`（通过 `shipment.created_by`） | 否 | — |
 | 创建时间 | `shipment.created_at` | 否 | — |
-| 操作 | — | — | 查看详情 / 推进状态 |
+| 操作 | — | — | 查看详情（跳转 `/dashboard/shipments/[id]`） |
 
-#### 页面操作
+#### 页面操作（P3-S2 仅查看详情，其余为后续阶段）
 
-| 操作 | 触发条件 | 权限 |
-|---|---|---|
-| 新增在途 | 点击「新增在途」→ 跳转 `/shipments/new` | admin / operator |
-| 查看详情 | 点击行 → 跳转 `/shipments/[id]` | admin / operator |
-| 推进状态 | 点击行操作→选择下一状态 | admin / operator |
-| 筛选 | 选择国家/状态 | admin / operator |
+| 操作 | 触发条件 | 权限 | 所属阶段 |
+|---|---|---|---|
+| 新增在途 | 点击「新增在途」→ 跳转 `/dashboard/shipments/new` | admin / operator | P3-S3（已完成） |
+| 查看详情 | 点击行 → 跳转 `/dashboard/shipments/[id]` | admin / operator | P3-S2 |
+| 筛选 | 选择国家/状态 | admin / operator | P3-S2 |
+| 推进状态 | 选择下一状态 | admin / operator | **P3-S4（未来）** |
 
 #### 页面状态
 
@@ -582,14 +663,13 @@
 
 #### 业务规则
 
-- `shipment.status = 'warehoused'` 的不出现在此列表（已归档）
-- 状态推进必须按顺序：booking → loading → departed → arrived → customs → warehoused
-- 每次推进创建一条 `tracking_event` 记录
-- 推进到 `warehoused` 时，`shipment_item.warehoused_quantity = shipment_item.quantity`
+- `shipment.status = 'warehoused'` 的不出现在此列表（已入仓归档）
+- 状态推进由 P3-S4 负责，P3-S2 仅只读展示
+- 入仓操作由 P3-S5 独占，不在列表页提供入口
 
 ---
 
-### /shipments/new
+### /dashboard/shipments/new
 
 | 项目 | 内容 |
 |---|---|
@@ -633,7 +713,7 @@
 | 添加产品行 | 点击「添加产品」 | admin / operator |
 | 删除产品行 | 点击行末删除按钮 | admin / operator |
 | 提交 | 填写完毕点击「提交」 | admin / operator |
-| 取消 | 点击「取消」→ 返回 `/shipments` | admin / operator |
+| 取消 | 点击「取消」→ 返回 `/dashboard/shipments` | admin / operator |
 
 #### 页面状态
 
@@ -641,7 +721,7 @@
 |---|---|
 | 必填字段为空 | 提交按钮禁用，标签显示红色 |
 | 提交中 | 按钮 loading |
-| 提交成功 | Toast「在途记录已创建」→ 跳转 `/shipments/[new_id]` |
+| 提交成功 | Toast「在途记录已创建」→ 跳转 `/dashboard/shipments/[new_id]` |
 | 提交失败 | Toast 显示错误原因 |
 
 #### 业务规则
@@ -653,7 +733,7 @@
 
 ---
 
-### /shipments/[id]
+### /dashboard/shipments/[id]
 
 | 项目 | 内容 |
 |---|---|
@@ -669,9 +749,9 @@
 - 主单基本信息区
 - 产品明细表格
 - 物流时间线（Timeline）
-- 状态推进按钮
+- 返回按钮
 
-#### 主单基本信息区
+#### 主单基本信息区（P3-S2 只读）
 
 | 字段 | 来源表 | 可编辑 | 显示规则 |
 |---|---|---|---|
@@ -679,23 +759,25 @@
 | 起运港 | `shipment.origin_port` | 否 | 无数据显示「—」 |
 | 目的港 | `shipment.destination_port` | 否 | 无数据显示「—」 |
 | 目的国 | `shipment.country` | 否 | 标签 |
-| 当前状态 | `shipment.status` | 是（推进） | 六色标签 |
-| 预计到港 | `shipment.estimated_arrival` | 否 | 无数据显示「—」 |
+| 目标仓库 | `warehouse.name` | 否 | null 时显示「待分配」 |
+| 当前状态 | `shipment.status` | **否（只读）** | 六色标签 |
+| 预计到仓 | `shipment.estimated_arrival` | 否 | 无数据显示「—」 |
 | 备注 | `shipment.note` | 否 | 无数据显示「—」 |
 | 创建人 | `profiles.display_name` | 否 | — |
 | 创建时间 | `shipment.created_at` | 否 | — |
 
-#### 产品明细表格
+#### 产品明细表格（P3-S2 只读）
 
 | 字段 | 来源表 | 可编辑 | 显示规则 |
 |---|---|---|---|
-| 标准产品 | `product.name` | 否 | — |
+| 来源品名 | `product_variant.name` | 否 | — |
+| 内部产品 | `product.name`（通过 `product_variant.product_id`） | 否 | 未绑定显示「未匹配内部产品」提示 |
 | 仓库 SKU | `product_variant.sku` | 否 | — |
 | 发运数量 | `shipment_item.quantity` | 否 | — |
 | 已入仓 | `shipment_item.warehoused_quantity` | 否 | `warehoused == quantity` 绿字「已入仓」 |
 | 待入仓 | `quantity - warehoused_quantity` | 否 | >0 显示 |
 
-#### 物流时间线
+#### 物流时间线（P3-S2 只读）
 
 | 字段 | 来源表 | 显示规则 |
 |---|---|---|
@@ -706,11 +788,13 @@
 
 #### 页面操作
 
-| 操作 | 触发条件 | 权限 |
-|---|---|---|
-| 推进状态 | 点击「推进到下一状态」按钮 | admin / operator |
-| 编辑基本信息 | 点击编辑按钮 | admin |
-| 返回列表 | 点击返回 | 任意 |
+| 操作 | 触发条件 | 权限 | 所属阶段 |
+|---|---|---|---|
+| 返回列表 | 点击返回 | 任意 | P3-S2 |
+| 推进状态 | 点击「推进到下一状态」按钮 | admin / operator | **P3-S4（未来）** |
+| 确认入仓 | 点击入仓确认按钮 | admin / operator | **P3-S5（未来）** |
+
+**注意**：「编辑基本信息」不在当前计划范围，如需新增请单独评估。
 
 #### 页面状态
 
@@ -718,13 +802,13 @@
 |---|---|
 | 记录不存在 | 404「在途记录不存在」 |
 | 加载中 | 骨架屏 |
-| 已入仓 | 推进按钮消失，显示「已完成入仓」绿标签 |
-| 推进确认 | Dialog「确认推进到 [下一状态]？」→ 确认 → 创建 tracking_event + 更新 shipment.status |
+| 已入仓 | 显示「已完成入仓」绿标签（P3-S5 负责将 shipment.status 推进到 warehoused） |
 
 #### 业务规则
 
-- 推进顺序不可跳过：booking → loading → departed → arrived → customs → warehoused
-- 推进到 `warehoused` 时：`warehoused_quantity = quantity`，同时 `inventory.quantity += quantity`
+- P3-S4 手动推进仅允许：booking → loading → departed → arrived → customs（P3-S4 不得推进 warehoused）
+- P3-S5 独占 warehoused：用户确认入仓后通过同一数据库事务完成库存联动、warehoused_quantity 更新、入仓 tracking_event 创建和 shipment.status 推进
+- 部分入仓时 shipment 不得标记 warehoused
 - 不允许回退状态
 
 ---

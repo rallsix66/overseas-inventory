@@ -291,11 +291,11 @@ describe('P6-CSV-EXPORT — 页面组件 (源码)', () => {
 // ─── 4. 不新增 Migration / RPC / RLS / 不改 Repository ────────────
 
 describe('P6-CSV-EXPORT — 架构边界', () => {
-  it('migrations/ 下无 00036+ 文件（00034/00035 为 P6-UX-V2-D 新增，已计入）', () => {
+  it('migrations/ 下无 00037+ CSV 不相干文件（00036 为 P6-UX-V2 搜索性能索引，已计入）', () => {
     const m36 = path.resolve(process.cwd(), 'supabase/migrations/00036_');
     const files = fs.readdirSync(path.dirname(m36));
-    const post35 = files.filter((f) => /^0003[6-9]|^000[4-9]|^00[1-9]/.test(f));
-    expect(post35).toHaveLength(0);
+    const post36 = files.filter((f) => /^0003[7-9]|^000[4-9]|^00[1-9]/.test(f));
+    expect(post36).toHaveLength(0);
   });
 
   it('inventoryRepository 签名未修改（exportCsvSchema 不在 repository.ts 中）', () => {

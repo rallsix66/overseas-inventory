@@ -868,15 +868,15 @@ describe('P6-UX-V2-D: 列宽拖拽伸缩', () => {
 
   it('存在 resize handle（cursor-col-resize + onMouseDown）', () => {
     expect(contentSrc).toMatch(/cursor-col-resize/);
-    expect(contentSrc).toMatch(/handleResizeStart\('/);
+    expect(contentSrc).toMatch(/handleResizeStart\(/);
   });
 
-  it('产品名称列表头存在 resize handle', () => {
-    expect(contentSrc).toMatch(/handleResizeStart\('productName', e\)/);
+  it('产品名称列表头存在 resize handle（ResizeHandle component）', () => {
+    expect(contentSrc).toMatch(/ResizeHandle\s+columnKey="productName"/);
   });
 
   it('存在双击恢复默认宽度（onDoubleClick → resetColumnWidth）', () => {
-    expect(contentSrc).toMatch(/resetColumnWidth\('/);
+    expect(contentSrc).toMatch(/resetColumnWidth\(/);
     expect(contentSrc).toMatch(/onDoubleClick/);
   });
 
@@ -969,5 +969,58 @@ describe('P6-UX-V2-D: 列宽拖拽伸缩', () => {
     const afterMatched = contentSrc.slice(matchedIdx, matchedIdx + 400);
     // 主显示行 span 使用 min-w-0 truncate
     expect(afterMatched).toMatch(/min-w-0 truncate/);
+  });
+
+  // ── P6-UX-V2: 可见拖拽分隔线 + 固定布局 ──────────────────────────────────
+
+  it('Table 使用 tableLayout: fixed 固定布局', () => {
+    expect(contentSrc).toMatch(/tableLayout:\s*'fixed'/);
+  });
+
+  it('Table width/minWidth 为 totalTableWidth', () => {
+    expect(contentSrc).toMatch(/width:\s*totalTableWidth/);
+    expect(contentSrc).toMatch(/minWidth:\s*totalTableWidth/);
+  });
+
+  it('totalTableWidth 由 columnWidths 累加计算', () => {
+    expect(contentSrc).toMatch(/Object\.values\(columnWidths\)\.reduce/);
+  });
+
+  it('ResizeHandle 组件渲染 visible divider（w-px bg-gray-200）', () => {
+    expect(contentSrc).toMatch(/w-px bg-gray-200/);
+  });
+
+  it('ResizeHandle 存在 title="拖拽调整列宽，双击恢复默认"', () => {
+    expect(contentSrc).toMatch(/拖拽调整列宽，双击恢复默认/);
+  });
+
+  it('ResizeHandle 使用 aria-label 模板字面量生成标签', () => {
+    expect(contentSrc).toMatch(/aria-label=\{`调整\$\{label\}列宽`\}/);
+  });
+
+  it('产品名称列 ResizeHandle 传入 label="产品名称"', () => {
+    expect(contentSrc).toMatch(/ResizeHandle columnKey="productName" label="产品名称"/);
+  });
+
+  it('定义 ResizeHandle 组件（function ResizeHandle）', () => {
+    expect(contentSrc).toMatch(/function ResizeHandle/);
+  });
+
+  it('存在 activeResizeKey state 追踪正在拖拽的列', () => {
+    expect(contentSrc).toMatch(/activeResizeKey/);
+    expect(contentSrc).toMatch(/setActiveResizeKey/);
+  });
+
+  it('handleResizeStart 设置 activeResizeKey 为当前列 key', () => {
+    const fnStart = contentSrc.indexOf('function handleResizeStart');
+    const fnEnd = contentSrc.indexOf('\n  }', fnStart);
+    const fnBody = contentSrc.slice(fnStart, fnEnd);
+    expect(fnBody).toMatch(/setActiveResizeKey\(key\)/);
+  });
+
+  it('mouseup 清理 activeResizeKey', () => {
+    const mouseUpMatch = contentSrc.match(/const onMouseUp = \(\) => \{[\s\S]*?\};/);
+    expect(mouseUpMatch).not.toBeNull();
+    expect(mouseUpMatch![0]).toMatch(/setActiveResizeKey\(null\)/);
   });
 });

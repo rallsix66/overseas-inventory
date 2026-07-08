@@ -388,3 +388,21 @@ git diff --check      # 无 trailing whitespace / 冲突标记
 - `productCode` 值等同于 `standardProductCode`（DIS 标准编码）
 - 旧的 `matchStatus` 判断逻辑不变
 - E 仍为 PLAN ONLY，不实现
+
+---
+
+## 搜索性能 + 列宽拖拽修复（2026-07-08）
+
+### 搜索性能优化决策
+
+- **00035** 解决搜索准确性：连续子串 + 分词 AND 语义
+- **00036** 通过 pg_trgm GIN trigram index 优化 ILIKE 模糊搜索性能（product_variant.sku/name + product.name/code）
+- 不修改 00034/00035，不改变 RPC 函数签名/搜索逻辑/RLS/权限模型
+- **未来**：如果数据量继续增大，再考虑 dedicated search_vector / materialized search_text，不在本轮实现
+
+### 列宽拖拽修复
+
+- Table 改为 `tableLayout: 'fixed'` + `totalTableWidth`（columnWidths 累加）
+- ResizeHandle 组件：可见分隔线（w-6 命中区 + w-px 竖线，默认灰 hover/drag 蓝，title/aria-label）
+- activeResizeKey 追踪拖拽中列，高亮对应 divider
+- 未匹配分支保持 flex w-full min-w-0 + badge/button shrink-0
