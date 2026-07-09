@@ -26,7 +26,7 @@ export default async function OverseasInventoryPage({
       search: sp.search,
       country: sp.country,
       warehouseId: sp.warehouse,
-      stockStatus: sp.stockStatus as 'normal' | 'low' | 'out_of_stock' | undefined,
+      stockStatus: sp.stockStatus as 'normal' | 'low' | 'out_of_stock' | 'in_transit' | undefined,
       page,
       pageSize,
     }),

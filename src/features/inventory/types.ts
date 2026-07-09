@@ -45,14 +45,14 @@ export interface InventoryFilters extends PaginationParams {
   country?: string;
   warehouseType?: 'domestic' | 'overseas';
   warehouseId?: string;
-  stockStatus?: 'normal' | 'low' | 'out_of_stock';
+  stockStatus?: 'normal' | 'low' | 'out_of_stock' | 'in_transit';
   search?: string;
   /** 当前登录用户 ID（用于按用户归档偏好过滤） */
   userId?: string;
 }
 
-/** 库存状态 */
-export type StockStatus = 'normal' | 'low' | 'out_of_stock';
+/** 库存状态（P6-UX-V2-F 新增 in_transit：仅显示有在途数量的行） */
+export type StockStatus = 'normal' | 'low' | 'out_of_stock' | 'in_transit';
 
 /** 海外库存统计 */
 export interface OverseasStats {

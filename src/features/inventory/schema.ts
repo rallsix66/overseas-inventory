@@ -16,7 +16,7 @@ export const inventorySearchSchema = z.object({
   country: z.enum(['TH', 'ID', 'MY', 'PH', 'VN', 'CN']).optional(),
   warehouseType: z.enum(['domestic', 'overseas']).optional(),
   warehouseId: z.string().uuid().optional(),
-  stockStatus: z.enum(['low', 'normal', 'out_of_stock']).optional(),
+  stockStatus: z.enum(['low', 'normal', 'out_of_stock', 'in_transit']).optional(),
   search: z.string().optional(),
   page: z.number().int().min(1).optional().default(1),
   pageSize: z.number().int().min(1).max(100).optional().default(20),
@@ -26,6 +26,6 @@ export const inventorySearchSchema = z.object({
 export const exportCsvSchema = z.object({
   country: z.enum(['TH', 'ID', 'MY', 'PH', 'VN']).optional(),
   warehouseId: z.string().uuid().optional(),
-  stockStatus: z.enum(['low', 'normal', 'out_of_stock']).optional(),
+  stockStatus: z.enum(['low', 'normal', 'out_of_stock', 'in_transit']).optional(),
   search: z.string().optional(),
 });

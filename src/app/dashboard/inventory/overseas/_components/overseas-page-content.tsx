@@ -45,6 +45,7 @@ const STOCK_STATUSES = [
   { value: 'normal', label: '正常' },
   { value: 'low', label: '低库存' },
   { value: 'out_of_stock', label: '缺货' },
+  { value: 'in_transit', label: '有在途' },
 ];
 
 interface Filters {
@@ -357,10 +358,13 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
     [columnWidths],
   );
 
-  /** P6-UI-CLARITY: 统计卡片点击 → 设置对应筛选 */
-  function handleStatCardClick(type: 'all' | 'low') {
+  /** P6-UI-CLARITY: 统计卡片点击 → 设置对应筛选
+   *  P6-UX-V2-F: 在途库存卡片可点击 → stockStatus=in_transit */
+  function handleStatCardClick(type: 'all' | 'low' | 'in_transit') {
     if (type === 'low') {
       router.push(buildUrl({ stockStatus: 'low' }), { scroll: false });
+    } else if (type === 'in_transit') {
+      router.push(buildUrl({ stockStatus: 'in_transit' }), { scroll: false });
     } else {
       router.push('/dashboard/inventory/overseas', { scroll: false });
     }
@@ -444,11 +448,12 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
     });
   };
 
-  /** P6-UX-V2: 筛选状态标签中文映射 */
+  /** P6-UX-V2: 筛选状态标签中文映射（P6-UX-V2-F 新增 in_transit） */
   const STOCK_STATUS_LABELS: Record<string, string> = {
     low: '低库存',
     normal: '正常',
     out_of_stock: '缺货',
+    in_transit: '有在途',
   };
 
   const countryLabel = COUNTRIES.find((c) => c.value === filters.country)?.label;
@@ -553,16 +558,14 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           value={formatTime(stats.lastSyncAt)}
           colorClass="bg-slate-50 text-slate-600"
         />
-        {/* P6-UX-V2-B: 在途库存卡片不可点击。
-            在途数据来自 shipment 聚合（getInTransitConfirmedAggregate），
-            不是 inventory 表的筛选维度。后端不支持按 "有在途数量" 筛选 inventory 列表，
-            需扩展 Repository 和数据查询后才能实现真实联动。避免制造无效跳转。 */}
+        {/* P6-UX-V2-F: 在途库存卡片可点击 → 筛选有在途数量的库存行 */}
         <StatCard
           icon={Truck}
           label="在途库存"
           value={stats.inTransitTotalQuantity.toLocaleString()}
           sub={`${stats.inTransitSkuCount} 个 SKU`}
           colorClass="bg-cyan-50 text-cyan-600"
+          onClick={() => handleStatCardClick('in_transit')}
         />
       </div>
 
@@ -585,14 +588,17 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
         </form>
 
         <Select
-          value={filters.country || 'all'}
-          onValueChange={(v) => router.push(buildUrl({ country: !v || v === 'all' ? '' : v }), { scroll: false })}
+          value={filters.country || undefined}
+          onValueChange={(v) => {
+            const next = (v === '__all__' || !v) ? '' : v;
+            router.push(buildUrl({ country: next }), { scroll: false });
+          }}
         >
           <SelectTrigger size="sm" className="w-[110px]">
             <SelectValue placeholder="全部国家" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部国家</SelectItem>
+            <SelectItem value="__all__">全部国家</SelectItem>
             {COUNTRIES.map((c) => (
               <SelectItem key={c.value} value={c.value}>
                 {c.label}
@@ -602,14 +608,17 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
         </Select>
 
         <Select
-          value={filters.warehouse || 'all'}
-          onValueChange={(v) => router.push(buildUrl({ warehouse: !v || v === 'all' ? '' : v }), { scroll: false })}
+          value={filters.warehouse || undefined}
+          onValueChange={(v) => {
+            const next = (v === '__all__' || !v) ? '' : v;
+            router.push(buildUrl({ warehouse: next }), { scroll: false });
+          }}
         >
           <SelectTrigger size="sm" className="w-[130px]">
             <SelectValue placeholder="全部仓库" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部仓库</SelectItem>
+            <SelectItem value="__all__">全部仓库</SelectItem>
             {warehouses.map((w) => (
               <SelectItem key={w.id} value={w.id}>
                 {w.name}
@@ -619,15 +628,18 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
         </Select>
 
         <Select
-          value={filters.stockStatus || 'all'}
-          onValueChange={(v) => router.push(buildUrl({ stockStatus: !v || v === 'all' ? '' : v }), { scroll: false })}
+          value={filters.stockStatus || undefined}
+          onValueChange={(v) => {
+            const next = (v === '__all__' || !v) ? '' : v;
+            router.push(buildUrl({ stockStatus: next }), { scroll: false });
+          }}
         >
           <SelectTrigger size="sm" className="w-[110px]">
             <SelectValue placeholder="全部状态" />
           </SelectTrigger>
           <SelectContent>
             {STOCK_STATUSES.map((s) => (
-              <SelectItem key={s.value || 'all'} value={s.value || 'all'}>
+              <SelectItem key={s.value || '__all__'} value={s.value || '__all__'}>
                 {s.label}
               </SelectItem>
             ))}
