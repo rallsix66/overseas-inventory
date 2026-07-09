@@ -93,7 +93,9 @@ describe('P3-S2E: purchase_order_no — types 覆盖', () => {
       shipmentNo: 'SN-001',
       purchaseOrderNo: 'PO-001',
       quantity: 100,
+      status: 'departed',
       estimatedArrival: '2026-07-01',
+      latestTrackingAt: null,
     };
     expect(item.purchaseOrderNo).toBe('PO-001');
   });
@@ -324,6 +326,47 @@ describe('P3-S2E: 海外库存展开组件 — 源码检查', () => {
     expect(content).toContain('purchaseOrderNo');
     expect(content).toContain('estimatedArrival');
     expect(content).toContain('/dashboard/shipments');
+  });
+
+  it('InTransitDetailRow 展开明细显示运营需要的五个字段表头', () => {
+    const content = readFileSync(
+      resolve(root, 'features/shipments/components/in-transit-detail-row.tsx'), 'utf-8');
+    expect(content).toContain('单号');
+    expect(content).toContain('采购单号');
+    expect(content).toContain('数量');
+    expect(content).toContain('物流状态');
+    expect(content).toContain('预计到货时间');
+    // 物流情况已改名为物流状态（主行状态标签 + 下方最近物流更新时间）
+    expect(content).not.toContain('>物流情况<');
+  });
+
+  it('InTransitDetailRow 使用 mini-table 结构（细边框 / 圆角 / 横向滚动 / 最小宽度）', () => {
+    const content = readFileSync(
+      resolve(root, 'features/shipments/components/in-transit-detail-row.tsx'), 'utf-8');
+    expect(content).toContain('overflow-x-auto');
+    expect(content).toContain('min-w-[');
+    expect(content).toMatch(/\bborder\b/);
+    expect(content).toContain('rounded');
+    // 列宽使用 minmax 而非纯硬编码固定值
+    expect(content).toContain('minmax(');
+  });
+
+  it('InTransitDetailRow 物流状态列使用 status 映射中文标签', () => {
+    const content = readFileSync(
+      resolve(root, 'features/shipments/components/in-transit-detail-row.tsx'), 'utf-8');
+    expect(content).toContain('STATUS_MAP');
+    expect(content).toContain('d.status');
+    // 中文状态标签（镜像主表）
+    expect(content).toContain('离港');
+    expect(content).toContain('清关');
+  });
+
+  it('InTransitDetailRow 物流情况使用 latestTrackingAt 展示最近物流更新', () => {
+    const content = readFileSync(
+      resolve(root, 'features/shipments/components/in-transit-detail-row.tsx'), 'utf-8');
+    expect(content).toContain('latestTrackingAt');
+    expect(content).toContain('最近物流更新');
+    expect(content).toContain('formatDateTime(d.latestTrackingAt)');
   });
 
   it('展开组件不包含详细物流字段（vessel_name/voyage_number）', () => {

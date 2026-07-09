@@ -207,8 +207,8 @@ describe('P6-UI-CLARITY: 展开物流明细 — 最近物流更新时间', () =>
   });
 
   it('repository 查询 shipment.updated_at 字段', () => {
-    // Step 1 select 包含 updated_at
-    const step1 = repoSrc.match(/\.select\('id, shipment_no, purchase_order_no, estimated_arrival, updated_at'\)/);
+    // Step 1 select 包含 updated_at（P3-S2E-EXPAND: 新增 status 字段用于展开行物流状态展示）
+    const step1 = repoSrc.match(/\.select\('id, shipment_no, purchase_order_no, status, estimated_arrival, updated_at'\)/);
     expect(step1).not.toBeNull();
   });
 
