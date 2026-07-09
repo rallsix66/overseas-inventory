@@ -1248,16 +1248,19 @@ def _extract_product_name(sku_info):
         return ''
     text = sku_info.strip()
     text = re.sub(r'\s*(送货|在途|已完成|处理中|待处理|复制)\s*$', '', text)
-    text = re.sub(r'^(CHIC\.?\s*PEAK|ICE\s*LERSKIN|ICELERSKIN|CHICPEAK)\s*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'^(新品|旧版|新版|采购单\s*\*\s*\d+)\s*', '', text)
-    text = re.sub(r'\s*\*\d+\s*$', '', text)
+    # P6-UX-V2-E: 不再删除品牌前缀（CHIC PEAK / CHICPEAK / ICE LERSKIN / ICELERSKIN）。
+    # 品牌是产品名的组成部分，删除后只剩中文描述会丢失关键识别信息。
+    # 已有 SKU 的 product_variant.name 不会自动更新；需单独执行 backfill（见 backfill 方案）。
+    #
+    # P6-UX-V2-E-OVER-CLEAN: 保留 新版/新品/旧版、SPF90+ 等规格 +、*1/*4瓶 等数量描述。
+    # 仅删除采购单 * 数字前缀（非产品名信息），不再删除尾部 * 或 +。
+    text = re.sub(r'^(采购单\s*\*\s*\d+)\s*', '', text)
     sku = _extract_sku(text)
     if sku:
         text = re.sub(r'\s*' + re.escape(sku) + r'\s*$', '', text)
         text = re.sub(r'^\s*' + re.escape(sku) + r'\s*', '', text)
     text = re.sub(r'\s+(ICEWM|CHIC-WM|WM)\s*$', '', text)
     text = re.sub(r'\s+\d{6,}\s*$', '', text)
-    text = re.sub(r'\s*[\*\+]\s*\d*\s*$', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text or sku_info
 

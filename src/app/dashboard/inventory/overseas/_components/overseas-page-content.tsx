@@ -754,44 +754,44 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                 <TableRow className="bg-gray-50">
                   <TableHead />
                   <TableHead>关注</TableHead>
-                  <TableHead className="relative">
-                    <span>国家</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">国家</span>
                     <ResizeHandle columnKey="country" label="国家" isActive={activeResizeKey === 'country'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>仓库</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">仓库</span>
                     <ResizeHandle columnKey="warehouse" label="仓库" isActive={activeResizeKey === 'warehouse'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>产品名称</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">产品名称</span>
                     <ResizeHandle columnKey="productName" label="产品名称" isActive={activeResizeKey === 'productName'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>SKU</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">SKU</span>
                     <ResizeHandle columnKey="sku" label="SKU" isActive={activeResizeKey === 'sku'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>当前库存</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">当前库存</span>
                     <ResizeHandle columnKey="quantity" label="当前库存" isActive={activeResizeKey === 'quantity'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>在途</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">在途</span>
                     <ResizeHandle columnKey="inTransit" label="在途" isActive={activeResizeKey === 'inTransit'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>库存+在途</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">库存+在途</span>
                     <ResizeHandle columnKey="total" label="库存+在途" isActive={activeResizeKey === 'total'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative text-right">
-                    <span>安全库存</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">安全库存</span>
                     <ResizeHandle columnKey="safetyStock" label="安全库存" isActive={activeResizeKey === 'safetyStock'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>库存状态</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">库存状态</span>
                     <ResizeHandle columnKey="status" label="库存状态" isActive={activeResizeKey === 'status'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
-                  <TableHead className="relative">
-                    <span>同步状态</span>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">同步状态</span>
                     <ResizeHandle columnKey="syncStatus" label="同步状态" isActive={activeResizeKey === 'syncStatus'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
                   </TableHead>
                 </TableRow>
@@ -825,48 +825,50 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                         {item.country}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm">{item.warehouseName}</TableCell>
+                    <TableCell className="text-sm overflow-hidden truncate" title={item.warehouseName}>{item.warehouseName}</TableCell>
                     <TableCell className="text-sm min-w-0">
                       {item.matchStatus === 'matched' ? (
                         <div className="flex flex-col min-w-0">
                           {/* 主行：BigSeller 原始品名（始终显示） */}
-                          <span className="min-w-0 truncate">
+                          <span className="block min-w-0 truncate" title={item.variantName ?? item.productName ?? undefined}>
                             {item.variantName ?? item.productName ?? <span className="text-muted-foreground">—</span>}
                           </span>
                           {/* 辅助信息：标准产品绑定信息 */}
                           {item.standardProductName ? (
-                            <span className="text-xs text-muted-foreground truncate">
+                            <span className="block text-xs text-muted-foreground truncate" title={item.standardProductName}>
                               标准品：{item.standardProductName}
                             </span>
                           ) : (
-                            <span className="text-xs text-muted-foreground truncate italic">
+                            <span className="block text-xs text-muted-foreground truncate italic">
                               已匹配标准品缺失
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span className="flex w-full min-w-0 items-center gap-1.5">
-                          {/* 主行：BigSeller 原始品名 */}
-                          <span className="min-w-0 flex-1 truncate">
+                        <div className="flex flex-col min-w-0 gap-0.5">
+                          {/* 第一行：BigSeller 原始品名 */}
+                          <span className="block min-w-0 truncate" title={item.variantName ?? item.productName ?? '未匹配产品'}>
                             {item.variantName ?? item.productName ?? <span className="text-muted-foreground">未匹配产品</span>}
                           </span>
-                          {/* 未匹配 Badge — 始终在未匹配/待确认行显示 */}
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 shrink-0">未匹配</span>
-                          {/* P6-UX-V2-D: "绑定产品"入口 — Admin-only，真实绑定到 DIS 标准产品 */}
-                          {canBindProduct && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId, item.sku); }}
-                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 hover:border-gray-400 shrink-0 transition-colors"
-                            >
-                              绑定产品
-                            </button>
-                          )}
-                        </span>
+                          {/* 第二行：未匹配 Badge + 绑定产品按钮，允许 flex-wrap */}
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 shrink-0">未匹配</span>
+                            {/* P6-UX-V2-D: "绑定产品"入口 — Admin-only，真实绑定到 DIS 标准产品 */}
+                            {canBindProduct && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId, item.sku); }}
+                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 hover:border-gray-400 shrink-0 transition-colors"
+                              >
+                                绑定产品
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </TableCell>
-                    <TableCell className="font-mono text-xs">{item.sku}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="font-mono text-xs overflow-hidden truncate" title={item.sku}>{item.sku}</TableCell>
+                    <TableCell className="tabular-nums">
                       <span
                         className={
                           item.quantity === 0
@@ -879,27 +881,27 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                         {item.quantity}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    <TableCell className="tabular-nums text-sm text-muted-foreground">
                       {item.inTransitQuantity > 0 ? item.inTransitQuantity : '—'}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">
+                    <TableCell className="tabular-nums text-sm">
                       {item.inTransitQuantity > 0
                         ? (item.quantity + item.inTransitQuantity).toLocaleString()
                         : item.quantity}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    <TableCell className="tabular-nums text-sm text-muted-foreground">
                       {item.matchStatus === 'matched' ? item.safetyStock : '—'}
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>{getStatusBadge(item)}</TableCell>
                     {/* P5-SY9H: 同步状态（含最近同步时间和失败原因） */}
                     <TableCell className="text-xs" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-col gap-0.5">
+                      <div className="flex flex-col gap-0.5 overflow-hidden">
                         <SyncStatusBadge
                           status={whSync?.lastSyncStatus ?? 'never'}
                           failureReason={whSync?.lastFailureReason}
                         />
                         {whSync?.lastSyncAt && (
-                          <span className="text-muted-foreground">{formatTime(whSync.lastSyncAt)}</span>
+                          <span className="text-muted-foreground truncate" title={formatTime(whSync.lastSyncAt)}>{formatTime(whSync.lastSyncAt)}</span>
                         )}
                       </div>
                     </TableCell>
