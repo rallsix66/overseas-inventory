@@ -936,23 +936,23 @@ describe('P6-UX-V2-D: 列宽拖拽伸缩', () => {
     expect(contentSrc).toMatch(/removeEventListener\('mouseup'/);
   });
 
-  it('未匹配分支使用 flex w-full min-w-0 items-center（块级 flex 容器，非 inline-flex）', () => {
-    // 未匹配分支外层应为 flex 块级容器
-    expect(contentSrc).toMatch(/flex w-full min-w-0 items-center gap-1\.5/);
-    // 不应使用 inline-flex 包裹整行
-    expect(contentSrc).not.toMatch(/inline-flex items-center gap-1\.5/);
+  it('未匹配分支使用 flex flex-col min-w-0（纵向两行布局，非 inline-flex）', () => {
+    // P6-UX-IN-TRANSIT-OPTIMIZATION: 未匹配分支改为纵向两行布局
+    // 外层 flex flex-col min-w-0（第一行品名 + 第二行 badge/按钮）
+    expect(contentSrc).toMatch(/flex flex-col min-w-0/);
   });
 
-  it('未匹配分支品名文本使用 min-w-0 flex-1 truncate', () => {
-    // 在 unmatched 分支中查找品名 span 的 className
+  it('未匹配分支品名文本使用 block min-w-0 truncate', () => {
+    // P6-UX-IN-TRANSIT-OPTIMIZATION: 品名 span 使用 block min-w-0 truncate
     const unmatchedIdx = contentSrc.lastIndexOf('未匹配产品');
     const context = contentSrc.slice(Math.max(0, unmatchedIdx - 250), unmatchedIdx + 80);
-    expect(context).toMatch(/min-w-0 flex-1 truncate/);
+    expect(context).toMatch(/block min-w-0 truncate/);
   });
 
   it('未匹配分支"未匹配" badge 使用 shrink-0', () => {
     const badgeIdx = contentSrc.lastIndexOf('未匹配 Badge');
-    const context = contentSrc.slice(Math.max(0, badgeIdx - 30), badgeIdx + 200);
+    // P6-UX-IN-TRANSIT-OPTIMIZATION: badge 在 flex-wrap 容器内，shrink-0 距注释较远
+    const context = contentSrc.slice(Math.max(0, badgeIdx - 30), badgeIdx + 350);
     expect(context).toMatch(/shrink-0/);
   });
 

@@ -200,8 +200,16 @@ describe('P4-U3 UserRoleChangeDialog', () => {
   it('关闭时重置 selectedRoleId 和 error 状态', () => {
     const body = extractFnBody(dialog, 'UserRoleChangeDialog');
     // handleOpenChange -> resetAndClose
-    expect(body).toContain('setSelectedRoleId(undefined)');
+    // TEAM-ACCOUNTS-SELECT-CONTROLLED: 改用空字符串 sentinel 避免 uncontrolled→controlled warning
+    expect(body).toContain("setSelectedRoleId('')");
     expect(body).toContain('setError(null)');
+  });
+
+  it('Select 全生命周期 controlled：初始 state 为 空字符串，不用 undefined', () => {
+    const body = extractFnBody(dialog, 'UserRoleChangeDialog');
+    // useState 初始为空字符串，不使用 string | undefined
+    expect(body).toContain("useState('')");
+    expect(body).not.toMatch(/\bundefined\b/);
   });
 
   it('取消按钮调用统一 resetAndClose，不直接 onClick={onClose}', () => {
