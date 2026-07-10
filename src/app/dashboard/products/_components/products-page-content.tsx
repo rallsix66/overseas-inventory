@@ -500,96 +500,155 @@ function ExpandRowContent({
 
   const domestic = bindings?.domestic ?? [];
   const overseas = bindings?.overseas ?? {};
+  const allOverseas = OVERSEAS_COUNTRIES.flatMap((c) =>
+    (overseas[c] ?? []).map((v) => ({ ...v, _country: c }))
+  );
+  const overseasTotal = allOverseas.length;
 
   return (
     <div className="px-6 py-3 border-t border-gray-100">
-      {/* 标题 */}
-      <p className="text-xs font-medium text-gray-700 mb-3">SKU 绑定明细</p>
+      {/* 标题行 + 摘要 */}
+      <div className="flex items-center gap-3 mb-2">
+        <p className="text-xs font-medium text-gray-700">SKU 绑定明细</p>
+        <span className="text-xs text-muted-foreground">
+          国内 {domestic.length} · 海外 {overseasTotal}
+        </span>
+      </div>
 
       <div className="border rounded border-gray-200 overflow-hidden">
         {/* 国内 SKU */}
         <div className="px-3 py-2">
           <h4 className="text-xs font-medium text-gray-500 mb-1.5">国内 SKU</h4>
           {domestic.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-1">
-              暂无国内 SKU 绑定 / 国内库存待接入
-            </p>
+            <div className="flex items-center gap-2 py-1">
+              <span className="text-xs text-muted-foreground">
+                暂无国内 SKU 绑定 / 国内库存待接入
+              </span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                待接入
+              </span>
+            </div>
           ) : (
-            <table className="w-full text-xs border border-gray-100">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left px-2 py-1 font-medium text-gray-600">SKU</th>
-                  <th className="text-left px-2 py-1 font-medium text-gray-600">仓库产品名</th>
-                  <th className="text-left px-2 py-1 font-medium text-gray-600">匹配状态</th>
-                  <th className="text-left px-2 py-1 font-medium text-gray-600">最后同步</th>
-                </tr>
-              </thead>
-              <tbody>
-                {domestic.map((v) => (
-                  <tr key={v.id} className="border-t border-gray-100">
-                    <td className="px-2 py-1 font-medium">{v.sku}</td>
-                    <td className="px-2 py-1 text-gray-600">{v.name}</td>
-                    <td className="px-2 py-1">
-                      <span
-                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${MATCH_STATUS_CLASS[v.matchStatus] ?? 'bg-gray-100 text-gray-600'}`}
-                      >
-                        {MATCH_STATUS_LABEL[v.matchStatus] ?? v.matchStatus}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1 text-gray-500">{formatTime(v.lastSyncAt)}</td>
+            <div className="overflow-x-auto border rounded border-gray-100">
+              <table className="w-full text-xs table-fixed">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-[150px] whitespace-nowrap">
+                      SKU
+                    </th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600">
+                      仓库产品名
+                    </th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-[86px] whitespace-nowrap">
+                      匹配状态
+                    </th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-[96px] whitespace-nowrap">
+                      最后同步
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {domestic.map((v, i) => (
+                    <tr
+                      key={v.id}
+                      className={i > 0 ? 'border-t border-gray-100' : ''}
+                    >
+                      <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
+                        {v.sku}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 text-gray-600 truncate max-w-0"
+                        title={v.name}
+                      >
+                        {v.name}
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                            MATCH_STATUS_CLASS[v.matchStatus] ??
+                            'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {MATCH_STATUS_LABEL[v.matchStatus] ?? v.matchStatus}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">
+                        {formatTime(v.lastSyncAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
-        {/* 海外仓 SKU */}
+        {/* 海外仓 SKU — 统一表格 */}
         <div className="px-3 py-2 border-t border-gray-200">
           <h4 className="text-xs font-medium text-gray-500 mb-1.5">海外仓 SKU</h4>
-          {OVERSEAS_COUNTRIES.every((c) => (overseas[c] ?? []).length === 0) ? (
+          {allOverseas.length === 0 ? (
             <p className="text-xs text-muted-foreground py-1">
               暂无海外仓 SKU 绑定
             </p>
           ) : (
-            <div className="space-y-2">
-              {OVERSEAS_COUNTRIES.map((country) => {
-                const list = overseas[country] ?? [];
-                if (list.length === 0) return null;
-                return (
-                  <div key={country}>
-                    <h5 className="text-xs font-medium text-gray-500 mb-1">
-                      {COUNTRY_LABEL[country] ?? country}
-                    </h5>
-                    <table className="w-full text-xs border border-gray-100">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="text-left px-2 py-1 font-medium text-gray-600">SKU</th>
-                          <th className="text-left px-2 py-1 font-medium text-gray-600">仓库产品名</th>
-                          <th className="text-left px-2 py-1 font-medium text-gray-600">匹配状态</th>
-                          <th className="text-left px-2 py-1 font-medium text-gray-600">最后同步</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {list.map((v) => (
-                          <tr key={v.id} className="border-t border-gray-100">
-                            <td className="px-2 py-1 font-medium">{v.sku}</td>
-                            <td className="px-2 py-1 text-gray-600">{v.name}</td>
-                            <td className="px-2 py-1">
-                              <span
-                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${MATCH_STATUS_CLASS[v.matchStatus] ?? 'bg-gray-100 text-gray-600'}`}
-                              >
-                                {MATCH_STATUS_LABEL[v.matchStatus] ?? v.matchStatus}
-                              </span>
-                            </td>
-                            <td className="px-2 py-1 text-gray-500">{formatTime(v.lastSyncAt)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto border rounded border-gray-100">
+              <table className="w-full text-xs table-fixed">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-[96px] whitespace-nowrap">
+                      国家
+                    </th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-[150px] whitespace-nowrap">
+                      SKU
+                    </th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600">
+                      仓库产品名
+                    </th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-[86px] whitespace-nowrap">
+                      匹配状态
+                    </th>
+                    <th className="text-left px-2 py-1.5 font-medium text-gray-600 w-[96px] whitespace-nowrap">
+                      最后同步
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allOverseas.map((v, i) => (
+                    <tr
+                      key={v.id}
+                      className={i > 0 ? 'border-t border-gray-100' : ''}
+                    >
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                          {COUNTRY_LABEL[v._country] ?? v._country}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
+                        {v.sku}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 text-gray-600 truncate max-w-0"
+                        title={v.name}
+                      >
+                        {v.name}
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                            MATCH_STATUS_CLASS[v.matchStatus] ??
+                            'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {MATCH_STATUS_LABEL[v.matchStatus] ?? v.matchStatus}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">
+                        {formatTime(v.lastSyncAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

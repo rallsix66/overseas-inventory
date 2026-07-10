@@ -18,9 +18,7 @@ describe('productRepository.list() 批量查询 product_variant', () => {
   });
 
   it('使用 .in(product_id, productIds) 批量查询，不逐行 N+1 查询', () => {
-    // 验证批量 in 查询存在
     expect(repo).toContain(".in('product_id', productIds)");
-    // 验证查询了完整字段（id, sku, country, name, match_status, last_sync_at, product_id）
     expect(repo).toContain('match_status');
     expect(repo).toContain('last_sync_at');
     expect(repo).toContain('product_id');
@@ -63,7 +61,6 @@ describe('productRepository.update() 允许更新 code', () => {
   });
 
   it('update method 接受 code 字段并做重复校验', () => {
-    // 验证 if (data.code) 重复检查
     expect(repo).toContain('if (data.code)');
     expect(repo).toContain(".eq('code', data.code)");
     expect(repo).toContain(".neq('id', id)");
@@ -95,7 +92,6 @@ describe('updateProduct 传递 code 到 repository.update', () => {
   });
 
   it('updateProduct 调用 repository.update 时包含 code', () => {
-    // 找到 repository.update 调用
     const updateIdx = actions.indexOf('productRepository.update');
     expect(updateIdx).toBeGreaterThan(0);
     const block = actions.slice(updateIdx, updateIdx + 300);
@@ -138,7 +134,50 @@ describe('ProductItem / ProductVariantBindingBrief 类型', () => {
   });
 });
 
-// ─── 5. ProductForm: code 不再 disabled ──────────────────────────────
+// ─── 5. ProductForm: Sheet 宽度与布局 ────────────────────────────────
+
+describe('ProductForm Sheet 宽度与三段式布局', () => {
+  let form: string;
+
+  beforeAll(() => {
+    form = readSrc('features/products/components/product-form.tsx');
+  });
+
+  it('SheetContent 使用 !important 覆盖默认 sm:max-w-sm', () => {
+    expect(form).toContain('!max-w-[760px]');
+    expect(form).toContain('!w-[760px]');
+  });
+
+  it('SheetContent 使用 overflow-hidden 防止双滚动条', () => {
+    expect(form).toContain('overflow-hidden');
+  });
+
+  it('SheetContent 使用 p-0 flex flex-col gap-0 自控间距', () => {
+    expect(form).toContain('p-0 flex flex-col gap-0');
+  });
+
+  it('有固定 footer 区域（border-t + 取消/保存按钮）', () => {
+    expect(form).toContain('shrink-0 border-t bg-popover px-5 py-3 flex justify-end gap-2');
+    expect(form).toMatch(/取消/);
+    expect(form).toMatch(/保存/);
+  });
+
+  it('Header 左对齐且带底部分割线', () => {
+    expect(form).toContain('text-left');
+    expect(form).toContain('border-b');
+  });
+
+  it('Body 内容在独立可滚动容器内', () => {
+    expect(form).toContain('overflow-y-auto');
+    expect(form).toContain('flex-1');
+  });
+
+  it('副标题说明 code 可修改', () => {
+    expect(form).toContain('修改标准产品信息，SKU 绑定仅展示');
+  });
+});
+
+// ─── 6. ProductForm: code 不再 disabled ──────────────────────────────
 
 describe('ProductForm 编辑模式 code 可编辑', () => {
   let form: string;
@@ -148,34 +187,19 @@ describe('ProductForm 编辑模式 code 可编辑', () => {
   });
 
   it('code Input 没有 disabled 属性', () => {
-    // code Input 不再根据 mode 设置 disabled
     expect(form).not.toContain('disabled={mode ===');
     expect(form).not.toContain("'产品编码创建后不可修改'");
   });
 
-  it('Sheet 宽度为 680px', () => {
-    expect(form).toContain('w-[680px]');
-  });
-
-  it('副标题说明 code 可修改', () => {
-    expect(form).toContain('修改标准产品信息，SKU 绑定仅展示');
-  });
-
-  it('SheetHeader 左对齐', () => {
-    expect(form).toContain('text-left');
-  });
-
   it('code 从 formData 读取（不再依赖 defaultValues.code）', () => {
-    // 直接读取 formData
     expect(form).toContain("formData.get('code')");
-    // 不再区分 mode 来读取 code
     expect(form).not.toMatch(/mode === 'edit'\s*\?\s*\(defaultValues/);
   });
 });
 
-// ─── 6. ProductForm: SKU 绑定展示区 ──────────────────────────────────
+// ─── 7. ProductForm: SKU 绑定展示区（统一表格）───────────────────────
 
-describe('ProductForm SKU 绑定展示区', () => {
+describe('ProductForm SKU 绑定展示区 — 统一表格', () => {
   let form: string;
 
   beforeAll(() => {
@@ -183,35 +207,71 @@ describe('ProductForm SKU 绑定展示区', () => {
   });
 
   it('edit 模式展示 SKU 绑定区', () => {
-    expect(form).toContain('mode === \'edit\'');
+    expect(form).toContain("mode === 'edit'");
     expect(form).toContain('SKU 绑定');
+  });
+
+  it('SKU 绑定标题行包含统计摘要（国内 X · 海外 Y）', () => {
+    expect(form).toContain('国内');
+    expect(form).toContain('海外');
+    expect(form).toContain('overseasTotal');
   });
 
   it('展示国内 SKU 区', () => {
     expect(form).toContain('国内 SKU');
   });
 
-  it('国内 SKU 为空时显示占位文案', () => {
+  it('国内 SKU 为空时显示占位文案 + 待接入 badge', () => {
     expect(form).toContain('暂无国内 SKU 绑定 / 国内库存待接入');
+    expect(form).toContain('待接入');
   });
 
-  it('展示海外仓 SKU 区，按 TH/ID/MY/PH/VN 分组', () => {
+  it('展示海外仓 SKU 区', () => {
     expect(form).toContain('海外仓 SKU');
-    expect(form).toContain("'TH', 'ID', 'MY', 'PH', 'VN'");
   });
 
   it('海外 SKU 为空时显示占位文案', () => {
     expect(form).toContain('暂无海外仓 SKU 绑定');
   });
 
+  it('海外仓 SKU 使用单张统一表，包含国家/SKU/仓库产品名/匹配状态/最后同步列', () => {
+    // 海外仓表头包含"国家"列（旧版按国家分组无此列）
+    const overseasSection = form.slice(form.indexOf('海外仓 SKU'));
+    expect(overseasSection).toContain('国家');
+    expect(overseasSection).toContain('SKU');
+    expect(overseasSection).toContain('仓库产品名');
+    expect(overseasSection).toContain('匹配状态');
+    expect(overseasSection).toContain('最后同步');
+  });
+
+  it('不再按每个国家重复渲染多张 table', () => {
+    // 海外仓区只有一张表（一个 <table 标签）
+    const overseasStart = form.indexOf('海外仓 SKU');
+    const overseasSection = form.slice(overseasStart);
+    const tableCount = (overseasSection.match(/<table/g) ?? []).length;
+    expect(tableCount).toBe(1);
+  });
+
+  it('匹配状态和最后同步列包含 whitespace-nowrap 防换行', () => {
+    // 海外仓表格中匹配状态、最后同步列头有 whitespace-nowrap
+    const overseasStart = form.indexOf('海外仓 SKU');
+    const overseasSection = form.slice(overseasStart);
+    // 统计 whitespace-nowrap 出现次数（表头 + 表体至少各 2 处）
+    const nowrapCount = (overseasSection.match(/whitespace-nowrap/g) ?? []).length;
+    expect(nowrapCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it('海外仓表格支持水平滚动（overflow-x-auto）', () => {
+    const overseasStart = form.indexOf('海外仓 SKU');
+    const overseasSection = form.slice(overseasStart);
+    expect(overseasSection).toContain('overflow-x-auto');
+  });
+
   it('add 模式不展示 SKU 绑定', () => {
-    // mode !== 'edit' 时不渲染 SKU 绑定区
     expect(form).toMatch(/mode === 'edit'/);
   });
 
   it('包含匹配状态 badge', () => {
-    expect(form).toContain('MATCH_STATUS_CLASS');
-    expect(form).toContain('MATCH_STATUS_LABEL');
     expect(form).toContain('已匹配');
     expect(form).toContain('未匹配');
     expect(form).toContain('待确认');
@@ -222,7 +282,7 @@ describe('ProductForm SKU 绑定展示区', () => {
   });
 });
 
-// ─── 7. ProductsPageContent: 展开按钮和展开行 ────────────────────────
+// ─── 8. ProductsPageContent: 展开按钮和展开行 ────────────────────────
 
 describe('产品列表表格展开按钮和展开行', () => {
   let page: string;
@@ -238,36 +298,58 @@ describe('产品列表表格展开按钮和展开行', () => {
     expect(page).toContain('toggleExpand');
   });
 
-  it('展开行显示 SKU 绑定明细标题', () => {
+  it('展开行显示 SKU 绑定明细标题 + 统计摘要', () => {
     expect(page).toContain('SKU 绑定明细');
+    expect(page).toContain('overseasTotal');
   });
 
   it('展开行展示国内 SKU 区', () => {
     expect(page).toContain('国内 SKU');
   });
 
-  it('国内 SKU 为空时显示占位文案', () => {
+  it('国内 SKU 为空时显示占位文案 + 待接入 badge', () => {
     expect(page).toContain('暂无国内 SKU 绑定 / 国内库存待接入');
+    expect(page).toContain('待接入');
   });
 
   it('展开行展示海外仓 SKU 区', () => {
     expect(page).toContain('海外仓 SKU');
   });
 
-  it('海外 SKU 按 TH/ID/MY/PH/VN 分组展示', () => {
-    expect(page).toContain("'TH', 'ID', 'MY', 'PH', 'VN'");
+  it('海外仓 SKU 使用单张统一表（不再按国家分组多张小表）', () => {
+    const expandStart = page.indexOf('ExpandRowContent');
+    const expandSection = page.slice(expandStart);
+    // 海外仓区只有一张 table
+    const overseasStart = expandSection.indexOf('海外仓 SKU');
+    const overseasSection = expandSection.slice(overseasStart);
+    const tableCount = (overseasSection.match(/<table/g) ?? []).length;
+    expect(tableCount).toBe(1);
   });
 
-  it('展开行有匹配状态 badge', () => {
-    expect(page).toContain('MATCH_STATUS_CLASS');
-    expect(page).toContain('已匹配');
+  it('海外仓统一表包含国家列', () => {
+    const expandStart = page.indexOf('ExpandRowContent');
+    const expandSection = page.slice(expandStart);
+    const overseasStart = expandSection.indexOf('海外仓 SKU');
+    const overseasSection = expandSection.slice(overseasStart);
+    expect(overseasSection).toContain('国家');
+  });
+
+  it('展开行匹配状态和最后同步列包含 whitespace-nowrap', () => {
+    const expandStart = page.indexOf('ExpandRowContent');
+    const expandSection = page.slice(expandStart);
+    const nowrapCount = (expandSection.match(/whitespace-nowrap/g) ?? []).length;
+    expect(nowrapCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it('海外仓表格支持 overflow-x-auto 水平滚动', () => {
+    const expandStart = page.indexOf('ExpandRowContent');
+    const expandSection = page.slice(expandStart);
+    expect(expandSection).toContain('overflow-x-auto');
   });
 
   it('点击展开按钮不跳转（button 不是 a 标签）', () => {
-    // 展开按钮是 button，产品名仍是 Link
     const expandBtnIdx = page.indexOf('onToggleExpand');
     expect(expandBtnIdx).toBeGreaterThan(0);
-    // 产品名称仍保留链接
     expect(page).toContain('/dashboard/products/${item.id}');
     expect(page).toContain('text-primary hover:underline');
   });
@@ -278,7 +360,7 @@ describe('产品列表表格展开按钮和展开行', () => {
   });
 });
 
-// ─── 8. ProductDetailClient: 传 variants 到 ProductForm ──────────────
+// ─── 9. ProductDetailClient: 传 variants 到 ProductForm ──────────────
 
 describe('ProductDetailClient 传 variants 到 ProductForm', () => {
   let detail: string;
@@ -292,7 +374,7 @@ describe('ProductDetailClient 传 variants 到 ProductForm', () => {
   });
 });
 
-// ─── 9. 架构合规：页面/组件不直接 supabase.from() ─────────────────
+// ─── 10. 架构合规：页面/组件不直接 supabase.from() ─────────────────
 
 describe('架构合规：页面和组件不直接 supabase.from()', () => {
   const files = [
@@ -311,7 +393,7 @@ describe('架构合规：页面和组件不直接 supabase.from()', () => {
   }
 });
 
-// ─── 10. 不新增 Migration / RPC / RLS ───────────────────────────────
+// ─── 11. 不新增 Migration / RPC / RLS ───────────────────────────────
 
 describe('不新增 Migration / RPC / RLS', () => {
   it('产品模块 types/schema/repository/actions 不包含 Migration 引用', () => {
@@ -321,7 +403,6 @@ describe('不新增 Migration / RPC / RLS', () => {
     const actions = readSrc('features/products/actions.ts');
 
     for (const content of [repo, types, schema, actions]) {
-      // 不应新增 migration 引用
       expect(content).not.toContain('Migration');
       expect(content).not.toContain('0003');
     }
@@ -329,12 +410,11 @@ describe('不新增 Migration / RPC / RLS', () => {
 
   it('产品模块不创建新 RPC', () => {
     const repo = readSrc('features/products/repository.ts');
-    // 不应调用 supabase.rpc()（产品模块目前不使用 RPC）
     expect(repo).not.toContain('.rpc(');
   });
 });
 
-// ─── 11. repository.update() 23505 中文错误兜底 ──────────────────────
+// ─── 12. repository.update() 23505 中文错误兜底 ──────────────────────
 
 describe('repository.update() 23505 唯一约束兜底', () => {
   let repo: string;
@@ -351,7 +431,7 @@ describe('repository.update() 23505 唯一约束兜底', () => {
   });
 });
 
-// ─── 12. Schema / FormData 不变破坏检查 ──────────────────────────────
+// ─── 13. Schema / FormData 不变破坏检查 ──────────────────────────────
 
 describe('productFormSchema 和 ProductFormData 保持兼容', () => {
   let schema: string;
