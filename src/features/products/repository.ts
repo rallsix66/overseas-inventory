@@ -16,6 +16,8 @@ import type {
   ProductUpdate,
   ProductRow,
   InventoryBrief,
+  ProductSkuBindingSummary,
+  ProductVariantBindingBrief,
 } from './types';
 import type { PaginatedResult } from '@/types/common';
 
@@ -118,26 +120,61 @@ export const productRepository = {
       return { data: [], total: 0, page, pageSize };
     }
 
-    // 批量获取 SKU 计数
+    // 批量获取当前页所有产品的 SKU 绑定明细（含 SKU、国家、仓库产品名、匹配状态、最后同步时间）
     const productIds = products.map((p) => p.id);
-    const { data: variantCounts, error: vcError } = await supabase
+    const { data: variants, error: vcError } = await supabase
       .from('product_variant')
-      .select('product_id')
+      .select('id, sku, country, name, match_status, last_sync_at, product_id')
       .in('product_id', productIds)
-      .not('product_id', 'is', null);
+      .order('country');
 
     if (vcError) {
-      throw new ProductError('查询产品 SKU 计数失败', 'DB_ERROR');
+      throw new ProductError('查询产品 SKU 绑定失败', 'DB_ERROR');
     }
 
+    // 构建 skuCount + bindings 映射
     const countMap = new Map<string, number>();
-    productIds.forEach((id) => countMap.set(id, 0));
-    variantCounts?.forEach((v) => {
-      countMap.set(v.product_id, (countMap.get(v.product_id) ?? 0) + 1);
-    });
+    const bindingsMap = new Map<string, ProductSkuBindingSummary>();
+    for (const pid of productIds) {
+      countMap.set(pid, 0);
+      bindingsMap.set(pid, { domestic: [], overseas: {} });
+    }
+
+    for (const v of variants ?? []) {
+      const pid = v.product_id;
+      if (!pid) continue;
+
+      countMap.set(pid, (countMap.get(pid) ?? 0) + 1);
+
+      const brief: ProductVariantBindingBrief = {
+        id: v.id,
+        sku: v.sku,
+        country: v.country,
+        name: v.name,
+        matchStatus: v.match_status,
+        lastSyncAt: v.last_sync_at,
+      };
+
+      const binding = bindingsMap.get(pid);
+      if (!binding) continue;
+
+      if (v.country === 'CN') {
+        binding.domestic.push(brief);
+      } else {
+        const groups = binding.overseas;
+        if (!groups[v.country]) {
+          groups[v.country] = [];
+        }
+        groups[v.country].push(brief);
+      }
+    }
 
     return {
-      data: products.map((p) => ({ ...p, skuCount: countMap.get(p.id) ?? 0 })),
+      data: products.map((p) => ({
+        ...p,
+        skuCount: countMap.get(p.id) ?? 0,
+        bindings: bindingsMap.get(p.id),
+      })),
       total: count ?? 0,
       page,
       pageSize,
@@ -348,13 +385,31 @@ export const productRepository = {
     return { ...product, skuCount: 0 };
   },
 
-  /** 更新产品（不更新 code — code 创建后不可修改） */
+  /** 更新产品（含产品编码，创建后仍可修改） */
   async update(id: string, data: ProductUpdate): Promise<ProductItem | null> {
     if (!validateUUID(id)) {
       throw new ProductError('无效的产品 ID', 'INVALID_ID');
     }
 
     const supabase = await createClient();
+
+    // 如果修改 code，先校验是否与其他产品重复
+    if (data.code) {
+      const { data: existing, error: dupError } = await supabase
+        .from('product')
+        .select('id')
+        .eq('code', data.code)
+        .neq('id', id)
+        .maybeSingle();
+
+      if (dupError) {
+        throw new ProductError('查询产品编码失败', 'DB_ERROR');
+      }
+      if (existing) {
+        throw new ProductError('产品编码已存在', 'DUPLICATE_CODE');
+      }
+    }
+
     const { data: product, error } = await supabase
       .from('product')
       .update(data)
@@ -363,6 +418,10 @@ export const productRepository = {
       .maybeSingle();
 
     if (error) {
+      // PostgreSQL 唯一约束违反（兜底保护）
+      if (error.code === '23505') {
+        throw new ProductError('产品编码已存在', 'DUPLICATE_CODE');
+      }
       throw new ProductError('更新产品失败', 'DB_ERROR');
     }
     if (!product) return null;
