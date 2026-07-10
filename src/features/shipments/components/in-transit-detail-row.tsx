@@ -5,7 +5,7 @@
 // 不展示船名、航次、目的国等详细物流字段
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Loader2Icon, ChevronRightIcon, PackageIcon } from 'lucide-react';
+import { Loader2Icon, ExternalLinkIcon, PackageIcon } from 'lucide-react';
 import { getInTransitDetails } from '@/features/shipments/actions';
 import type { InTransitDetailItem } from '@/features/shipments/types';
 
@@ -41,9 +41,10 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
   warehoused: { label: '入仓', className: 'bg-green-50 text-green-700' },
 };
 
-// 六列 grid 模板（表头与数据行共用）：单号 / 采购单号 / 数量 / 物流状态 / 预计到货时间 / 跳转箭头
+// 六列 grid 模板（表头与数据行共用）— 全部左对齐，固定列宽避免内容分散
+// 单号 220px / 采购单号 180px / 数量 120px / 物流状态 260px / 预计到货时间 180px / 箭头 28px
 const GRID_COLS =
-  'grid-cols-[minmax(120px,1.1fr)_minmax(120px,1.1fr)_90px_minmax(170px,1.4fr)_130px_28px]';
+  'grid-cols-[220px_180px_120px_260px_180px_28px]';
 
 export function InTransitDetailRow({ variantId, warehouseId, open }: Props) {
   const [details, setDetails] = useState<InTransitDetailItem[] | null>(null);
@@ -107,15 +108,15 @@ export function InTransitDetailRow({ variantId, warehouseId, open }: Props) {
           <p className="text-xs text-muted-foreground">
             内部在途明细（{details.length} 条）
           </p>
-          <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
-            <div className="min-w-[760px]">
+          <div className="overflow-x-auto rounded-md border border-gray-100 bg-white">
+            <div className="min-w-[988px]">
               {/* 表头 */}
               <div
-                className={`grid ${GRID_COLS} gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-muted-foreground`}
+                className={`grid ${GRID_COLS} gap-2 border-b border-gray-100 bg-gray-50/60 px-3 py-1.5 text-xs font-medium text-muted-foreground`}
               >
                 <span>单号</span>
                 <span>采购单号</span>
-                <span className="text-right">数量</span>
+                <span>数量</span>
                 <span>物流状态</span>
                 <span>预计到货时间</span>
                 <span aria-hidden="true" />
@@ -127,10 +128,9 @@ export function InTransitDetailRow({ variantId, warehouseId, open }: Props) {
                   className: 'bg-gray-100 text-gray-700',
                 };
                 return (
-                  <Link
+                  <div
                     key={d.shipmentId}
-                    href={`/dashboard/shipments/${d.shipmentId}`}
-                    className={`grid ${GRID_COLS} gap-3 items-center border-t border-gray-100 px-3 py-2 text-sm transition-colors first:border-t-0 hover:bg-gray-50 group`}
+                    className={`grid ${GRID_COLS} gap-2 border-t border-gray-50 px-3 py-1.5 text-sm transition-colors first:border-t-0 hover:bg-gray-50`}
                   >
                     <span className="font-medium tabular-nums truncate" title={d.shipmentNo}>
                       {d.shipmentNo}
@@ -141,11 +141,11 @@ export function InTransitDetailRow({ variantId, warehouseId, open }: Props) {
                     >
                       {d.purchaseOrderNo || '—'}
                     </span>
-                    <span className="tabular-nums text-blue-600 font-medium text-right">
+                    <span className="tabular-nums text-blue-600 font-medium text-left">
                       {d.quantity.toLocaleString()}
                     </span>
                     {/* 物流状态：主行状态标签 + 下方小字最近物流更新时间 */}
-                    <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex flex-col items-start gap-0.5 min-w-0">
                       <span
                         className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-xs font-medium ${s.className}`}
                       >
@@ -157,11 +157,18 @@ export function InTransitDetailRow({ variantId, warehouseId, open }: Props) {
                           : '最近物流更新 —'}
                       </span>
                     </span>
-                    <span className="text-muted-foreground">
+                    <span className="text-muted-foreground text-left">
                       {formatDate(d.estimatedArrival)}
                     </span>
-                    <ChevronRightIcon className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 justify-self-end" />
-                  </Link>
+                    <Link
+                      href={`/dashboard/shipments/${d.shipmentId}`}
+                      className="inline-flex items-center text-gray-400 hover:text-blue-600 transition-colors"
+                      title="查看物流详情"
+                      aria-label="查看物流详情"
+                    >
+                      <ExternalLinkIcon className="size-3.5" />
+                    </Link>
+                  </div>
                 );
               })}
             </div>

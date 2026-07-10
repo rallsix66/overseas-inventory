@@ -231,6 +231,7 @@ export function ProductDetailClient({ product, isAdmin }: Props) {
             updated_at: product.updated_at,
             skuCount: product.variants.length,
           }}
+          variants={product.variants}
         />
       )}
     </div>

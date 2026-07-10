@@ -1,17 +1,49 @@
 // 海外库存页 — Server Component
 // 读取 URL searchParams、校验权限、获取数据
-// 查询失败时通过 try/catch 显示受控错误态，不依赖 error.tsx 边界
+// 查询失败时抛出错误，由 error.tsx 边界捕获
 // 客户端交互（筛选/表格/分页）委托给 OverseasPageContent
 import { getOverseasInventory } from '@/features/inventory/actions';
 import { getOverseasWarehouseSyncStatus } from '@/features/sync/server-actions';
 import { getCurrentUser } from '@/lib/auth';
 import { OverseasPageContent } from './_components/overseas-page-content';
-import { AlertTriangle } from 'lucide-react';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '海外库存',
 };
+
+// ── URL 参数清洗 ────────────────────────────────────────────────────────────
+// 旧 URL / 书签 / 外部链接可能携带非法参数（如 warehouse=all、country=undefined），
+// 这些值会穿透到 inventorySearchSchema（z.string().uuid() / z.enum(...)）导致
+// Zod safeParse 失败 → Server Component render 抛错 → Suspense 边界兜底为
+// "Recoverable Error"。清洗只做参数过滤，不改 repository/schema/业务口径。
+
+const VALID_COUNTRIES = new Set(['TH', 'ID', 'MY', 'PH', 'VN', 'CN']);
+const VALID_STOCK_STATUSES = new Set(['normal', 'low', 'out_of_stock', 'in_transit']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NON_UUID_SENTINELS = new Set(['all', '__all__', 'undefined', 'null']);
+
+function normalizeCountry(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  return VALID_COUNTRIES.has(v) ? v : undefined;
+}
+
+function normalizeStockStatus(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  return VALID_STOCK_STATUSES.has(v) ? v : undefined;
+}
+
+function normalizeWarehouse(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  if (NON_UUID_SENTINELS.has(v)) return undefined;
+  return UUID_RE.test(v) ? v : undefined;
+}
+
+function normalizeSearch(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  const trimmed = v.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
 
 export default async function OverseasInventoryPage({
   searchParams,
@@ -22,45 +54,26 @@ export default async function OverseasInventoryPage({
   const page = Math.max(1, Number(sp.page) || 1);
   const pageSize = [20, 50, 100].includes(Number(sp.pageSize)) ? Number(sp.pageSize) : 20;
 
-  const [syncStatus, currentUser] = await Promise.all([
+  // 清洗 URL 参数：非法值转为 undefined，避免 Zod 校验失败导致 Server Component 渲染崩溃
+  const cleanCountry = normalizeCountry(sp.country);
+  const cleanWarehouse = normalizeWarehouse(sp.warehouse);
+  const cleanStockStatus = normalizeStockStatus(sp.stockStatus);
+  const cleanSearch = normalizeSearch(sp.search);
+
+  const [data, syncStatus, currentUser] = await Promise.all([
+    getOverseasInventory({
+      search: cleanSearch,
+      country: cleanCountry,
+      warehouseId: cleanWarehouse,
+      stockStatus: cleanStockStatus as 'normal' | 'low' | 'out_of_stock' | 'in_transit' | undefined,
+      page,
+      pageSize,
+    }),
     getOverseasWarehouseSyncStatus().catch(() => ({})),
     getCurrentUser(),
   ]);
 
-  // 数据查询可能因 Supabase 网络/连接问题失败，通过 try/catch 展示受控错误态
-  let data: Awaited<ReturnType<typeof getOverseasInventory>>;
-  try {
-    data = await getOverseasInventory({
-      search: sp.search,
-      country: sp.country,
-      warehouseId: sp.warehouse,
-      stockStatus: sp.stockStatus as 'normal' | 'low' | 'out_of_stock' | 'in_transit' | undefined,
-      page,
-      pageSize,
-    });
-  } catch (error) {
-    // 保留真实错误信息到服务端日志，方便排查
-    console.error('海外库存查询失败:', error);
-    return (
-      <div className="px-4 sm:px-6 py-20 text-center">
-        <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">加载失败</h2>
-        <p className="text-sm text-muted-foreground mb-5 max-w-md mx-auto">
-          海外库存查询失败，请检查 Supabase 连接或稍后重试
-        </p>
-        <p className="text-xs text-muted-foreground/60 mb-5 font-mono">
-          {error instanceof Error ? error.message : String(error)}
-        </p>
-        <a
-          href="/dashboard/inventory/overseas"
-          className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 h-10 px-4 py-2"
-        >
-          重试
-        </a>
-      </div>
-    );
-  }
-
+  // 仅传清洗后的值给客户端，避免 UI 再次带出坏 query
   return (
     <OverseasPageContent
       stats={data.stats}
@@ -68,10 +81,10 @@ export default async function OverseasInventoryPage({
       result={data.result}
       syncStatus={syncStatus}
       filters={{
-        search: sp.search ?? '',
-        country: sp.country ?? '',
-        warehouse: sp.warehouse ?? '',
-        stockStatus: sp.stockStatus ?? '',
+        search: cleanSearch ?? '',
+        country: cleanCountry ?? '',
+        warehouse: cleanWarehouse ?? '',
+        stockStatus: cleanStockStatus ?? '',
       }}
       canBindProduct={currentUser?.roleName === 'admin'}
     />

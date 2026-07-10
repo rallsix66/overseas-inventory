@@ -347,8 +347,8 @@ describe('P3-S2E: 海外库存展开组件 — 源码检查', () => {
     expect(content).toContain('min-w-[');
     expect(content).toMatch(/\bborder\b/);
     expect(content).toContain('rounded');
-    // 列宽使用 minmax 而非纯硬编码固定值
-    expect(content).toContain('minmax(');
+    // 列宽使用固定 px 值（220/180/120/260/180/28），全部左对齐
+    expect(content).toContain('grid-cols-[');
   });
 
   it('InTransitDetailRow 物流状态列使用 status 映射中文标签', () => {
@@ -377,6 +377,32 @@ describe('P3-S2E: 海外库存展开组件 — 源码检查', () => {
     expect(content).not.toContain('voyage_number');
     expect(content).not.toContain('vesselName');
     expect(content).not.toContain('voyageNumber');
+  });
+
+  it('数据行使用普通 div 容器（非整行 Link 包裹，避免误触跳转）', () => {
+    const content = readFileSync(
+      resolve(root, 'features/shipments/components/in-transit-detail-row.tsx'), 'utf-8');
+    // 数据行容器应为 div，不是 Link（不含 href 的 grid 行）
+    expect(content).toMatch(/<div\s[\s\S]*?grid \$\{GRID_COLS\}/);
+    // 不再导入 ChevronRightIcon
+    expect(content).not.toContain('ChevronRightIcon');
+    // 不渲染 group-hover:opacity-100 的箭头
+    expect(content).not.toContain('group-hover:opacity-100');
+  });
+
+  it('最后一列独立跳转按钮：ExternalLinkIcon + aria-label="查看物流详情"', () => {
+    const content = readFileSync(
+      resolve(root, 'features/shipments/components/in-transit-detail-row.tsx'), 'utf-8');
+    // 导入 ExternalLinkIcon
+    expect(content).toContain('ExternalLinkIcon');
+    // 独立 Link 按钮（非整行）
+    expect(content).toContain('aria-label="查看物流详情"');
+    expect(content).toContain('title="查看物流详情"');
+    // Link href 指向物流详情页
+    expect(content).toMatch(/href=\{`\/dashboard\/shipments\/\$\{d\.shipmentId\}`\}/);
+    // 样式：灰色图标 hover 变蓝
+    expect(content).toContain('text-gray-400');
+    expect(content).toContain('hover:text-blue-600');
   });
 
   it('海外库存页集成展开组件', () => {

@@ -61,6 +61,7 @@ export async function updateProduct(
     }
 
     const product = await productRepository.update(id, {
+      code: parsed.data.code,
       name: parsed.data.name,
       safety_stock: parsed.data.safetyStock,
       category: parsed.data.category || null,

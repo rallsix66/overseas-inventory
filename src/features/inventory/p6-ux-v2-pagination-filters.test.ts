@@ -589,3 +589,136 @@ describe('P6-UX-V2: Migration 00036 pg_trgm 索引', () => {
     expect(mig35Src).toMatch(/NOT EXISTS/);
   });
 });
+
+// ─── 9. URL 参数清洗：防止非法 query 触发 Server Component 渲染错误 ─────────
+
+describe('P6-RECOVERABLE-FIX: URL 参数清洗', () => {
+  // 模块级常量
+  it('定义 VALID_COUNTRIES（TH/ID/MY/PH/VN/CN）', () => {
+    expect(pageSrc).toMatch(/VALID_COUNTRIES\s*=\s*new Set\(\[/);
+    expect(pageSrc).toMatch(/'TH'/);
+    expect(pageSrc).toMatch(/'ID'/);
+    expect(pageSrc).toMatch(/'MY'/);
+    expect(pageSrc).toMatch(/'PH'/);
+    expect(pageSrc).toMatch(/'VN'/);
+    expect(pageSrc).toMatch(/'CN'/);
+  });
+
+  it('定义 VALID_STOCK_STATUSES（normal/low/out_of_stock/in_transit）', () => {
+    expect(pageSrc).toMatch(/VALID_STOCK_STATUSES\s*=\s*new Set\(\[/);
+    expect(pageSrc).toMatch(/'normal'/);
+    expect(pageSrc).toMatch(/'low'/);
+    expect(pageSrc).toMatch(/'out_of_stock'/);
+    expect(pageSrc).toMatch(/'in_transit'/);
+  });
+
+  it('定义 UUID_RE 正则', () => {
+    expect(pageSrc).toMatch(/UUID_RE\s*=\s*\/\^\[0-9a-f\]\{8\}/);
+  });
+
+  it('定义 NON_UUID_SENTINELS（all/__all__/undefined/null）', () => {
+    expect(pageSrc).toMatch(/NON_UUID_SENTINELS\s*=\s*new Set\(\[/);
+    expect(pageSrc).toMatch(/'all'/);
+    expect(pageSrc).toMatch(/'__all__'/);
+    expect(pageSrc).toMatch(/'undefined'/);
+    expect(pageSrc).toMatch(/'null'/);
+  });
+
+  // normalizeCountry
+  it('normalizeCountry 接受有效值返回原值', () => {
+    expect(pageSrc).toMatch(/function normalizeCountry/);
+    // 合法值返回 v
+    expect(pageSrc).toMatch(/VALID_COUNTRIES\.has\(v\) \? v : undefined/);
+  });
+
+  it('normalizeCountry 拒绝无效值返回 undefined', () => {
+    // 非法值走到 undefined 分支
+    expect(pageSrc).toMatch(/VALID_COUNTRIES\.has\(v\) \? v : undefined/);
+    // 空值检查
+    expect(pageSrc).toMatch(/if \(!v\) return undefined/);
+  });
+
+  // normalizeStockStatus
+  it('normalizeStockStatus 接受有效值返回原值', () => {
+    expect(pageSrc).toMatch(/function normalizeStockStatus/);
+    expect(pageSrc).toMatch(/VALID_STOCK_STATUSES\.has\(v\) \? v : undefined/);
+  });
+
+  it('normalizeStockStatus 拒绝无效值返回 undefined', () => {
+    expect(pageSrc).toMatch(/if \(!v\) return undefined/);
+  });
+
+  // normalizeWarehouse
+  it('normalizeWarehouse 接受合法 UUID 返回原值', () => {
+    expect(pageSrc).toMatch(/function normalizeWarehouse/);
+    expect(pageSrc).toMatch(/UUID_RE\.test\(v\) \? v : undefined/);
+  });
+
+  it('normalizeWarehouse 拒绝 sentinel all/__all__/undefined/null', () => {
+    expect(pageSrc).toMatch(/NON_UUID_SENTINELS\.has\(v\)/);
+  });
+
+  it('normalizeWarehouse 拒绝非 UUID 字符串', () => {
+    // UUID_RE.test 失败 → undefined
+    expect(pageSrc).toMatch(/UUID_RE\.test\(v\) \? v : undefined/);
+  });
+
+  // normalizeSearch
+  it('定义 normalizeSearch 清洗搜索参数', () => {
+    expect(pageSrc).toMatch(/function normalizeSearch/);
+    expect(pageSrc).toMatch(/v\.trim\(\)/);
+  });
+
+  // 集成：page.tsx 使用清洗后的值
+  it('getOverseasInventory 使用 cleanWarehouse（非 sp.warehouse）', () => {
+    // 调用时传入 cleanWarehouse
+    expect(pageSrc).toMatch(/warehouseId:\s*cleanWarehouse/);
+  });
+
+  it('getOverseasInventory 使用 cleanCountry（非 sp.country）', () => {
+    expect(pageSrc).toMatch(/country:\s*cleanCountry/);
+  });
+
+  it('getOverseasInventory 使用 cleanStockStatus（非 sp.stockStatus）', () => {
+    expect(pageSrc).toMatch(/stockStatus:\s*cleanStockStatus/);
+  });
+
+  it('getOverseasInventory 使用 cleanSearch（非 sp.search）', () => {
+    expect(pageSrc).toMatch(/search:\s*cleanSearch/);
+  });
+
+  it('客户端 filters 使用清洗后的值（非原始 sp.xxx）', () => {
+    // filters.search 使用 cleanSearch，不是 sp.search
+    expect(pageSrc).toMatch(/search:\s*cleanSearch \?\? ''/);
+    expect(pageSrc).toMatch(/country:\s*cleanCountry \?\? ''/);
+    expect(pageSrc).toMatch(/warehouse:\s*cleanWarehouse \?\? ''/);
+    expect(pageSrc).toMatch(/stockStatus:\s*cleanStockStatus \?\? ''/);
+  });
+
+  // 不新增 Migration / RPC / RLS
+  it('修复不新增 Migration', () => {
+    const migrationKeywordCount = (pageSrc.match(/Migration/g) ?? []).length;
+    // 仅注释中出现（非法参数会穿透 → Migration 无直接关系），不新增代码引用
+    expect(migrationKeywordCount).toBe(0);
+  });
+
+  it('修复不新增 RPC / RLS', () => {
+    expect(pageSrc).not.toMatch(/\bRPC\b/);
+    expect(pageSrc).not.toMatch(/\bRLS\b/);
+  });
+
+  // 架构合规
+  it('清洗逻辑不直接调用 supabase.from()', () => {
+    expect(pageSrc).not.toMatch(/supabase\.from\(/);
+  });
+
+  it('清洗逻辑不使用 service_role', () => {
+    expect(pageSrc).not.toMatch(/service_role/);
+  });
+
+  // 原有逻辑保持
+  it('page/pageSize 原有逻辑不变', () => {
+    expect(pageSrc).toMatch(/Math\.max\(1, Number\(sp\.page\)/);
+    expect(pageSrc).toMatch(/\[20, 50, 100\]\.includes\(/);
+  });
+});

@@ -53,7 +53,7 @@ export function UserRoleChangeDialog({
   onClose,
   onSuccess,
 }: Props) {
-  const [selectedRoleId, setSelectedRoleId] = useState<string | undefined>();
+  const [selectedRoleId, setSelectedRoleId] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,7 +82,7 @@ export function UserRoleChangeDialog({
   };
 
   const resetAndClose = () => {
-    setSelectedRoleId(undefined);
+    setSelectedRoleId('');
     setError(null);
     onClose();
   };
@@ -115,7 +115,7 @@ export function UserRoleChangeDialog({
             <Select
               value={selectedRoleId}
               onValueChange={(v) => {
-                setSelectedRoleId(v ?? undefined);
+                setSelectedRoleId(v ?? '');
                 setError(null);
               }}
             >
