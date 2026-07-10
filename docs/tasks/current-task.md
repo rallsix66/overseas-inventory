@@ -2,342 +2,371 @@
 
 ## Task ID
 
-`P6-OVERSEAS-INVENTORY-UX-V2` — 海外库存完整体验优化
+`P7-PRODUCT-OVERVIEW` — 标准产品总看板
 
 ## 状态
 
-**A+B+C+D DONE**（2026-07-08）+ **D 返工 DONE**（2026-07-08）。A（BigSeller 分页）+ B（统计卡片真实联动）+ C（筛选状态可见化）+ D（真实产品绑定 + 字段语义修正 + 分词搜索 + 写后校验）已全部实现并验收。E（产品看板长期方向）仅计划。
+**P7-PLAN**（2026-07-10）— DONE（Codex 复验通过）。P6-OVERSEAS-INVENTORY-UX-V2 已完整闭合，P7 文档阶段完成，下一步进入 P7-MVP 实现。
 
 ---
 
-## 1. 当前问题复盘
+## 阶段 1：P7-PLAN / 文档与口径确认（当前阶段）
 
-### P6-OVERSEAS-INVENTORY-UI-CLARITY 已完成什么
+### 1.1 背景与动机
 
-上一轮 P6 轻量收口（全阶段 A~D DONE）完成了以下 UI 清晰度修正：
-
-| 已完成项 | 内容 |
-|----------|------|
-| 筛选器中文化 | placeholder "全部国家/全部仓库/全部状态"，不暴露 raw `all` |
-| 统计卡片可点击 | 库存总量/SKU → 清除筛选；低库存 → `stockStatus=low` |
-| 防页面跳顶 | 所有 `router.push` 统一 `{ scroll: false }` |
-| 移除"已确认到仓"列 | 主表 colSpan 13→12，RPC 保留供在途/CSV 使用 |
-| 物流更新时间 | 展开行显示 `tracking_event.occurred_at` 或 `shipment.updated_at` |
-| 绑定产品占位 | 未匹配行显示"绑定产品"按钮，点击弹出 toast 提示 |
-
-### 为什么这不等于完整体验优化
-
-以上 5 项属于最小可用的 UI 清晰度修正，但运营人员实际使用中仍有以下明显不足：
-
-1. **分页体验差**：当前仅有"上一页/下一页 + 共 N 条第 X/Y 页"，SKU 超过 100 条后翻页效率低，无页码导航、无跳页、无每页条数切换。
-2. **统计卡片联动弱**：卡片点击后仅设置筛选参数，页面没有明显的视觉反馈告知用户"当前正在看的范围"（如低库存筛选），用户可能忘记自己处于筛选状态。
-3. **筛选状态不可见**：当前筛选栏是纯下拉框，未以标签/摘要形式展示已应用项。用户无法一眼看到当前生效的筛选组合，清除单个筛选需要重新选择下拉"all"。
-4. **产品绑定是假入口**：未匹配海外 SKU 的"绑定产品"按钮只弹 toast，运营不能真正建立 DIS 标准产品与海外库存的关联。回到产品列表手动创建 variant 再回来确认，流程割裂。
-5. **缺少产品看板长期方向**：标准产品 → 国内外库存 → 在途 → 周期的总览方向已在多次讨论中确认，但尚未固化为开发计划。
-
-### 本轮目标
-
-- 在 P6-OVERSEAS-INVENTORY-UI-CLARITY 基础上，补齐以上缺失的完整体验。
-- 本轮 A+B+C+D 已实现并验收（BigSeller 风格分页 + 统计卡片真实联动 + 筛选状态可见化 + 真实产品绑定）。E 仅计划。
-
----
-
-## 2. 功能拆分
-
-### A. BigSeller 风格分页
-
-#### 目标
-
-海外库存页底部从"上一页/下一页"升级为 BigSeller 类似分页组件。
-
-#### 范围
-
-- 新建 `src/components/ui/pagination.tsx`（通用分页组件，可被其他页面复用）：
-  - 上一页/下一页按钮（首页/末页禁用）
-  - 页码按钮（当前页高亮）
-  - 省略号（`...`）处理前后页码过多时的折叠
-  - 每页条数选择器（20/50/100）
-  - 可选：跳页输入框
-- `overseas-page-content.tsx` 替换底部分页区域为 `<Pagination />` 组件
-- 所有分页导航（页码切换/改 pageSize）使用 `router.push(..., { scroll: false })`
-- 页面搜索参数 `page` / `pageSize` 与 URL query 同步
-
-#### 涉及文件
-
-| # | 文件 | 操作 |
-|---|------|------|
-| 1 | `src/components/ui/pagination.tsx` | **新建** |
-| 2 | `src/app/dashboard/inventory/overseas/_components/overseas-page-content.tsx` | 修改：分页区域替换 |
-| 3 | `src/app/dashboard/inventory/overseas/page.tsx` | 修改：解析 `pageSize` searchParam |
-| 4 | 新增测试文件 | 分页组件行为 + 页面集成 |
-
-#### 风险
-
-- `pageSize` 变更时需重置 `page=1`，避免超出新 pageSize 对应的总页数
-- Repository 分页契约（`getOverseasList` 的 `page`/`pageSize` 参数）不变，分页组件仅改变前端 URL 参数
-- 不能破坏现有 `getOverseasInventory` Server Action 的 Zod 校验（当前 `pageSize` 固定 20）
-
-#### 验收标准
-
-| 检查项 | 期望 |
-|--------|------|
-| 分页组件显示页码按钮 + 省略号 | ✅ |
-| 当前页高亮、不可点击 | ✅ |
-| 每页条数 20/50/100 可选 | ✅ |
-| 换页/改 pageSize 不跳顶 | `scroll: false` |
-| URL query 保留筛选条件 | `?search=...&country=...&page=3` |
-| 首页/末页时上/下一页禁用 | ✅ |
-| 不破坏 Repository 分页契约 | ✅ |
-| `npm run test` 通过 | ✅ |
-
----
-
-### B. 统计卡片真实联动列表 ✅ DONE（2026-07-08）+ 在途卡片联动 P6-UX-V2-F（2026-07-09）
-
-**实现状态**：已在 P6-UI-CLARITY 基础上审计强化。handleStatCardClick 行为正确（all→裸路径清空筛选，low→buildUrl({ stockStatus: 'low' })保留 pageSize/page→1）。18 项新测试覆盖卡片绑定/URL/scroll:false/架构合规。
-
-> **更新（P6-UX-V2-F，2026-07-09 DONE）**：在途库存卡片**不再是"不可点击"**——已实现真实联动。点击后跳转 `stockStatus=in_transit`（保留 pageSize、page→1、scroll:false），列表仅显示有在途数量的行，筛选标签显示"状态：有在途"。后端通过 Migration 00037 扩展 `get_overseas_inventory` 的 `p_stock_status` 白名单（新增 `in_transit`），口径与 `get_in_transit_confirmed_aggregate` 一致（非 warehoused shipment 按 variant_id+warehouse_id 判断 `quantity - warehoused_quantity > 0`），在途筛选在 SQL 层分页前生效（不做前端当页过滤，total/page 正确）。**Migration 00037 已在 Supabase SQL Editor 手动执行并验证通过（2026-07-09），运行时验证通过**。
-
-#### 目标
-
-统计卡片点击后，页面列表明确反映筛选范围，并提供视觉反馈。
-
-#### 范围
-
-- 当前卡片行为保持不变：
-  - 库存总量/SKU 数量 → `router.push('/', { scroll: false })` 清除筛选
-  - 低库存 → `stockStatus=low`
-- **新增**：卡片点击后页面上方显示当前筛选状态标签（见功能 C），用户立即感知"正在看低库存范围"
-- **在途库存卡片**（P6-UX-V2-F 已实现，2026-07-09）：
-  - 在途数据来自 `shipment` 表（通过 `getInTransitConfirmedAggregate`）
-  - **已实现后端支持**：Migration 00037 在 `get_overseas_inventory` RPC 内以 `EXISTS(shipment JOIN shipment_item)` 子查询实现 `p_stock_status='in_transit'` 筛选，无需新增 RPC 参数（避免 PostgREST 函数重载歧义），在 SQL 层分页前生效
-  - 卡片点击 → `stockStatus=in_transit`，筛选标签"状态：有在途"，`scroll: false`
-- 所有交互保持 `scroll: false`
-
-#### 涉及文件
-
-| # | 文件 | 操作 |
-|---|------|------|
-| 1 | `overseas-page-content.tsx` | 修改：筛选状态标签显示 |
-| 2 | `src/features/inventory/actions.ts` | 可能修改：新增 hasInTransit 筛选（如需） |
-| 3 | `src/features/inventory/repository.ts` | 可能修改：新增 hasInTransit 过滤（如需） |
-
-#### 风险
-
-- 在途筛选涉及跨表查询（inventory + shipment），可能需要 RPC 或复杂 join，不可轻率新增
-- 状态标签与筛选栏的视觉层级需仔细处理，避免页面头重脚轻
-
-#### 验收标准
-
-| 检查项 | 期望 |
-|--------|------|
-| 点击低库存卡片 → 列表显示 stockStatus=low | ✅ |
-| 筛选生效时有可见状态标签 | ✅（见功能 C）|
-| 在途卡片是否可点击 | ✅ P6-UX-V2-F 已实现真实联动（stockStatus=in_transit，Migration 00037）|
-| 所有导航 `scroll: false` | ✅ |
-
----
-
-### C. 筛选状态可见化
-
-#### 目标
-
-当前筛选栏是纯下拉框，用户无法一眼看到"当前应用了什么筛选"。需要以标签/摘要形式将筛选条件可视化。
-
-#### 范围
-
-- 在表格上方新增筛选标签行（`FilterTagBar` 或内联在表格区域顶部）：
-  - 国家筛选 → 显示"泰国"标签 + × 清除按钮
-  - 仓库筛选 → 显示仓库名标签 + × 清除按钮
-  - 状态筛选 → 显示"低库存 / 缺货"标签 + × 清除按钮
-  - 搜索词 → 显示"搜索：xxx"标签 + × 清除按钮（或作为搜索框内的可清除值）
-- 每个标签 × 点击后：
-  - 移除对应筛选参数
-  - `router.push(buildUrl({ ... }), { scroll: false })`
-- "清空筛选"按钮（当前已存在）— 确认在所有筛选标签旁边或筛选栏末端可见
-- 下拉框内部值仍使用中文（当前已完成），不暴露 `all`
-- 筛选标签样式：shadcn/ui Badge 或自定义 rounded 标签
-
-#### 涉及文件
-
-| # | 文件 | 操作 |
-|---|------|------|
-| 1 | `overseas-page-content.tsx` | 修改：新增筛选标签行 |
-| 2 | 新增测试 | 标签渲染 / 单清 / 全清 / URL 同步 |
-
-#### 风险
-
-- 搜索词清空后 Input 组件需要通过 `key` 重置（当前已在使用 `key={`search-${filters.search}`}`，可直接复用模式）
-- 标签数量多时移动端可能溢出，但当前只做桌面端（≥1024px），风险可控
-
-#### 验收标准
-
-| 检查项 | 期望 |
-|--------|------|
-| 选择泰国 → 筛选标签"泰国 ×"出现 | ✅ |
-| 选择低库存 → 筛选标签"低库存 ×"出现 | ✅ |
-| 点击标签 × → 该筛选清除，列表刷新，不跳顶 | ✅ |
-| 点击"清空筛选" → 所有标签消失，恢复默认 | ✅ |
-| 无筛选时标签行不显示或显示空状态 | ✅ |
-| URL query 与筛选标签始终同步 | ✅ |
-| 下拉框不显示 raw `all` | ✅ |
-
----
-
-### D. 产品绑定真实功能 ✅ DONE（2026-07-08）
-
-**实现状态**：已完成真实绑定闭环。`searchProducts` Server Action（requireActiveAuth）搜索启用产品；`bindOverseasVariant` Server Action（requireActiveAdmin + Zod variantMatchSchema → variantRepository.match → revalidatePath overseas）；`BindProductDialog` 组件（搜索→选择→确认，loading/empty/error 中文状态）；`overseas-page-content.tsx` 替换 toast 占位为真实 Dialog + router.refresh 保留筛选/分页/pageSize/滚动位置。49 项新测试。不新增 Migration/RPC/RLS。
-
-**已知残余风险**：
-- Operator 角色无法执行绑定（限制与 variantRepository.match 的 requireAdmin 一致，符合 products-variants.md 规则）。
-- 绑定后需手动刷新或导航才能看到海外库存页的更新（router.refresh 保留当前 URL 含筛选/分页参数）。
-- 搜索产品无防抖（每次键入触发 Server Action），产品数量较小时影响可忽略。
-
-#### 目标
-
-从占位按钮升级为真实可用的产品绑定流程，让运营人员直接从未匹配海外库存行绑定到 DIS 标准产品。
-
-#### 功能流程
-
-1. 海外库存未匹配行（`matchStatus !== 'matched'`）点击"绑定产品"
-2. 打开 Dialog 或 Sheet，显示可搜索的 DIS 标准产品列表（数据来自 `/dashboard/products` 或对应 Server Action）
-3. 搜索 / 选择标准产品后确认 → 创建或更新 `product_variant` 绑定关系
-4. 绑定成功后刷新当前行或局部更新（优先不整页 `router.refresh()`）
-5. 绑定失败显示中文错误提示并回滚
-
-#### 需要提前确认的事项（实现前）
-
-- [ ] 现有 `product_variant` 表结构（`product_id` / `variant_id` / `match_status` 等）是否支持本绑定流程？
-- [ ] `product_variant.match_status` 的值域：当前 `'matched'` / `'unmatched'`，绑定后写入 `'matched'` 是否符合现有查询逻辑？
-- [ ] 是否需要新增 Migration？如需要：只能新增，不修改已执行 migration
-- [ ] 现有 variantRepository / productRepository 是否已有可复用方法？
-- [ ] RLS：Operator 是否允许创建/更新 `product_variant`？还是仅 Admin？
-- [ ] Server Action 权限范围
-
-#### 权限设计（待确认）
-
-| 角色 | 绑定产品 | 依据 |
-|------|----------|------|
-| Admin | 允许 | 产品管理权限 |
-| Operator | 待确认 | 如果允许，需 RLS + Server Action 双认证 |
-
-- 如果仅 Admin 允许：UI 隐藏 Operator 的绑定按钮；Server Action 包含 `requireActiveAdmin()`
-- 如果 Operator 允许：Server Action 使用 `requireActiveAuth()`；RLS 策略需支持 Operator 对 `product_variant` 的 INSERT/UPDATE
-
-#### 数据流
-
-```text
-海外库存未匹配行 "绑定产品" 按钮
-  → BindProductDialog / BindProductSheet（Client Component）
-    → 搜索标准产品：调用 listProducts Server Action
-    → 用户选择产品后确认
-      → bindProductToVariant(variantId, productId) Server Action
-        → requireActiveAuth / requireActiveAdmin（按权限决策）
-        → Zod 校验（variantId: UUID, productId: UUID）
-        → variantRepository.upsertMatch(variantId, productId)
-          → INSERT ... ON CONFLICT (variant_id) DO UPDATE SET product_id, match_status='matched'
-          → 或 UPDATE + INSERT（取决于现有 schema）
-        → revalidatePath('/dashboard/inventory/overseas')
-        → 返回 { success: true, productName: string }
-  → 成功：关闭 Dialog + 局部刷新行（或 router.refresh 备选）
-  → 失败：中文 toast + Dialog 保持打开
-```
-
-#### 涉及文件（预估）
-
-| # | 文件 | 操作 |
-|---|------|------|
-| 1 | `src/features/products/actions.ts` | 可能修改：确认 `listProducts` 或新增搜索接口 |
-| 2 | `src/features/variants/repository.ts` | 可能修改：新增 `upsertMatch` 或 `bindProduct` |
-| 3 | `src/features/variants/actions.ts` | **新建或修改**：`bindProductToVariant` Server Action |
-| 4 | `src/features/inventory/components/bind-product-dialog.tsx` | **新建**：Dialog/Sheet 组件 |
-| 5 | `overseas-page-content.tsx` | 修改：替换 `handleBindProduct` toast 为真实 Dialog |
-| 6 | 新增 Migration（如需要） | 仅新增，不修改已执行 migration |
-| 7 | 新增 RLS 策略（如需要） | 仅 Operator 绑定场景 |
-| 8 | 新增测试 | Dialog 行为 / Server Action / 权限 / 失败回滚 |
-
-#### 风险
-
-- 当前 `product_variant` 表结构需先审查：如果 `match_status` 是生成列或依赖其他字段，绑定流程可能比预期复杂
-- 如果 Operator 允许绑定，需新增 RLS 策略 + Server Action 权限校验，开发量翻倍
-- `revalidatePath` 是整页标签，可能引起不必要的刷新。优先探索 `router.refresh()` 或 `startTransition` + 重新 fetch 单行（需新增轻量 Server Action 获取单个 InventoryItem）
-
-#### 验收标准
-
-| 检查项 | 期望 |
-|--------|------|
-| 未匹配行"绑定产品"按钮可点击 → 打开 Dialog/Sheet | ✅ |
-| Dialog 内可搜索标准产品 | ✅ |
-| 选择产品后确认 → 创建/更新 product_variant | ✅ |
-| 绑定后 matchStatus 变为 'matched' | ✅ |
-| 绑定后当前行局部更新（或至少当前页） | 优先局部 |
-| 绑定失败 → 中文 toast + 不关闭 Dialog | ✅ |
-| 权限：Admin 允许 / Operator 按决策 | ✅ |
-| 不绕过 Product → ProductVariant → Inventory 模型 | ✅ |
-| 不走 `service_role`；走 RLS session | ✅ |
-| 如新增 Migration → 仅新增，不改已执行 | ✅ |
-
----
-
-### E. 产品看板长期方向（仅规划，不实现）
-
-#### 方向（已确认）
+P6 E 阶段将"产品看板长期方向"记录为：
 
 ```text
 标准产品名 → 国内库存 → 各海外市场库存 → 在途库存 → 国内生产周期 → 各市场运输周期
 ```
 
-#### 本轮处理
+当前各模块页面（海外库存 `/dashboard/inventory/overseas`、在途管理 `/dashboard/shipments`、关注产品动态 Dashboard 首页）以 **仓库/SKU/变体** 为视角，运营缺少按 **标准产品** 汇总的单一视图。
 
-- **不实现**任何总看板页面、国内库存、运输周期计算
-- 在 `docs/current-state.md` 中记录此方向为后续独立任务（如 `P7-PRODUCT-DASHBOARD`）
-- P6-UX-V2 中产品绑定（功能 D）为总看板的前置基础——绑定关系建立后，后续总看板才能按标准产品名汇总
+P7 目标是在不新增数据库模型、不接入新数据源的前提下，基于现有真实数据构建标准产品总看板。
+
+### 1.2 数据关系图（现有真实模型）
+
+```text
+Product (标准产品，主键)
+  └── ProductVariant (各国 SKU 映射)
+        ├── Inventory (海外仓库存，5 仓真实数据)
+        │     ├── quantity (BigSeller available_quantity)
+        │     ├── daily_sales (BigSeller 预测日销量)
+        │     ├── estimated_days (BigSeller 预计可售天数)
+        │     └── last_sync_at
+        ├── ShipmentItem (在途明细)
+        │     ├── quantity (发运数量)
+        │     └── warehoused_quantity (已入仓数量)
+        └── Shipment (在途主单)
+              ├── status (booking→loading→departed→arrived→customs→warehoused)
+              ├── country / warehouse_id / estimated_arrival
+              └── warehouse_id → Warehouse
+                                    ├── country (TH/ID/MY/PH/VN/CN)
+                                    ├── type (domestic/overseas)
+                                    ├── name
+                                    └── lead_time_days
+
+user_variant_preference
+  ├── preference_type = 'favorited' → 关注
+  └── preference_type = 'archived'  → 归档
+```
+
+### 1.3 可复用能力清单
+
+#### RPC（已验证可用，无需新建）
+
+| RPC | 覆盖范围 | 复用场景 |
+|-----|----------|----------|
+| `get_overseas_inventory` | 5 仓海外库存列表 + 分页 + 筛选 + in_transit 白名单 | **不能直接用于 P7 Product 维度分页**（返回粒度是 inventory 行而非 product，缺少 product_id/category/daily_sales/estimated_days/lead_time_days 等 Product Overview 所需字段）。仅可作为变体级数据补充，不可作为分页主表 |
+| `get_overseas_stats` | 海外库存总量/SKU 数/低库存数 | 总看板统计卡片 |
+| `get_in_transit_confirmed_aggregate` | 按 variant+warehouse 聚合在途 + 已确认到仓 | 总看板在途列 |
+| `get_low_stock` | 低库存列表 | 不直接用于总看板，但口径可参考 |
+
+**RPC 决策：P7-MVP 暂不新增 RPC（待验证方案，非最终结论）。**
+
+当前方案是复用已有 RPC 作为变体级数据补充，在应用层按 Product 聚合。但以下前提必须在实现阶段验证：
+
+1. **分页必须以 `product` 表为驱动**，不允许先调用 `get_overseas_inventory` 分页后再按 Product 聚合——该 RPC 返回的是 inventory 行（变体+仓库粒度），按它分页会导致 Product 维度分页不准确（同一个 Product 的多个变体/仓库行分散在不同页）。
+2. **正确链路**：`product` 表分页（`is_active = true`，搜索时 name/code ILIKE）→ `product_variant` 获取关联变体 → `inventory` 表直查海外仓库存 + `warehouse` 表补全国家/仓库名/lead_time_days → `get_in_transit_confirmed_aggregate` RPC 补全在途。
+3. 若实现阶段发现以下任一情况，**应重新评估新增只读 RPC `get_product_overview`**，不在文档阶段提前封死：
+   - Product 维度筛选（按国家/告警等级）在应用层聚合复杂度过高或性能不可接受
+   - Product 维度排序（按总库存/在途/告警等级）需要跨表聚合后排序，应用层实现脆弱
+   - Operator 仓库隔离在 Product 维度下过滤逻辑复杂，SQL 层实现更可靠
+   - 数据量增长到 Product > 500 或关联变体数导致应用层聚合成为瓶颈
+
+#### Repository（可直接复用）
+
+| 方法 | 文件 | 覆盖 |
+|------|------|------|
+| `inventoryRepository.getOverseasList()` | `src/features/inventory/repository.ts` | 海外库存分页/筛选 |
+| `inventoryRepository.getOverseasStats()` | 同上 | 统计卡片 |
+| `inventoryRepository.getInTransitConfirmedAggregate()` | 同上 | 在途+已确认聚合 |
+| `shipmentRepository.getInTransitByVariant()` | `src/features/shipments/repository.ts` | 按 variant 在途 |
+| `shipmentRepository.getInTransitByVariantAndWarehouse()` | 同上 | 按 variant+warehouse 在途 |
+
+#### Server Actions（可直接复用）
+
+| Action | 文件 | 覆盖 |
+|--------|------|------|
+| `getOverseasInventory()` | `src/features/inventory/actions.ts` | 完整海外库存编排 |
+| `bindOverseasVariant()` | 同上 | 产品绑定（总看板不直接使用，但跳转后可用） |
+
+#### UI 组件（可参考/复用）
+
+| 组件 | 位置 | 可复用元素 |
+|------|------|------------|
+| `FollowedProductsSection` | `src/features/preferences/components/` | 筛选标签 + alertLevel badge + 表格 + ExternalLink 跳转模式 |
+| `Pagination` | `src/components/ui/pagination.tsx` | 通用分页 |
+| `OverseasPageContent` | `overseas/_components/` | 筛选栏 + 统计卡片 + 表格结构参考 |
+| `LowStockSummarySection` | `dashboard/_components/` | 低库存汇总区块结构 |
+
+### 1.4 已知缺口与技术债
+
+#### TECH-DEBT-01：国内库存缺失
+
+| 维度 | 现状 |
+|------|------|
+| 数据来源 | **无**。Dashboard 首页入口卡片为灰色占位「即将推出」。 |
+| 数据库行 | `warehouse` 表有一条 `type=domestic, country=CN` 记录，但 `inventory` 表中**无任何 domestic 库存行**。 |
+| RPC | 无 `get_domestic_inventory`。`get_overseas_inventory` 仅覆盖 `warehouse.type='overseas'`。 |
+| Repository | `inventoryRepository.list()` 支持 `warehouseType='domestic'` filter，但查询结果恒为空。 |
+| 同步链路 | 无 supplier / CLI / 抓取器。海外仓通过 BigSeller 抓取 + Python CLI；国内仓无对应能力。 |
+| 页面 | `/dashboard/inventory/domestic` 为占位页。 |
+
+**P7-MVP 处理**：
+- 总看板**保留国内库存列位置，显示「待接入」灰色占位**，不展示假数据（不显示 0、不显示假数字）。
+- 不新增 domestic_inventory 假表、假字段、假 RPC。
+- 后续作为独立任务 P8-DOMESTIC-INVENTORY 设计：
+  - 确认数据来源（聚水潭 / 手动录入 / 其他）
+  - 新建 supplier adapter + CLI + RPC + Migration
+  - 独立验收，不阻塞 P7，不阻塞海外库存和在途视角推进。
+
+#### TECH-DEBT-02：国内生产周期缺失
+
+| 维度 | 现状 |
+|------|------|
+| 数据字段 | 无。当前无表/字段存储生产周期（如 `production_cycle_days`）。 |
+| 隐含相关列 | `warehouse.lead_time_days` 仅表示**运输**补货周期（5 海外仓统一 = 30 天），不区分生产 vs 运输。 |
+
+**P7-MVP 处理**：
+- 总看板**不展示生产周期列**（无数据）。
+- 记录为技术债：后续需确认是否在 Product 表增加 `production_cycle_days`，或在 Warehouse 表区分 `lead_time_days`（运输）和独立的生产周期字段。
+- 不伪造假列、假 RPC、假 Migration。
+
+#### TECH-DEBT-03：各市场运输周期精细化缺失
+
+| 维度 | 现状 |
+|------|------|
+| 已有数据 | `warehouse.lead_time_days` = 30（5 个海外仓统一值，手动填入）。 |
+| 粒度 | 仓级别，非市场/国家对级别。无法区分"中国→泰国"和"中国→印尼"不同周期。 |
+| 动态计算 | 无。当前值是静态配置，非从 tracking_event.occurred_at 差值得出的真实运输时间。 |
+
+**P7-MVP 处理**：
+- 总看板**可展示 `warehouse.lead_time_days`**（已有真实配置数据，非假数据），列名标注「补货周期（天）」。
+- 不做按市场/国家对拆分，不做动态运输时间计算。
+- 记录为技术债：真正市场级运输周期需从 `tracking_event` 时间差统计，或手动配置国家对周期。
+
+### 1.5 P7-MVP 明确不做项
+
+| 不做项 | 原因 |
+|--------|------|
+| 国内库存真实数据接入 | 无数据来源/模型/同步链路 → 独立 P8 |
+| 国内库存假数据展示（0 / 假数字） | 占位只显示「待接入」，不伪造 |
+| 国内生产周期字段/计算 | 无数据 → 独立任务设计 |
+| 各市场运输周期精细化拆分 | lead_time_days 已可用但粒度不足，精细化需独立任务 |
+| 按产品新建/编辑/绑定操作 | 不在总看板范围，复用已有页面跳转 |
+| 图表/趋势图/柱状图 | MVP 仅表格，不做可视化 |
+| 新建 Migration | 全部从已有表读取 |
+| 新建 RPC | 暂不新增 RPC（待验证方案）；以 `product` 表为分页主表 + 应用层聚合先行。若实现阶段发现 Product 维度筛选/排序/权限隔离复杂度过高，则重新评估新增只读 RPC `get_product_overview` |
+| 新建 RLS 策略 | 不建新表 |
+| 修改 Product → ProductVariant → Inventory 核心模型 | 不破坏现有架构 |
+| 接入百世外部在途表（shipment_external_ref 等） | BLOCKED_EXTERNAL（P3-S1B） |
+| 修改 BigSeller 同步流程 | 只读看板，不写数据 |
+| 自动同步启用 | WEBSYNC_REAL_WRITE_ENABLED=false |
+
+### 1.6 P7 实现阶段拆分（规划，不在本轮执行）
+
+```
+P7-PLAN  → 文档与口径确认（当前）
+P7-MVP   → 标准产品总看板只读页面实现
+P7-UX    → 运营可用性收口（筛选/排序/跳转/导出）
+P7-REVIEW → 独立验收与文档同步
+```
 
 ---
 
-### F. 明确不做项
+## 阶段 2：P7-MVP / 标准产品总看板实现（规划）
 
-- 不做国内库存页（用户已确认目前没有实现方式）
-- 不开启自动同步（仍在 3/5 天手动验证阶段）
-- 不修改真实同步写入流程
-- 不绕过 Repository / Server Actions / RLS
-- 不直接在页面或客户端组件调用 `supabase.from()`
-- 不提交 `.claude/context-status.json`
-- 不提交 `.env.local`
-- 不修改 Product → ProductVariant → Inventory 核心模型（绑定在现有模型内完成）
-- 不做总看板、运输周期等长期方向（仅记录）
+### 2.1 页面路由
+
+`/dashboard/products/overview` — 标准产品总看板
+
+- **Server Component**：`src/app/dashboard/products/overview/page.tsx`
+- **Client Component**：`src/app/dashboard/products/overview/_components/overview-page-content.tsx`
+- **侧边栏入口**：产品分组下新增「产品总看板」，`LayoutDashboard` 或 `BarChart3` 图标
+
+### 2.2 页面数据结构
+
+以 **Product（标准产品）** 为行，按 **海外市场（国家）** 为列展开：
+
+```
+Product
+├── 基本信息：name / code / category / safety_stock / is_active
+├── 国内库存：null（占位「待接入」）
+├── 海外市场（每个国家一列）：
+│   ├── quantity（库存量）→ 0 显示「—」
+│   ├── warehouseName
+│   ├── inTransitQuantity（在途）
+│   └── alertLevel（正常/低库存/缺货/可售预警）
+├── 总在途：跨市场在途合计
+└── 最差告警：worstAlertLevel（critical > warning > normal > unknown）
+```
+
+### 2.3 新 Types
+
+在 `src/features/inventory/types.ts` 新增：
+
+```typescript
+/** 单个市场库存摘要 */
+interface MarketInventorySummary {
+  country: string;
+  warehouseId: string;
+  warehouseName: string;
+  quantity: number;
+  safetyStock: number;
+  inTransitQuantity: number;
+  dailySales: number | null;
+  estimatedDays: number | null;
+  leadTimeDays: number | null;
+  alertLevel: 'critical' | 'warning' | 'normal' | 'unknown';
+  alertReason: string | null;
+}
+
+/** 产品总看板行 */
+interface ProductOverviewItem {
+  productId: string;
+  productName: string;
+  productCode: string;
+  category: string | null;
+  safetyStock: number;
+  isActive: boolean;
+  variantCount: number;               // 关联 SKU 总数
+  unmatchedVariantCount: number;       // 未匹配 SKU 数
+  markets: MarketInventorySummary[];   // 按国家分组
+  totalInTransit: number;
+  worstAlertLevel: 'critical' | 'warning' | 'normal' | 'unknown';
+  domesticStatus: 'unavailable';       // 固定值：国内库存待接入
+}
+
+/** 产品总看板筛选 */
+interface ProductOverviewFilters {
+  search?: string;
+  country?: string;                    // 过滤到特定国家
+  alertLevel?: 'critical' | 'warning' | 'normal' | 'unknown';
+  page: number;
+  pageSize: number;
+}
+```
+
+### 2.4 新 Repository 方法（预估）
+
+在 `src/features/inventory/repository.ts` 新增：
+
+```typescript
+getProductOverview(filters: ProductOverviewFilters, userId: string): Promise<PaginatedResult<ProductOverviewItem>>
+```
+
+**实现策略**：
+
+1. **分页主表必须是 `product`**：从 `product` 表分页（仅 `is_active = true`，搜索时按 name/code ILIKE），不允许以 `get_overseas_inventory` 返回的 inventory 行作为分页驱动——该 RPC 返回的是变体+仓库粒度行，不是 Product 粒度行，按它分页会导致同一个 Product 的多个变体分散在不同页，Product 维度分页不准确。
+2. 通过 `product_variant` LEFT JOIN 获取所有关联 variant
+3. 对每个 variant 查询 `inventory`（海外仓）+ 从 `get_in_transit_confirmed_aggregate` RPC 取在途
+4. 在应用层按 product_id 分组、按 country 分列
+5. alertLevel 复用 `FollowedVariantBasic` 的动态告警规则（estimatedDays < leadTimeDays → critical, quantity < safetyStock → warning）
+6. Operator 仓库隔离：复用 `warehouseAccessRepository.getAccessibleWarehouseIds`
+
+**不分页后在前端聚合大量数据**：
+- Product 本身分页（服务端 LIMIT/OFFSET）
+- 每页 Product 的关联 variant + inventory + in-transit 在服务端一次性拉取后分组
+- 单个 product 关联的 variant 数通常 < 10，数据量极小
+
+### 2.5 新 Server Action（预估）
+
+在 `src/features/inventory/actions.ts` 新增：
+
+```typescript
+getProductOverview(filters: ProductOverviewFilters): Promise<{
+  result: PaginatedResult<ProductOverviewItem>;
+  countries: string[];  // 可用国家列表
+}>
+```
+
+- `requireActiveAuth()` → Admin/Operator 均可查看
+- Zod 校验（`productOverviewSchema`）
+- 调用 repository 方法
+- **错误处理**：DB / RLS / repository 错误必须传递为中文错误状态，页面可展示错误边界或错误提示，但禁止将异常伪装成空数据（如 `catch` 后返回空 markets / worstAlertLevel='unknown'）。真正无数据时才显示空状态。
+
+### 2.6 新 Zod Schema（预估）
+
+在 `src/features/inventory/schema.ts` 新增：
+
+```typescript
+productOverviewSchema: z.object({
+  search: z.string().optional(),
+  country: z.enum(['TH','ID','MY','PH','VN']).optional(),
+  alertLevel: z.enum(['critical','warning','normal','unknown']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+})
+```
+
+### 2.7 是否需要新 Migration
+
+**不需要。** 所有数据从已有表读取：`product` / `product_variant` / `inventory` / `shipment` / `shipment_item` / `warehouse`。不新增表、字段、索引、约束、触发器或 RPC。
+
+### 2.8 是否需要新 RPC
+
+**暂不新增（待验证方案）。** 详见阶段 1.3 节决策理由与验证前提。当前方案以 `product` 表为分页主表 + 已有 RPC 作为变体级数据补充 + 应用层聚合。若实现阶段发现 Product 维度筛选/排序/权限隔离复杂度过高，则重新评估新增只读 RPC `get_product_overview`，不在文档阶段提前封死。
+
+### 2.9 权限与 RLS 风险
+
+| 风险点 | 评估 | 缓解措施 |
+|--------|------|----------|
+| Operator 仓库隔离 | 新 repository 方法需继承现有隔离逻辑 | 传入 `userId`，复用 `warehouseAccessRepository.getAccessibleWarehouseIds()` |
+| 直接 supabase.from() | 必须经过 RLS session（`createClient()`） | 按现有 repository 模式实现 |
+| Server Action 权限 | 只读看板，Admin/Operator 均可访问 | `requireActiveAuth()` |
+| service_role 泄露 | 不在 P7 范围使用 | 无风险 |
+| 新增 RLS 策略 | 不建新表 | 无风险 |
+
+### 2.10 侧边栏入口
+
+在 `src/app/dashboard/_components/sidebar-nav.tsx` 产品分组下新增：
+
+```typescript
+{
+  label: '产品总看板',
+  href: '/dashboard/products/overview',
+  icon: LayoutDashboard,  // 或 BarChart3
+}
+```
+
+### 2.11 P7-MVP 验收标准
+
+| 维度 | 标准 |
+|------|------|
+| 功能 | Product 列表按标准产品汇总 5 个海外市场库存 + 在途 + 告警状态 |
+| 国内库存 | 每行显示「待接入」灰色占位，不展示假数据 |
+| 筛选 | 搜索产品名/编码、按国家过滤、按告警等级过滤 |
+| 分页 | 复用 Pagination 组件，每页 20/50/100 |
+| 跳转 | 点击产品行 → 海外库存页 `?search=${product.code}` |
+| 权限 | Admin/Operator 均可访问；Operator 只看到已分配仓库 |
+| 边界状态 | 空数据/加载中/错误/筛选无结果/未匹配 SKU 全部处理 |
+| 架构合规 | 不绕过 Repository Pattern / Server Actions / RLS |
+| 质量门 | `npm run test` / `npm run lint` / `npm run build` 通过 |
+| 不新增 | Migration / RPC / RLS / 新表 |
+| 技术债 | 国内库存/生产周期/运输周期不实现、不伪造，仅记录 |
+
+### 2.12 P7-MVP 预估文件清单
+
+| # | 文件 | 操作 | 说明 |
+|---|------|------|------|
+| 1 | `src/features/inventory/types.ts` | 修改 | 新增 ProductOverviewItem / ProductOverviewFilters / MarketInventorySummary |
+| 2 | `src/features/inventory/schema.ts` | 修改 | 新增 productOverviewSchema |
+| 3 | `src/features/inventory/repository.ts` | 修改 | 新增 getProductOverview() |
+| 4 | `src/features/inventory/actions.ts` | 修改 | 新增 getProductOverview() Server Action |
+| 5 | `src/app/dashboard/products/overview/page.tsx` | **新建** | Server Component |
+| 6 | `src/app/dashboard/products/overview/_components/overview-page-content.tsx` | **新建** | Client Component |
+| 7 | `src/app/dashboard/_components/sidebar-nav.tsx` | 修改 | 新增「产品总看板」入口 |
+| 8 | `src/features/inventory/p7-product-overview.test.ts` | **新建** | 源码级测试 |
+
+**预估影响**：新建 3 个文件 + 修改 5 个文件，不涉及 Migration/RPC/RLS。
 
 ---
 
-## 3. 推荐实施顺序
-
-### 第一阶段：BigSeller 分页 + 筛选状态可见化（A + C）
-
-- **原因**：这两个功能独立于后端变更，纯前端 UI 组件，风险最低
-- **依赖**：无
-- **预估影响**：3~4 个文件（新建 1 个分页组件 + 修改 overseas-page-content.tsx）
-- **可独立验收**：分页组件可独立测试；筛选标签可用现有筛选参数验证
-
-### 第二阶段：统计卡片真实联动（B）
-
-- **原因**：依赖 C 的筛选标签显示才有良好体验；在途卡片联动已由 P6-UX-V2-F 实现（Migration 00037，后端 EXISTS 子查询）
-- **依赖**：C（筛选状态可见化）
-- **预估影响**：1~2 个文件（overseas-page-content.tsx，可能 actions.ts）
-- **可独立验收**：卡片点击 → 筛选标签出现 → 列表筛选
-
-### 第三阶段：产品绑定真实功能（D）
-
-- **原因**：涉及数据库写入、可能的 Migration、权限决策，开发量和风险最大
-- **依赖**：无硬依赖，但建议先完成 A+C+B 让页面整体可用性提升后再做
-- **预估影响**：5~7 个文件（可能含 Migration + RLS）
-- **可独立验收**：绑定 Dialog → 搜索产品 → 确认绑定 → 行状态更新
-
----
-
-## 4. 质量门（全阶段通用）
+## 3. 质量门（全阶段通用）
 
 ```bash
-npm run test          # 所有测试通过（允许 1 预存 WEBSYNC_REAL_WRITE_ENABLED 失败）
+npm run test          # 所有测试通过
 npm run build         # Turbopack 构建成功
 npm run lint          # 0 errors，不新增 warning
 git diff --check      # 无 trailing whitespace / 冲突标记
@@ -345,65 +374,25 @@ git diff --check      # 无 trailing whitespace / 冲突标记
 
 ---
 
-## 5. 禁止事项（全阶段）
+## 4. 禁止事项（全阶段）
 
-- 不新增 Migration / RPC / RLS（除非功能 D 确实需要，且只能新增，不修改已执行 migration）
+- 不新增 Migration / RPC / RLS（P7-MVP 全部从已有表读取）
 - 不修改 BigSeller 同步真实写入流程
-- 不做国内库存页面
+- 不实现国内库存真实数据（仅占位）
+- 不伪造国内库存假数据（不显示 0 / 假数字 / 假字段）
 - 不修改 Product → ProductVariant → Inventory 核心模型
 - 不绕过 Repository Pattern / Server Actions / RLS
 - 不提交 `.claude/context-status.json`
 - 不提交 `.env.local`
 - 不使用 `any`
 - 不使用 `service_role` 在客户端或业务页面
+- 不新建 `domestic_inventory` 假表或假 RPC
 
 ---
 
-**A+B+C+D 已实现并验收**（2026-07-08）。E 仍为计划，按用户指令激活。
+## 5. 下一步
 
----
-
-## D 返工（2026-07-08）— 字段语义 + 搜索增强 + 写后校验
-
-### 返工背景
-
-初次 D 实现存在三项关键问题：
-
-1. **字段语义错误**：`productName` 映射为 DIS 标准产品名（`product.name`），而非 BigSeller 原始品名（`product_variant.name`）。运营人员看到的是标准产品名，无法识别 BigSeller 中的实际商品。
-2. **搜索要求精准全名**：`searchProducts` 使用简单 `ilike` 子串匹配，不支持分词和多 token 搜索。输入"水杯 玻璃"无法找到"玻璃水杯"。
-3. **绑定后无校验**：`bindOverseasVariant` 写入后直接返回成功，未验证数据库实际落盘结果。
-
-### D 返工修正
-
-| 修正项 | 内容 |
-|--------|------|
-| 字段语义 | 新增 `variantName`(BigSeller) / `standardProductName`(DIS) / `standardProductCode`(DIS)。`productName` 语义改为 BigSeller 品名保持向后兼容。主品名列显示 BigSeller 品名。 |
-| Migration 00034 | `get_overseas_inventory` / `get_low_stock` RPC 新增 `v.name AS variant_name` 字段 |
-| 搜索增强 | `productRepository.search` 分词搜索：trim→分 token（空格/连字符/下划线/斜杠/括号）→去重→code+name ILIKE + product_variant.sku 反向查找 |
-| 写后校验 | 绑定后 read-back 校验 product_id / match_status / product 可读，失败返回中文错误 |
-| 质量门 | 3269/3270 tests、build pass、lint 0 errors / 25 warnings（all pre-existing） |
-
-### 向后兼容
-
-- `productName` 值等同于 `variantName`（BigSeller 品名）
-- `productCode` 值等同于 `standardProductCode`（DIS 标准编码）
-- 旧的 `matchStatus` 判断逻辑不变
-- E 仍为 PLAN ONLY，不实现
-
----
-
-## 搜索性能 + 列宽拖拽修复（2026-07-08）
-
-### 搜索性能优化决策
-
-- **00035** 解决搜索准确性：连续子串 + 分词 AND 语义
-- **00036** 通过 pg_trgm GIN trigram index 优化 ILIKE 模糊搜索性能（product_variant.sku/name + product.name/code）
-- 不修改 00034/00035，不改变 RPC 函数签名/搜索逻辑/RLS/权限模型
-- **未来**：如果数据量继续增大，再考虑 dedicated search_vector / materialized search_text，不在本轮实现
-
-### 列宽拖拽修复
-
-- Table 改为 `tableLayout: 'fixed'` + `totalTableWidth`（columnWidths 累加）
-- ResizeHandle 组件：可见分隔线（w-6 命中区 + w-px 竖线，默认灰 hover/drag 蓝，title/aria-label）
-- activeResizeKey 追踪拖拽中列，高亮对应 divider
-- 未匹配分支保持 flex w-full min-w-0 + badge/button shrink-0
+1. **Codex 独立审查**：本文档 + `docs/current-state.md` 同步更新
+2. **P7-MVP 实现**：Codex 审查通过后，按阶段 2 任务包逐步实现
+3. **P7-UX 收口**：MVP 完成后评估运营可用性（排序/导出/布局优化）
+4. **国内库存独立设计**：不阻塞 P7，后续作为 P8 独立任务
