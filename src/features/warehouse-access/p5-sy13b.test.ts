@@ -563,6 +563,70 @@ describe('P5-SY13B — 侧边栏入口', () => {
   });
 });
 
+// ─── 6b. 侧边栏 — 团队账号入口已开放 ──────────────────────────────────
+
+describe('P5-SY13B — 侧边栏团队账号入口', () => {
+  let src: string;
+
+  beforeAll(() => {
+    src = fs.readFileSync(SIDEBAR_PATH, 'utf-8');
+  });
+
+  it('包含团队账号导航项', () => {
+    expect(src).toContain('团队账号');
+  });
+
+  it('USERS_ITEM phase 为 0（已开放）', () => {
+    // USERS_ITEM 定义中 phase 为 '0'，不再灰显
+    expect(src).toMatch(/label:\s*'团队账号'[\s\S]*?phase:\s*'0'/);
+  });
+
+  it('团队账号 href 为 /dashboard/users', () => {
+    expect(src).toMatch(/href:\s*'\/dashboard\/users'/);
+  });
+
+  it('团队账号不显示 P4 标记', () => {
+    // phase 为 '0' 时 available=true，不渲染 P4 badge
+    // 确保源码中 phase 已是 '0'（而非 '4'）
+    const usersPhase = src.match(/label:\s*'团队账号'[\s\S]*?phase:\s*'(\d+)'/);
+    expect(usersPhase).not.toBeNull();
+    expect(usersPhase![1]).toBe('0');
+  });
+
+  it('团队账号仅在 admin 区域渲染（isAdmin 守卫）', () => {
+    // renderItem(USERS_ITEM) 在 {isAdmin && (...)} 块内
+    const adminBlockIdx = src.indexOf('{isAdmin && (');
+    const usersIdx = src.indexOf('renderItem(USERS_ITEM)');
+    const adminBlockClose = src.indexOf('</div>', adminBlockIdx);
+    expect(adminBlockIdx).toBeGreaterThan(0);
+    expect(usersIdx).toBeGreaterThan(adminBlockIdx);
+    expect(usersIdx).toBeLessThan(adminBlockClose);
+  });
+
+  it('Operator 不可见团队账号（不在非 admin 路径中渲染）', () => {
+    // USERS_ITEM 仅在 isAdmin 守卫内渲染，Operator 侧边栏不包含
+    // 验证 renderItem(USERS_ITEM) 在 isAdmin 条件块内
+    const usersRenderIdx = src.indexOf('renderItem(USERS_ITEM)');
+    const beforeUsers = src.slice(0, usersRenderIdx);
+    const lastIsAdminBeforeUsers = beforeUsers.lastIndexOf('isAdmin');
+    expect(lastIsAdminBeforeUsers).toBeGreaterThan(0);
+    // 确保在 isAdmin 和 renderItem(USERS_ITEM) 之间没有闭合这个条件块的逻辑
+    const between = src.slice(lastIsAdminBeforeUsers, usersRenderIdx);
+    expect(between).toContain('&&');
+  });
+
+  it('仓库分配入口保持现状不变', () => {
+    expect(src).toContain('仓库分配');
+    expect(src).toContain('/dashboard/users/warehouses');
+    expect(src).toMatch(/WAREHOUSE_ASSIGN_ITEM/);
+  });
+
+  it('国内库存入口仍灰显（phase 非 0）', () => {
+    // 国内库存 phase 为 '2'，保持灰显状态
+    expect(src).toMatch(/label:\s*'国内库存'[\s\S]*?phase:\s*'2'/);
+  });
+});
+
 // ─── 7. Operator 权限隔离 ─────────────────────────────────────────────
 
 describe('P5-SY13B — Operator 权限隔离', () => {

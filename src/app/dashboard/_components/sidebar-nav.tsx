@@ -78,7 +78,7 @@ const USERS_ITEM: NavItem = {
   href: '/dashboard/users',
   label: '团队账号',
   icon: Users,
-  phase: '4',
+  phase: '0',
 };
 
 // 仓库分配 — 仅管理员可见（P5-SY13B）
@@ -209,7 +209,7 @@ export function SidebarNav({ roleName }: { roleName: string }) {
         {/* 管理区域 — 仅管理员 */}
         {isAdmin && (
           <div className="mt-0.5 space-y-0.5">
-            {renderItem({ ...USERS_ITEM, phase: '4' })}
+            {renderItem(USERS_ITEM)}
             {renderItem(WAREHOUSE_ASSIGN_ITEM)}
           </div>
         )}
