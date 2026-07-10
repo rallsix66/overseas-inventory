@@ -326,7 +326,7 @@ export const shipmentRepository = {
     // Step 1: Get non-warehoused shipments for this warehouse
     const { data: shipments, error: shipErr } = await supabase
       .from('shipment')
-      .select('id, shipment_no, purchase_order_no, estimated_arrival, updated_at')
+      .select('id, shipment_no, purchase_order_no, status, estimated_arrival, updated_at')
       .eq('warehouse_id', warehouseId)
       .neq('status', 'warehoused');
 
@@ -389,6 +389,8 @@ export const shipmentRepository = {
         shipmentNo: ship.shipment_no,
         purchaseOrderNo: ship.purchase_order_no,
         quantity: inTransit,
+        // P3-S2E-EXPAND: 物流状态原始枚举（组件层映射中文标签）
+        status: ship.status,
         estimatedArrival: ship.estimated_arrival,
         // P6-UI-CLARITY: 优先 tracking_event.occurred_at，fallback 到 shipment.updated_at
         latestTrackingAt: trackingMap.get(ship.id) ?? ship.updated_at ?? null,

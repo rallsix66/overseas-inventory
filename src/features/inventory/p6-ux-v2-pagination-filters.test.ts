@@ -340,8 +340,8 @@ describe('P6-UX-V2 A+C: 架构合规', () => {
 // ─── 7. P6-UX-V2 B: 统计卡片真实联动 ────────────────────────────────────────
 
 describe('P6-UX-V2 B: 统计卡片真实联动列表', () => {
-  it('handleStatCardClick 函数存在且参数类型为 "all" | "low"', () => {
-    expect(contentSrc).toMatch(/function handleStatCardClick\(type: 'all' \| 'low'\)/);
+  it('handleStatCardClick 函数存在且参数类型为 "all" | "low" | "in_transit"', () => {
+    expect(contentSrc).toMatch(/function handleStatCardClick\(type: 'all' \| 'low' \| 'in_transit'\)/);
   });
 
   it('handleStatCardClick("all") 跳转裸路径清空所有筛选', () => {
@@ -388,32 +388,32 @@ describe('P6-UX-V2 B: 统计卡片真实联动列表', () => {
     expect(beforeClose).not.toMatch(/onClick/);
   });
 
-  it('在途库存卡片无 onClick（不绑定 handleStatCardClick，避免假联动）', () => {
+  it('在途库存卡片有 onClick → handleStatCardClick(\'in_transit\')（P6-UX-V2-F 真实联动）', () => {
     const transitIdx = contentSrc.indexOf('label="在途库存"');
     const afterTransit = contentSrc.slice(transitIdx, transitIdx + 500);
     const selfCloseIdx = afterTransit.indexOf('/>');
     const beforeClose = afterTransit.slice(0, selfCloseIdx);
-    expect(beforeClose).not.toMatch(/onClick/);
-    expect(beforeClose).not.toMatch(/handleStatCardClick/);
+    expect(beforeClose).toMatch(/onClick/);
+    expect(beforeClose).toMatch(/handleStatCardClick\('in_transit'\)/);
   });
 
-  it('在途库存卡片区域包含说明注释（P6-UX-V2-B 不可点击原因）', () => {
-    // 注释说明在途数据来自 shipment 聚合，需后端扩展后才能联动
-    const transitCommentIdx = contentSrc.indexOf('P6-UX-V2-B: 在途库存卡片不可点击');
+  it('在途库存卡片区域包含新注释（P6-UX-V2-F 可点击原因）', () => {
+    // P6-UX-V2-F: 在途库存卡片可点击，注释应更新
+    const transitCommentIdx = contentSrc.indexOf('P6-UX-V2-F: 在途库存卡片可点击');
     expect(transitCommentIdx).toBeGreaterThan(-1);
-    // 注释在 在途库存 label 之前（JSX 中注释在元素上方）
     const transitLabelIdx = contentSrc.indexOf('label="在途库存"');
     expect(transitCommentIdx).toBeLessThan(transitLabelIdx);
   });
 
   it('库存总量/SKU 数量卡片点击不保留任何筛选参数（裸路径跳转）', () => {
-    // 验证 handleStatCardClick('all') 分支不使用 buildUrl
+    // 验证 handleStatCardClick('all') 最终 else 分支不使用 buildUrl
     const fnStart = contentSrc.indexOf('function handleStatCardClick');
     const fnEnd = contentSrc.indexOf('\n  }', fnStart);
     const fnBody = contentSrc.slice(fnStart, fnEnd);
-    // else 分支不应调用 buildUrl — 应直接 push 裸路径
-    const elseBranch = fnBody.slice(fnBody.indexOf('else'));
-    expect(elseBranch).not.toMatch(/buildUrl/);
+    // 最后的 else 分支（清空筛选）不应调用 buildUrl — 应直接 push 裸路径
+    // P6-UX-V2-F: 新增 else if (in_transit) 分支，最后的 else 是清空筛选分支
+    const lastElseBranch = fnBody.slice(fnBody.lastIndexOf('else'));
+    expect(lastElseBranch).not.toMatch(/buildUrl/);
   });
 
   it('低库存卡片跳转不包含 page 参数（page 默认回到 1）', () => {
@@ -422,7 +422,8 @@ describe('P6-UX-V2 B: 统计卡片真实联动列表', () => {
     const fnEnd = contentSrc.indexOf('\n  }', fnStart);
     const fnBody = contentSrc.slice(fnStart, fnEnd);
     // type === 'low' 分支的 buildUrl 调用不应包含 page 参数
-    const lowBranch = fnBody.slice(fnBody.indexOf("type === 'low'"), fnBody.indexOf('else'));
+    // P6-UX-V2-F: 使用 'low' 分支（在 else if (in_transit) 之前）
+    const lowBranch = fnBody.slice(fnBody.indexOf("type === 'low'"), fnBody.indexOf("else if (type === 'in_transit')"));
     expect(lowBranch).toMatch(/buildUrl\(\{ stockStatus: 'low' \}\)/);
     // 不应包含 page:
     expect(lowBranch).not.toMatch(/page:/);
@@ -433,7 +434,8 @@ describe('P6-UX-V2 B: 统计卡片真实联动列表', () => {
     const fnStart = contentSrc.indexOf('function handleStatCardClick');
     const fnEnd = contentSrc.indexOf('\n  }', fnStart);
     const fnBody = contentSrc.slice(fnStart, fnEnd);
-    const lowBranch = fnBody.slice(fnBody.indexOf("type === 'low'"), fnBody.indexOf('else'));
+    // P6-UX-V2-F: 使用 'low' 分支（在 else if (in_transit) 之前）
+    const lowBranch = fnBody.slice(fnBody.indexOf("type === 'low'"), fnBody.indexOf("else if (type === 'in_transit')"));
     expect(lowBranch).not.toMatch(/pageSize/);
   });
 
@@ -450,11 +452,11 @@ describe('P6-UX-V2 B: 统计卡片真实联动列表', () => {
     const fnStart = contentSrc.indexOf('function handleStatCardClick');
     const fnEnd = contentSrc.indexOf('\n  }', fnStart);
     const fnBody = contentSrc.slice(fnStart, fnEnd);
-    // 两条 router.push 都应包含 scroll: false
+    // P6-UX-V2-F: 新增 in_transit 分支，共 3 条 router.push，全部 scroll: false
     const pushCount = (fnBody.match(/router\.push\(/g) || []).length;
     const scrollFalseCount = (fnBody.match(/\{ scroll: false \}/g) || []).length;
-    expect(pushCount).toBe(2);
-    expect(scrollFalseCount).toBe(2);
+    expect(pushCount).toBe(3);
+    expect(scrollFalseCount).toBe(3);
   });
 
   // ── 架构合规 ─────────────────────────────────────────────────────────────
@@ -483,12 +485,15 @@ describe('P6-UX-V2 B: 统计卡片真实联动列表', () => {
     expect(fnBody).not.toMatch(/service_role/);
   });
 
-  it('在途库存卡片区域不含 hasInTransit 或假筛选实现', () => {
-    // 在途卡片附近不应有假的筛选跳转
+  it('在途库存卡片区域不含 hasInTransit 或假筛选实现（P6-UX-V2-F 真实联动）', () => {
+    // 在途卡片现在通过 handleStatCardClick('in_transit') 真实联动
     const transitIdx = contentSrc.indexOf('label="在途库存"');
-    const afterTransit = contentSrc.slice(transitIdx, transitIdx + 500);
+    const afterTransit = contentSrc.slice(transitIdx, transitIdx + 600);
     expect(afterTransit).not.toMatch(/hasInTransit/);
-    expect(afterTransit).not.toMatch(/buildUrl/);
+    // P6-UX-V2-F: handleStatCardClick('in_transit') 映射到 handleStatCardClick 内的 buildUrl
+    expect(afterTransit).toMatch(/handleStatCardClick\('in_transit'\)/);
+    // 同时验证 handleStatCardClick 函数体中有对应的 buildUrl 调用
+    expect(contentSrc).toMatch(/buildUrl\(\{ stockStatus: 'in_transit' \}\)/);
   });
 });
 

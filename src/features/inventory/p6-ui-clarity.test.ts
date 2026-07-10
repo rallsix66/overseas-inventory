@@ -152,18 +152,9 @@ describe('P6-UI-CLARITY: 统计卡片可点击', () => {
     expect(withoutOnClick.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('在途库存卡片不可点击（在途不对应 inventory 库存状态筛选维度）', () => {
-    // 在途卡片不调用 handleStatCardClick
-    const afterInTransit = contentSrc.slice(contentSrc.indexOf('在途库存'));
-    const nextOnClickIdx = afterInTransit.indexOf('onClick');
-    const nextSlash = afterInTransit.indexOf('/>');
-    // 如果在途卡片的 /> 在下一个 onClick 之前，说明它没有 onClick
-    if (nextOnClickIdx === -1) {
-      // 没有任何更多 onClick，在途卡片肯定没有
-      expect(true).toBe(true);
-    } else {
-      expect(nextSlash).toBeLessThan(nextOnClickIdx);
-    }
+  it('在途库存卡片可点击（P6-UX-V2-F: 在途卡片联动 stockStatus=in_transit）', () => {
+    // 在途卡片现在绑定 handleStatCardClick('in_transit')
+    expect(contentSrc).toMatch(/handleStatCardClick\('in_transit'\)/);
   });
 
   it('handleStatCardClick 函数存在', () => {
@@ -197,8 +188,8 @@ describe('P6-UI-CLARITY: 防页面跳顶', () => {
   });
 
   it('筛选器变更使用 scroll: false', () => {
-    // Select onValueChange 回调中 router.push 带 scroll: false
-    const scrollInSelect = contentSrc.match(/onValueChange=.*scroll:\s*false/g);
+    // P6-UX-V2-F: onValueChange 改为多行回调（sentinel __all__ 处理），使用 [\s\S] 跨行匹配
+    const scrollInSelect = contentSrc.match(/onValueChange=[\s\S]*?scroll:\s*false/g);
     expect(scrollInSelect).not.toBeNull();
     expect(scrollInSelect!.length).toBeGreaterThanOrEqual(3); // country/warehouse/stockStatus
   });
@@ -216,8 +207,8 @@ describe('P6-UI-CLARITY: 展开物流明细 — 最近物流更新时间', () =>
   });
 
   it('repository 查询 shipment.updated_at 字段', () => {
-    // Step 1 select 包含 updated_at
-    const step1 = repoSrc.match(/\.select\('id, shipment_no, purchase_order_no, estimated_arrival, updated_at'\)/);
+    // Step 1 select 包含 updated_at（P3-S2E-EXPAND: 新增 status 字段用于展开行物流状态展示）
+    const step1 = repoSrc.match(/\.select\('id, shipment_no, purchase_order_no, status, estimated_arrival, updated_at'\)/);
     expect(step1).not.toBeNull();
   });
 

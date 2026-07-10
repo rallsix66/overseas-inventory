@@ -211,7 +211,7 @@ describe('P3-S2E: getInTransitDetailsByVariantAndWarehouse', () => {
   // ── 返回字段校验 ───────────────────────────────────────────────────
 
   describe('返回字段', () => {
-    it('展开字段仅含：shipmentId/shipmentNo/purchaseOrderNo/quantity/estimatedArrival/latestTrackingAt', async () => {
+    it('展开字段仅含：shipmentId/shipmentNo/purchaseOrderNo/quantity/status/estimatedArrival/latestTrackingAt', async () => {
       pushResults(
         adminProfile,
         { data: [
@@ -237,10 +237,12 @@ describe('P3-S2E: getInTransitDetailsByVariantAndWarehouse', () => {
         'quantity',
         'shipmentId',
         'shipmentNo',
+        'status',
       ]);
       expect(d.shipmentNo).toBe('SN-TEST-001');
       expect(d.purchaseOrderNo).toBe('PO-2026-999');
       expect(d.quantity).toBe(40);
+      expect(d.status).toBe('departed');
       expect(d.estimatedArrival).toBe('2026-08-01');
       expect(d.shipmentId).toBe(SHIPMENT_1);
     });

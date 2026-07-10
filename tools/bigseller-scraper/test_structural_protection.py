@@ -17,6 +17,7 @@ from bigseller_scraper import (
     _parse_cell_rows,
     _validate_headers,
     _extract_page_rows,
+    _extract_product_name,
 )
 
 # === 正常 13 列表头（与 BigSeller 2026-06-12 实际表头一致） ===
@@ -272,6 +273,105 @@ def test_extract_rows_container_not_found():
 
 
 # =========================================================================
+# 测试: _extract_product_name — P6-UX-V2-E 品牌前缀保留
+# =========================================================================
+
+@test("ICE LERSKIN 品牌保留 + 条码移除 + 复制移除")
+def test_extract_product_name_ice_lerskin():
+    result = _extract_product_name("ICE LERSKIN VC-阿魏酸抗氧化精华 780103214084 复制")
+    assert result == "ICE LERSKIN VC-阿魏酸抗氧化精华", f'实际: {result!r}'
+
+
+@test("ICELERSKIN 品牌保留（无空格）")
+def test_extract_product_name_icelerskin():
+    result = _extract_product_name("ICELERSKIN VC-阿魏酸抗氧化精华液 30ml WM0099 复制")
+    assert result == "ICELERSKIN VC-阿魏酸抗氧化精华液 30ml", f'实际: {result!r}'
+
+
+@test("CHIC PEAK 品牌保留 + SKU 移除")
+def test_extract_product_name_chic_peak():
+    result = _extract_product_name("CHIC PEAK 唇泥 P08-1.8g WM0111-P08")
+    assert result == "CHIC PEAK 唇泥 P08-1.8g", f'实际: {result!r}'
+
+
+@test("CHICPEAK 品牌保留（无空格）+ SKU 移除 + 复制移除")
+def test_extract_product_name_chicpeak():
+    result = _extract_product_name("CHICPEAK 按压唇冻 #07 WM0100-#07 复制")
+    assert result == "CHICPEAK 按压唇冻 #07", f'实际: {result!r}'
+
+
+@test("SKU/条码仍被移除")
+def test_extract_product_name_sku_removed():
+    result = _extract_product_name("CHICPEAK 蜜粉饼 WM0074 复制")
+    assert "WM0074" not in result, f'SKU 应被移除，实际: {result!r}'
+
+
+@test("复制尾词仍被移除")
+def test_extract_product_name_copy_removed():
+    result = _extract_product_name("任意产品 123456789012 复制")
+    assert not result.endswith("复制"), f'复制应被移除，实际: {result!r}'
+
+
+@test("空输入返回空字符串")
+def test_extract_product_name_empty():
+    assert _extract_product_name("") == ""
+    assert _extract_product_name(None) == ""
+
+
+# =========================================================================
+# 测试: _extract_product_name — P6-UX-V2-E-OVER-CLEAN 新版/新品/旧版保留
+# =========================================================================
+
+@test("新版前缀保留: 新版 防晒铝罐喷雾 150ML 757577407113 复制")
+def test_extract_product_name_keep_new_version():
+    result = _extract_product_name("新版 防晒铝罐喷雾 150ML 757577407113 复制")
+    assert result == "新版 防晒铝罐喷雾 150ML", f'实际: {result!r}'
+
+
+@test("新品前缀保留: 新品 xxx WM0049 复制")
+def test_extract_product_name_keep_new_product():
+    result = _extract_product_name("新品 xxx WM0049 复制")
+    assert result == "新品 xxx", f'实际: {result!r}'
+
+
+@test("旧版前缀保留: 旧版 xxx 757577407113 复制")
+def test_extract_product_name_keep_old_version():
+    result = _extract_product_name("旧版 xxx 757577407113 复制")
+    assert result == "旧版 xxx", f'实际: {result!r}'
+
+
+# =========================================================================
+# 测试: _extract_product_name — P6-UX-V2-E-OVER-CLEAN SPF90+ / 规格保留
+# =========================================================================
+
+
+@test("SPF90+ 尾部 + 保留: HUNMUI英文版防晒霜SPF90+ 6974674958025 复制")
+def test_extract_product_name_keep_spf_plus():
+    result = _extract_product_name("HUNMUI英文版防晒霜SPF90+ 6974674958025 复制")
+    assert result == "HUNMUI英文版防晒霜SPF90+", f'实际: {result!r}'
+
+
+@test("*1 数量保留: 防晒棒*1 714855625102 复制")
+def test_extract_product_name_keep_star_quantity():
+    result = _extract_product_name("防晒棒*1 714855625102 复制")
+    assert result == "防晒棒*1", f'实际: {result!r}'
+
+
+@test("20m*4瓶 规格保留: ICE LERSKIN 护发精油套盒20m*4瓶 757577407069 复制")
+def test_extract_product_name_keep_star_bottle_spec():
+    result = _extract_product_name(
+        "ICE LERSKIN 护发精油套盒20m*4瓶 757577407069 复制"
+    )
+    assert result == "ICE LERSKIN 护发精油套盒20m*4瓶", f'实际: {result!r}'
+
+
+@test("采购单前缀仍删除: 采购单 * 1 CHICPEAK xxx WM0001 复制")
+def test_extract_product_name_still_remove_purchase_order():
+    result = _extract_product_name("采购单 * 1 CHICPEAK xxx WM0001 复制")
+    assert result == "CHICPEAK xxx", f'实际: {result!r}'
+
+
+# =========================================================================
 # 运行
 # =========================================================================
 
@@ -292,6 +392,24 @@ if __name__ == '__main__':
     test_parsed_fields_correct()
     test_vxe_container_not_found()
     test_extract_rows_container_not_found()
+
+    # P6-UX-V2-E: _extract_product_name 品牌保留测试
+    test_extract_product_name_ice_lerskin()
+    test_extract_product_name_icelerskin()
+    test_extract_product_name_chic_peak()
+    test_extract_product_name_chicpeak()
+    test_extract_product_name_sku_removed()
+    test_extract_product_name_copy_removed()
+    test_extract_product_name_empty()
+
+    # P6-UX-V2-E-OVER-CLEAN: 新版/新品/旧版/SPF90+/*1/*4瓶 保留
+    test_extract_product_name_keep_new_version()
+    test_extract_product_name_keep_new_product()
+    test_extract_product_name_keep_old_version()
+    test_extract_product_name_keep_spf_plus()
+    test_extract_product_name_keep_star_quantity()
+    test_extract_product_name_keep_star_bottle_spec()
+    test_extract_product_name_still_remove_purchase_order()
 
     print()
     print('=' * 60)

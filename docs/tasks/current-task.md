@@ -92,9 +92,11 @@
 
 ---
 
-### B. 统计卡片真实联动列表 ✅ DONE（2026-07-08）
+### B. 统计卡片真实联动列表 ✅ DONE（2026-07-08）+ 在途卡片联动 P6-UX-V2-F（2026-07-09）
 
-**实现状态**：已在 P6-UI-CLARITY 基础上审计强化。handleStatCardClick 行为正确（all→裸路径清空筛选，low→buildUrl({ stockStatus: 'low' })保留 pageSize/page→1）。在途卡片显式注释不可点击原因，不制造无效跳转。18 项新测试覆盖卡片绑定/URL/scroll:false/在途不可点击/架构合规。不新增 Migration/RPC/RLS。
+**实现状态**：已在 P6-UI-CLARITY 基础上审计强化。handleStatCardClick 行为正确（all→裸路径清空筛选，low→buildUrl({ stockStatus: 'low' })保留 pageSize/page→1）。18 项新测试覆盖卡片绑定/URL/scroll:false/架构合规。
+
+> **更新（P6-UX-V2-F，2026-07-09 DONE）**：在途库存卡片**不再是"不可点击"**——已实现真实联动。点击后跳转 `stockStatus=in_transit`（保留 pageSize、page→1、scroll:false），列表仅显示有在途数量的行，筛选标签显示"状态：有在途"。后端通过 Migration 00037 扩展 `get_overseas_inventory` 的 `p_stock_status` 白名单（新增 `in_transit`），口径与 `get_in_transit_confirmed_aggregate` 一致（非 warehoused shipment 按 variant_id+warehouse_id 判断 `quantity - warehoused_quantity > 0`），在途筛选在 SQL 层分页前生效（不做前端当页过滤，total/page 正确）。**Migration 00037 已在 Supabase SQL Editor 手动执行并验证通过（2026-07-09），运行时验证通过**。
 
 #### 目标
 
@@ -106,11 +108,10 @@
   - 库存总量/SKU 数量 → `router.push('/', { scroll: false })` 清除筛选
   - 低库存 → `stockStatus=low`
 - **新增**：卡片点击后页面上方显示当前筛选状态标签（见功能 C），用户立即感知"正在看低库存范围"
-- **在途库存卡片**：
-  - 在途数据来自 `shipment` 表（通过 `getInTransitConfirmedAggregate`），不直接对应 `inventory` 表的筛选维度
-  - **现有后端不支持**按 "有在途数量" 筛选 inventory 列表
-  - 如果本阶段实现，需在 `getOverseasInventory` Server Action 或 Repository 新增 `hasInTransit` 筛选参数，或在 inventory RPC 中 join shipment 聚合
-  - **建议**：在计划中标记为"需后端扩展"，由用户决定是否纳入 V2 阶段或推迟到后续任务
+- **在途库存卡片**（P6-UX-V2-F 已实现，2026-07-09）：
+  - 在途数据来自 `shipment` 表（通过 `getInTransitConfirmedAggregate`）
+  - **已实现后端支持**：Migration 00037 在 `get_overseas_inventory` RPC 内以 `EXISTS(shipment JOIN shipment_item)` 子查询实现 `p_stock_status='in_transit'` 筛选，无需新增 RPC 参数（避免 PostgREST 函数重载歧义），在 SQL 层分页前生效
+  - 卡片点击 → `stockStatus=in_transit`，筛选标签"状态：有在途"，`scroll: false`
 - 所有交互保持 `scroll: false`
 
 #### 涉及文件
@@ -132,7 +133,7 @@
 |--------|------|
 | 点击低库存卡片 → 列表显示 stockStatus=low | ✅ |
 | 筛选生效时有可见状态标签 | ✅（见功能 C）|
-| 在途卡片是否可点击 | 按用户决策（需后端扩展 or 推迟）|
+| 在途卡片是否可点击 | ✅ P6-UX-V2-F 已实现真实联动（stockStatus=in_transit，Migration 00037）|
 | 所有导航 `scroll: false` | ✅ |
 
 ---
@@ -319,7 +320,7 @@
 
 ### 第二阶段：统计卡片真实联动（B）
 
-- **原因**：依赖 C 的筛选标签显示才有良好体验；在途卡片是否联动需后端扩展决策
+- **原因**：依赖 C 的筛选标签显示才有良好体验；在途卡片联动已由 P6-UX-V2-F 实现（Migration 00037，后端 EXISTS 子查询）
 - **依赖**：C（筛选状态可见化）
 - **预估影响**：1~2 个文件（overseas-page-content.tsx，可能 actions.ts）
 - **可独立验收**：卡片点击 → 筛选标签出现 → 列表筛选

@@ -184,6 +184,8 @@ export interface InTransitDetailItem {
   purchaseOrderNo: string | null;
   /** 在途数量 = quantity - warehoused_quantity */
   quantity: number;
+  /** P3-S2E-EXPAND: 物流状态（shipment.status 原始枚举，组件层映射中文标签；非 warehoused） */
+  status: string;
   /** 预计到货时间 */
   estimatedArrival: string | null;
   /** P6-UI-CLARITY: 最近物流更新时间（tracking_event.occurred_at 或 shipment.updated_at，用于展示物流时效） */
