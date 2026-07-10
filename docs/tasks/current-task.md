@@ -8,6 +8,8 @@
 
 **A+B+C+D DONE**（2026-07-08）+ **D 返工 DONE**（2026-07-08）。A（BigSeller 分页）+ B（统计卡片真实联动）+ C（筛选状态可见化）+ D（真实产品绑定 + 字段语义修正 + 分词搜索 + 写后校验）已全部实现并验收。E（产品看板长期方向）仅计划。
 
+**TEAM-ACCOUNTS-INACTIVE-SESSION-GUARD DONE**（2026-07-10）。停用账号 Dashboard 顶层边界收口：Dashboard layout 新增 `getCurrentActiveUser` 活跃校验，停用用户不再渲染业务页面，统一展示阻断页（含退出登录按钮），避免子页面/Server Action 才 throw 导致的 Console Error。不做 P7，不做国内库存方案。
+
 ---
 
 ## 1. 当前问题复盘

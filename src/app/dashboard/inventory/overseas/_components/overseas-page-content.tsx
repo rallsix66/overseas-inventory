@@ -206,24 +206,24 @@ function SyncStatusBadge({ status, failureReason }: { status: string; failureRea
 
 // ── P6-UX-V2-D: 列宽拖拽伸缩（模块级常量，不依赖 component props/state）──
 
-const COL_STORAGE_KEY = 'overseasInventoryColumnWidths';
+const COL_STORAGE_KEY = 'overseasInventoryColumnWidths:v2';
 
 const COL_DEFAULTS: Record<string, number> = {
-  expand: 28, favorite: 36, country: 70, warehouse: 100,
-  productName: 320, sku: 140, quantity: 80, inTransit: 60,
-  total: 85, safetyStock: 75, status: 80, syncStatus: 110,
+  expand: 32, favorite: 44, country: 72, warehouse: 180,
+  productName: 420, sku: 156, quantity: 104, inTransit: 90,
+  total: 116, safetyStock: 96, status: 112, syncStatus: 132,
 };
 
 const COL_MIN: Record<string, number> = {
-  expand: 28, favorite: 36, country: 50, warehouse: 70,
-  productName: 220, sku: 80, quantity: 60, inTransit: 50,
-  total: 60, safetyStock: 60, status: 60, syncStatus: 80,
+  expand: 32, favorite: 44, country: 56, warehouse: 140,
+  productName: 280, sku: 100, quantity: 80, inTransit: 70,
+  total: 88, safetyStock: 80, status: 88, syncStatus: 104,
 };
 
 const COL_MAX: Record<string, number> = {
-  expand: 28, favorite: 36, country: 150, warehouse: 300,
-  productName: 640, sku: 300, quantity: 150, inTransit: 120,
-  total: 150, safetyStock: 120, status: 150, syncStatus: 200,
+  expand: 32, favorite: 44, country: 150, warehouse: 360,
+  productName: 720, sku: 320, quantity: 170, inTransit: 150,
+  total: 180, safetyStock: 150, status: 180, syncStatus: 220,
 };
 
 /** 可见列宽拖拽分隔线 — 模块级组件，不在 render 内创建 */
@@ -252,7 +252,7 @@ function ResizeHandle({
         className={`h-full transition-colors ${
           isActive
             ? 'w-0.5 bg-blue-500'
-            : 'w-px bg-gray-200 group-hover:w-0.5 group-hover:bg-blue-400'
+            : 'w-px bg-gray-300/70 group-hover:w-0.5 group-hover:bg-blue-400'
         }`}
       />
     </div>
@@ -270,7 +270,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
   const [exporting, setExporting] = useState(false);
 
   // P6-UX-V2-D: 产品绑定 Dialog 状态
-  const [bindTarget, setBindTarget] = useState<{ variantId: string; sku: string } | null>(null);
+  const [bindTarget, setBindTarget] = useState<{ variantId: string; sku: string; variantName?: string } | null>(null);
 
   // ── P6-UX-V2-D: 列宽拖拽伸缩 ────────────────────────────────────────────
 
@@ -371,8 +371,8 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
   }
 
   /** P6-UX-V2-D: "绑定产品"入口 — 打开 BindProductDialog 执行真实绑定 */
-  function handleBindProduct(variantId: string, sku: string) {
-    setBindTarget({ variantId, sku });
+  function handleBindProduct(variantId: string, sku: string, variantName?: string) {
+    setBindTarget({ variantId, sku, variantName });
   }
 
   /** 触发 CSV 导出下载 */
@@ -858,18 +858,16 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                         </div>
                       ) : (
                         <div className="flex flex-col min-w-0 gap-0.5">
-                          {/* 第一行：BigSeller 原始品名 */}
-                          <span className="block min-w-0 truncate" title={item.variantName ?? item.productName ?? '未匹配产品'}>
-                            {item.variantName ?? item.productName ?? <span className="text-muted-foreground">未匹配产品</span>}
-                          </span>
-                          {/* 第二行：未匹配 Badge + 绑定产品按钮，允许 flex-wrap */}
-                          <div className="flex flex-wrap items-center gap-1">
+                          <div className="flex w-full min-w-0 items-center gap-1.5">
+                            <span className="min-w-0 flex-1 truncate" title={item.variantName ?? item.productName ?? '未匹配产品'}>
+                              {item.variantName ?? item.productName ?? <span className="text-muted-foreground">未匹配产品</span>}
+                            </span>
+                            {/* 未匹配 Badge — 始终在未匹配/待确认行显示 */}
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700 shrink-0">未匹配</span>
-                            {/* P6-UX-V2-D: "绑定产品"入口 — Admin-only，真实绑定到 DIS 标准产品 */}
                             {canBindProduct && (
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId, item.sku); }}
+                                onClick={(e) => { e.stopPropagation(); handleBindProduct(item.variantId, item.sku, item.variantName ?? undefined); }}
                                 className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-100 hover:border-gray-400 shrink-0 transition-colors"
                               >
                                 绑定产品
@@ -954,6 +952,7 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
           open={!!bindTarget}
           variantId={bindTarget.variantId}
           sku={bindTarget.sku}
+          variantName={bindTarget.variantName}
           onOpenChange={(open) => { if (!open) setBindTarget(null); }}
           onSuccess={() => {
             setBindTarget(null);

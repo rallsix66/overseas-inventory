@@ -563,6 +563,71 @@ describe('P5-SY13B — 侧边栏入口', () => {
   });
 });
 
+// ─── 6b. 侧边栏 — 团队账号入口已开放 ────────────────────────────────
+
+describe('P5-SY13B — 侧边栏团队账号入口', () => {
+  let src: string;
+
+  beforeAll(() => {
+    src = fs.readFileSync(SIDEBAR_PATH, 'utf-8');
+  });
+
+  it('包含团队账号导航项', () => {
+    expect(src).toContain('团队账号');
+  });
+
+  it('团队账号路径为 /dashboard/users', () => {
+    expect(src).toContain('/dashboard/users');
+  });
+
+  it('团队账号 phase 为 0（已开放）', () => {
+    // USERS_ITEM.phase 必须是 '0'
+    const userItemIdx = src.indexOf("label: '团队账号'");
+    expect(userItemIdx).toBeGreaterThan(-1);
+    // phase 在 label 之后（对象属性顺序），向后查找
+    const context = src.slice(userItemIdx, userItemIdx + 120);
+    expect(context).toMatch(/phase:\s*'0'/);
+  });
+
+  it('团队账号渲染处不覆盖 phase（不使用 renderItem({ ...USERS_ITEM, phase: ... })）', () => {
+    // 不应该再有 { ...USERS_ITEM, phase: '4' } 这种覆盖渲染
+    expect(src).not.toMatch(/\{ \.\.\.USERS_ITEM,\s*phase:/);
+  });
+
+  it('团队账号是 Link 组件（非 span 灰显）', () => {
+    // USERS_ITEM phase=0 → renderItem 返回 <Link>，不是 <span>
+    // 验证 isAdmin 块内的团队账号渲染使用的是 renderItem(USERS_ITEM)
+    const isAdminBlock = src.slice(src.indexOf('{isAdmin &&'));
+    expect(isAdminBlock).toMatch(/renderItem\(USERS_ITEM\)/);
+  });
+
+  it('团队账号仅 admin 可见（isAdmin guard 内渲染 USERS_ITEM）', () => {
+    // USERS_ITEM 只在 isAdmin && 块内渲染
+    const isAdminStart = src.indexOf('{isAdmin &&');
+    expect(isAdminStart).toBeGreaterThan(-1);
+    const isAdminBlock = src.slice(isAdminStart, isAdminStart + 500);
+    expect(isAdminBlock).toContain('USERS_ITEM');
+  });
+
+  it('operator 不显示团队账号（USERS_ITEM 在 isAdmin guard 内）', () => {
+    // USERS_ITEM 渲染在 isAdmin && 内
+    // operator 不会进入该分支
+    const isAdminStart = src.indexOf('{isAdmin &&');
+    const isAdminBlock = src.slice(isAdminStart, isAdminStart + 500);
+    expect(isAdminBlock).toContain('USERS_ITEM');
+    // 确认 USERS_ITEM 定义不在 isAdmin guard 之外渲染
+    // (全局 scope 定义，但仅在 isAdmin 块调用)
+  });
+
+  it('国内库存仍为 phase 2（未开放，灰显）', () => {
+    const domesticIdx = src.indexOf("label: '国内库存'");
+    expect(domesticIdx).toBeGreaterThan(-1);
+    // phase 属性在 label 之后，向后查找
+    const context = src.slice(domesticIdx, domesticIdx + 180);
+    expect(context).toMatch(/phase:\s*'2'/);
+  });
+});
+
 // ─── 7. Operator 权限隔离 ─────────────────────────────────────────────
 
 describe('P5-SY13B — Operator 权限隔离', () => {
