@@ -456,3 +456,220 @@ describe('productFormSchema 和 ProductFormData 保持兼容', () => {
     expect(types).toContain('safetyStock: number');
   });
 });
+
+// ─── 14. 产品列表列宽拖拽伸缩栏 ────────────────────────────────
+
+describe('产品列表列宽拖拽伸缩栏', () => {
+  let page: string;
+
+  beforeAll(() => {
+    page = readSrc('app/dashboard/products/_components/products-page-content.tsx');
+  });
+
+  it('COL_STORAGE_KEY = productsListColumnWidths，不与海外库存 key 冲突', () => {
+    expect(page).toContain("COL_STORAGE_KEY = 'productsListColumnWidths'");
+  });
+
+  it('存在 COL_DEFAULTS / COL_MIN / COL_MAX', () => {
+    expect(page).toContain('const COL_DEFAULTS');
+    expect(page).toContain('const COL_MIN');
+    expect(page).toContain('const COL_MAX');
+  });
+
+  it('COL_DEFAULTS 包含所有产品列表列（产品列表专属宽度，不照搬海外库存）', () => {
+    expect(page).toContain('expand: 44');
+    expect(page).toContain('code: 210');
+    expect(page).toContain('name: 320');
+    expect(page).toContain('category: 150');
+    expect(page).toContain('safetyStock: 120');
+    expect(page).toContain('skuCount: 120');
+    expect(page).toContain('status: 120');
+    expect(page).toContain('actions: 130');
+  });
+
+  it('COL_MIN / COL_MAX 使用产品列表专属值', () => {
+    expect(page).toContain('code: 150');
+    expect(page).toContain('name: 240');
+    expect(page).toContain('category: 120');
+    expect(page).toContain('name: 680');
+    expect(page).toContain('code: 360');
+    expect(page).toContain('actions: 180');
+  });
+
+  it('不存在 spacer 或其他无意义空白列 key', () => {
+    expect(page).not.toContain('spacer:');
+    expect(page).not.toContain('spacer');
+  });
+
+  it('不出现海外库存默认列 key（productName/warehouse/syncStatus 等）', () => {
+    expect(page).not.toContain('productName:');
+    expect(page).not.toContain('warehouse:');
+    expect(page).not.toContain('syncStatus:');
+    expect(page).not.toContain('inTransit:');
+    expect(page).not.toContain('quantity:');
+    expect(page).not.toContain('favorite:');
+  });
+
+  it('存在 function ResizeHandle', () => {
+    expect(page).toContain('function ResizeHandle');
+  });
+
+  it('ResizeHandle 包含 cursor-col-resize', () => {
+    expect(page).toContain('cursor-col-resize');
+  });
+
+  it('ResizeHandle 包含 onMouseDown', () => {
+    expect(page).toContain('onMouseDown');
+  });
+
+  it('ResizeHandle 包含 onDoubleClick 恢复默认', () => {
+    expect(page).toContain('onDoubleClick');
+    expect(page).toContain('双击恢复默认');
+  });
+
+  it('存在 activeResizeKey 状态', () => {
+    expect(page).toContain('activeResizeKey');
+    expect(page).toContain('setActiveResizeKey');
+  });
+
+  it('存在 columnWidths 状态', () => {
+    expect(page).toContain('columnWidths');
+    expect(page).toContain('setColumnWidths');
+  });
+
+  it('存在 handleResizeStart 函数', () => {
+    expect(page).toContain('function handleResizeStart');
+  });
+
+  it('handleResizeStart 内包含 stopPropagation()', () => {
+    const fnIdx = page.indexOf('function handleResizeStart');
+    const fnBlock = page.slice(fnIdx, fnIdx + 400);
+    expect(fnBlock).toContain('e.stopPropagation()');
+  });
+
+  it('handleResizeStart 内包含 preventDefault()', () => {
+    const fnIdx = page.indexOf('function handleResizeStart');
+    const fnBlock = page.slice(fnIdx, fnIdx + 400);
+    expect(fnBlock).toContain('e.preventDefault()');
+  });
+
+  it('存在 colgroup', () => {
+    expect(page).toContain('<colgroup>');
+  });
+
+  it('存在 col style={{ width: columnWidths.code }}', () => {
+    expect(page).toContain('col style={{ width: columnWidths.code }}');
+  });
+
+  it('存在 col style={{ width: columnWidths.name }}', () => {
+    expect(page).toContain('col style={{ width: columnWidths.name }}');
+  });
+
+  it('存在 tableLayout: fixed', () => {
+    expect(page).toContain("tableLayout: 'fixed'");
+  });
+
+  it('Table style 使用 width: totalTableWidth + minWidth: totalTableWidth 固定总宽度', () => {
+    expect(page).toContain('width: totalTableWidth');
+    expect(page).toContain('minWidth: totalTableWidth');
+  });
+
+  it('存在 Object.values(columnWidths).reduce 计算总宽度', () => {
+    expect(page).toContain('Object.values(columnWidths).reduce');
+  });
+
+  it('表头产品名称列包含 ResizeHandle columnKey="name" label="产品名称"', () => {
+    expect(page).toContain('ResizeHandle columnKey="name" label="产品名称"');
+  });
+
+  it('外层存在 overflow-x-auto（横向滚动）', () => {
+    expect(page).toContain('overflow-x-auto');
+  });
+
+  it('内层 rounded-md border 宽度绑定 totalTableWidth 跟随表格', () => {
+    // 内层 div 带圆角边框，宽度跟随表格内容，不撑满容器整行
+    expect(page).toContain('rounded-md border');
+    expect(page).toMatch(/style=\{\{ width: totalTableWidth, minWidth: totalTableWidth \}\}/);
+  });
+
+  it('Admin/Operator 两种列数下 colSpan 与表头列数一致', () => {
+    // colSpan = isAdmin ? 8 : 7
+    expect(page).toContain('const colSpan = isAdmin ? 8 : 7');
+    // Admin 时 colgroup 含 8 个 col（含 actions），Operator 时 7 个
+    expect(page).toContain('{isAdmin && <col style={{ width: columnWidths.actions }}');
+    // 表头 actions 列也按 isAdmin 条件渲染
+    expect(page).toContain('{isAdmin && (');
+  });
+
+  it('expand 列无 ResizeHandle（固定 44px 不拖拽）', () => {
+    // expand 列 min === max === 44，表头无 ResizeHandle
+    expect(page).toContain('expand: 44, code: 150');
+    // 展开按钮表头是空 TableHead，不包含 ResizeHandle
+    const theadStart = page.indexOf('<TableHead />{/* 展开按钮');
+    expect(theadStart).toBeGreaterThan(0);
+  });
+
+  it('localStorage 读取在 useEffect 中延迟执行避免 hydration mismatch', () => {
+    expect(page).toContain('localStorage.getItem(COL_STORAGE_KEY)');
+    expect(page).toContain('startTransition(() => setColumnWidths(next))');
+  });
+
+  it('列宽拖拽写入 localStorage', () => {
+    expect(page).toContain('localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(next))');
+  });
+
+  it('双击 ResizeHandle 调用 resetColumnWidth 恢复默认', () => {
+    expect(page).toContain('function resetColumnWidth');
+    expect(page).toContain('COL_DEFAULTS[key] ?? 100');
+  });
+
+  it('skuCount 和 status 在 colgroup 中各有独立 col', () => {
+    expect(page).toContain('col style={{ width: columnWidths.skuCount }}');
+    expect(page).toContain('col style={{ width: columnWidths.status }}');
+  });
+
+  it('所有表头统一左对齐（不出现 text-center / text-right）', () => {
+    // 表头全部使用 relative pr-7 无额外对齐类
+    const headerSection = page.slice(
+      page.indexOf('<TableHeader>'),
+      page.indexOf('</TableHeader>')
+    );
+    // 确认不包含居中对齐或右对齐类
+    expect(headerSection).not.toContain('text-center');
+    expect(headerSection).not.toContain('text-right');
+  });
+
+  it('安全库存单元格使用左对齐（默认）', () => {
+    // 安全库存单元格无 text-right 或 text-center
+    expect(page).toContain('<TableCell>{item.safety_stock}</TableCell>');
+  });
+
+  it('关联 SKU 单元格使用左对齐（默认）', () => {
+    expect(page).toContain('<TableCell>{item.skuCount}</TableCell>');
+  });
+
+  it('状态单元格使用左对齐（默认），badge 靠左', () => {
+    // 状态单元格没有额外对齐 className
+    const statusCellIdx = page.indexOf('{item.is_active ? (');
+    const contextBefore = page.slice(Math.max(0, statusCellIdx - 60), statusCellIdx);
+    expect(contextBefore).toContain('<TableCell>');
+  });
+
+  it('操作按钮组使用 justify-start 靠左', () => {
+    expect(page).toContain('justify-start');
+  });
+
+  it('skuCount 和 status 在 colgroup 中各有独立 col', () => {
+    expect(page).toContain('col style={{ width: columnWidths.skuCount }}');
+    expect(page).toContain('col style={{ width: columnWidths.status }}');
+  });
+
+  it('ResizeHandle / localStorage / colgroup / tableLayout fixed 保留', () => {
+    expect(page).toContain('function ResizeHandle');
+    expect(page).toContain('cursor-col-resize');
+    expect(page).toContain('<colgroup>');
+    expect(page).toContain("tableLayout: 'fixed'");
+    expect(page).toContain('localStorage.getItem(COL_STORAGE_KEY)');
+    expect(page).toContain('localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(next))');
+  });
+});

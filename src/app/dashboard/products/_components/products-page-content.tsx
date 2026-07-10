@@ -1,8 +1,8 @@
 'use client';
 
 // 产品列表页 — 客户端交互层
-// 处理 Sheet 表单、停用确认 Dialog、搜索表单、表格渲染和展开行
-import { useState, useCallback } from 'react';
+// 处理 Sheet 表单、停用确认 Dialog、搜索表单、表格渲染、展开行和列宽拖拽
+import { useState, useCallback, useRef, useEffect, useMemo, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Plus, Search, Pencil, Ban, Circle, ChevronRight, ChevronDown } from 'lucide-react';
@@ -50,6 +50,58 @@ const COUNTRY_LABEL: Record<string, string> = {
   VN: '越南',
 };
 
+// ── 列宽拖拽伸缩（模块级常量，不依赖 component props/state）──
+
+const COL_STORAGE_KEY = 'productsListColumnWidths';
+
+const COL_DEFAULTS: Record<string, number> = {
+  expand: 44, code: 210, name: 320, category: 150,
+  safetyStock: 120, skuCount: 120, status: 120, actions: 130,
+};
+
+const COL_MIN: Record<string, number> = {
+  expand: 44, code: 150, name: 240, category: 120,
+  safetyStock: 100, skuCount: 100, status: 90, actions: 110,
+};
+
+const COL_MAX: Record<string, number> = {
+  expand: 44, code: 360, name: 680, category: 320,
+  safetyStock: 180, skuCount: 180, status: 180, actions: 180,
+};
+
+/** 可见列宽拖拽分隔线 — 模块级组件，不在 render 内创建 */
+function ResizeHandle({
+  columnKey,
+  label,
+  isActive,
+  onResizeStart,
+  onReset,
+}: {
+  columnKey: string;
+  label: string;
+  isActive: boolean;
+  onResizeStart: (key: string, e: React.MouseEvent) => void;
+  onReset: (key: string) => void;
+}) {
+  return (
+    <div
+      className="absolute right-0 top-0 bottom-0 w-6 z-10 cursor-col-resize flex items-center justify-center group"
+      onMouseDown={(e) => onResizeStart(columnKey, e)}
+      onDoubleClick={(e) => { e.stopPropagation(); onReset(columnKey); }}
+      title="拖拽调整列宽，双击恢复默认"
+      aria-label={`调整${label}列宽`}
+    >
+      <div
+        className={`h-full transition-colors ${
+          isActive
+            ? 'w-0.5 bg-blue-500'
+            : 'w-px bg-gray-200 group-hover:w-0.5 group-hover:bg-blue-400'
+        }`}
+      />
+    </div>
+  );
+}
+
 interface Props {
   data: ProductItem[];
   total: number;
@@ -92,6 +144,98 @@ export function ProductsPageContent({
 
   // 展开行状态
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  // ── 列宽拖拽伸缩 ────────────────────────────────────────────
+
+  // 初始化不读 localStorage，避免 SSR hydration mismatch
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({ ...COL_DEFAULTS });
+  const [activeResizeKey, setActiveResizeKey] = useState<string | null>(null);
+
+  const resizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  const colWidthsRef = useRef(columnWidths);
+
+  // 保持 colWidthsRef 与 columnWidths 同步，供 resize 事件 handler 读取最新值
+  useEffect(() => {
+    colWidthsRef.current = columnWidths;
+  }, [columnWidths]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const state = resizeRef.current;
+      if (!state) return;
+      const delta = e.clientX - state.startX;
+      const min = COL_MIN[state.key] ?? 50;
+      const max = COL_MAX[state.key] ?? 640;
+      const newWidth = Math.min(max, Math.max(min, state.startWidth + delta));
+      setColumnWidths((prev) => {
+        const next = { ...prev, [state.key]: newWidth };
+        try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+        return next;
+      });
+    };
+    const onMouseUp = () => {
+      resizeRef.current = null;
+      setActiveResizeKey(null);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  // Hydrate 列宽：客户端 mount 后从 localStorage 读取并 clamp
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(COL_STORAGE_KEY);
+      if (!stored) return;
+      const parsed: unknown = JSON.parse(stored);
+      if (typeof parsed !== 'object' || parsed === null) return;
+      const next: Record<string, number> = { ...COL_DEFAULTS };
+      let hasValid = false;
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof value === 'number' && key in COL_DEFAULTS) {
+          const min = COL_MIN[key] ?? 50;
+          const max = COL_MAX[key] ?? 640;
+          next[key] = Math.min(max, Math.max(min, value));
+          hasValid = true;
+        }
+      }
+      if (hasValid) startTransition(() => setColumnWidths(next));
+    } catch { /* ignore */ }
+  }, []);
+
+  function handleResizeStart(key: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveResizeKey(key);
+    resizeRef.current = {
+      key,
+      startX: e.clientX,
+      startWidth: colWidthsRef.current[key] ?? COL_DEFAULTS[key] ?? 100,
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function resetColumnWidth(key: string) {
+    setColumnWidths((prev) => {
+      const next = { ...prev, [key]: COL_DEFAULTS[key] ?? 100 };
+      try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  // 表格固定布局总宽度（Admin 含操作列，Operator 不含）
+  const totalTableWidth = useMemo(() => {
+    if (isAdmin) return Object.values(columnWidths).reduce((sum, w) => sum + w, 0);
+    return Object.entries(columnWidths)
+      .filter(([k]) => k !== 'actions')
+      .reduce((sum, [, w]) => sum + w, 0);
+  }, [columnWidths, isAdmin]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -263,45 +407,83 @@ export function ProductsPageContent({
         </div>
       ) : (
         <>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-gray-50">
-                <TableHead className="w-10">{/* 展开按钮 */}</TableHead>
-                <TableHead>产品编码</TableHead>
-                <TableHead>产品名称</TableHead>
-                <TableHead>分类</TableHead>
-                <TableHead className="text-right">安全库存</TableHead>
-                <TableHead className="text-center">关联 SKU</TableHead>
-                <TableHead>状态</TableHead>
-                {isAdmin && <TableHead className="text-right">操作</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((item) => {
-                const isExpanded = expandedIds.has(item.id);
-                const bindings = item.bindings;
-                const hasBindings =
-                  bindings &&
-                  (bindings.domestic.length > 0 ||
-                    Object.values(bindings.overseas).some((arr) => arr.length > 0));
+          <div className="overflow-x-auto">
+            <div className="rounded-md border" style={{ width: totalTableWidth, minWidth: totalTableWidth }}>
+              <Table style={{ tableLayout: 'fixed', width: totalTableWidth, minWidth: totalTableWidth }}>
+              {/* colgroup 控制列宽，支持拖拽伸缩 */}
+              <colgroup>
+                <col style={{ width: columnWidths.expand }} />
+                <col style={{ width: columnWidths.code }} />
+                <col style={{ width: columnWidths.name }} />
+                <col style={{ width: columnWidths.category }} />
+                <col style={{ width: columnWidths.safetyStock }} />
+                <col style={{ width: columnWidths.skuCount }} />
+                <col style={{ width: columnWidths.status }} />
+                {isAdmin && <col style={{ width: columnWidths.actions }} />}
+              </colgroup>
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead />{/* 展开按钮 — 固定列宽，不拖拽 */}
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">产品编码</span>
+                    <ResizeHandle columnKey="code" label="产品编码" isActive={activeResizeKey === 'code'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
+                  </TableHead>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">产品名称</span>
+                    <ResizeHandle columnKey="name" label="产品名称" isActive={activeResizeKey === 'name'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
+                  </TableHead>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">分类</span>
+                    <ResizeHandle columnKey="category" label="分类" isActive={activeResizeKey === 'category'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
+                  </TableHead>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">安全库存</span>
+                    <ResizeHandle columnKey="safetyStock" label="安全库存" isActive={activeResizeKey === 'safetyStock'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
+                  </TableHead>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">关联 SKU</span>
+                    <ResizeHandle columnKey="skuCount" label="关联 SKU" isActive={activeResizeKey === 'skuCount'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
+                  </TableHead>
+                  <TableHead className="relative pr-7">
+                    <span className="block min-w-0 truncate overflow-hidden">状态</span>
+                    <ResizeHandle columnKey="status" label="状态" isActive={activeResizeKey === 'status'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
+                  </TableHead>
+                  {isAdmin && (
+                    <TableHead className="relative pr-7">
+                      <span className="block min-w-0 truncate overflow-hidden">操作</span>
+                      <ResizeHandle columnKey="actions" label="操作" isActive={activeResizeKey === 'actions'} onResizeStart={handleResizeStart} onReset={resetColumnWidth} />
+                    </TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.map((item) => {
+                  const isExpanded = expandedIds.has(item.id);
+                  const bindings = item.bindings;
+                  const hasBindings =
+                    bindings &&
+                    (bindings.domestic.length > 0 ||
+                      Object.values(bindings.overseas).some((arr) => arr.length > 0));
 
-                return (
-                  <TableRowListWithExpand
-                    key={item.id}
-                    item={item}
-                    isAdmin={isAdmin}
-                    isExpanded={isExpanded}
-                    onToggleExpand={() => toggleExpand(item.id)}
-                    onEdit={() => openEdit(item)}
-                    onDisable={() => openDisable(item)}
-                    colSpan={colSpan}
-                    hasBindings={hasBindings}
-                    bindings={bindings}
-                  />
-                );
-              })}
-            </TableBody>
-          </Table>
+                  return (
+                    <TableRowListWithExpand
+                      key={item.id}
+                      item={item}
+                      isAdmin={isAdmin}
+                      isExpanded={isExpanded}
+                      onToggleExpand={() => toggleExpand(item.id)}
+                      onEdit={() => openEdit(item)}
+                      onDisable={() => openDisable(item)}
+                      colSpan={colSpan}
+                      hasBindings={hasBindings}
+                      bindings={bindings}
+                    />
+                  );
+                })}
+              </TableBody>
+            </Table>
+            </div>
+          </div>
 
           {/* 分页 */}
           {totalPages > 1 && (
@@ -417,8 +599,8 @@ function TableRowListWithExpand({
             )}
           </button>
         </TableCell>
-        <TableCell className="font-medium">{item.code}</TableCell>
-        <TableCell className="max-w-[240px] truncate">
+        <TableCell className="font-medium min-w-0 truncate">{item.code}</TableCell>
+        <TableCell className="min-w-0 truncate">
           <a
             href={`/dashboard/products/${item.id}`}
             className="text-primary hover:underline"
@@ -426,11 +608,11 @@ function TableRowListWithExpand({
             {item.name}
           </a>
         </TableCell>
-        <TableCell className="text-muted-foreground">
+        <TableCell className="text-muted-foreground min-w-0 truncate">
           {item.category || '—'}
         </TableCell>
-        <TableCell className="text-right">{item.safety_stock}</TableCell>
-        <TableCell className="text-center">{item.skuCount}</TableCell>
+        <TableCell>{item.safety_stock}</TableCell>
+        <TableCell>{item.skuCount}</TableCell>
         <TableCell>
           {item.is_active ? (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">
@@ -443,8 +625,8 @@ function TableRowListWithExpand({
           )}
         </TableCell>
         {isAdmin && (
-          <TableCell className="text-right">
-            <div className="flex items-center justify-end gap-1">
+          <TableCell>
+            <div className="flex items-center justify-start gap-1">
               <Button
                 variant="ghost"
                 size="icon-sm"
