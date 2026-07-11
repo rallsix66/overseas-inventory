@@ -51,9 +51,7 @@ export default async function UnmatchedVariantsPage({
   }
 
   return (
-    <div className="px-6">
-      <h1 className="text-xl font-semibold mb-5">待处理 SKU</h1>
-
+    <>
       <p className="text-sm text-muted-foreground mb-4">
         以下 SKU 尚未匹配到标准产品，需要管理员处理。您已归档的 SKU 不在此显示。
       </p>
@@ -128,6 +126,6 @@ export default async function UnmatchedVariantsPage({
           )}
         </>
       )}
-    </div>
+    </>
   );
 }

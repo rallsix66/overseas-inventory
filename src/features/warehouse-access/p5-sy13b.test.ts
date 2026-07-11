@@ -627,6 +627,39 @@ describe('P5-SY13B — 侧边栏团队账号入口', () => {
   });
 });
 
+// ─── 6c. 侧边栏 — 待处理 SKU 已并入 SKU 管理 ─────────────────────────
+
+describe('SKU-UNMATCHED-MERGE — 侧边栏', () => {
+  let src: string;
+
+  beforeAll(() => {
+    src = fs.readFileSync(SIDEBAR_PATH, 'utf-8');
+  });
+
+  it('侧边栏不再包含独立的待处理 SKU 入口', () => {
+    expect(src).not.toMatch(/\/dashboard\/variants\/unmatched/);
+  });
+
+  it('产品管理组只保留一个 SKU 管理入口', () => {
+    // 确保待处理 SKU 已删除，但 SKU 管理仍存在
+    expect(src).toContain('/dashboard/variants');
+    expect(src).toContain('SKU 管理');
+  });
+
+  it('不再导入 AlertTriangle 图标', () => {
+    expect(src).not.toContain('AlertTriangle');
+  });
+
+  it('/dashboard/variants/unmatched 路径仍让 SKU 管理入口处于 active', () => {
+    // isActive 逻辑: pathname.startsWith(href) — /dashboard/variants/unmatched
+    // 以 /dashboard/variants 开头，所以 SKU 管理入口保持 active
+    const isActiveFn = src.match(
+      /const isActive = \(href: string\) => pathname === href \|\| \(href !== '\/dashboard' && pathname\.startsWith\(href\)\)/
+    );
+    expect(isActiveFn).not.toBeNull();
+  });
+});
+
 // ─── 7. Operator 权限隔离 ─────────────────────────────────────────────
 
 describe('P5-SY13B — Operator 权限隔离', () => {

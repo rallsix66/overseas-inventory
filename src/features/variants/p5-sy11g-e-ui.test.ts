@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const PAGE_PATH = path.resolve(process.cwd(), 'src/app/dashboard/variants/page.tsx');
+const LAYOUT_PATH = path.resolve(process.cwd(), 'src/app/dashboard/variants/layout.tsx');
 const CONTENT_PATH = path.resolve(process.cwd(), 'src/app/dashboard/variants/_components/variant-page-content.tsx');
 const UNMATCHED_PATH = path.resolve(process.cwd(), 'src/app/dashboard/variants/unmatched/page.tsx');
 const CONTROLS_PATH = path.resolve(process.cwd(), 'src/features/variants/components/archive-controls.tsx');
@@ -194,8 +195,9 @@ describe('P5-SY11G-E — sidebar-nav 产品管理入口', () => {
     expect(sidebarSrc).toMatch(/\/dashboard\/variants.*phase: '0'/);
   });
 
-  it('/dashboard/variants/unmatched (待处理 SKU) phase 为 0，已启用', () => {
-    expect(sidebarSrc).toMatch(/\/dashboard\/variants\/unmatched.*phase: '0'/);
+  it('产品管理组不再有独立的待处理 SKU 入口', () => {
+    // SKU-UNMATCHED-MERGE: 待处理 SKU 已并入 SKU 管理页面内标签
+    expect(sidebarSrc).not.toMatch(/\/dashboard\/variants\/unmatched/);
   });
 
   it('产品管理组不再有 phase: \'1\' 的 SKU 入口', () => {
@@ -262,5 +264,123 @@ describe('UNMATCHED-PAGINATION — variantRepository.getUnmatched 分页', () =>
     expect(repoSrc).toContain('total:');
     expect(repoSrc).toContain('page,');
     expect(repoSrc).toContain('pageSize');
+  });
+});
+
+// ─── SKU-UNMATCHED-MERGE — layout.tsx 共享标题与标签 ─────────────────
+
+describe('SKU-UNMATCHED-MERGE — layout.tsx', () => {
+  let layoutSrc: string;
+
+  beforeAll(() => {
+    layoutSrc = fs.readFileSync(LAYOUT_PATH, 'utf-8');
+  });
+
+  it('共享标题为 SKU 管理', () => {
+    expect(layoutSrc).toContain('SKU 管理');
+  });
+
+  it('包含全部 SKU 标签', () => {
+    expect(layoutSrc).toContain('全部 SKU');
+  });
+
+  it('包含待处理 SKU 标签', () => {
+    expect(layoutSrc).toContain('待处理 SKU');
+  });
+
+  it('全部 SKU 标签链接到 /dashboard/variants', () => {
+    expect(layoutSrc).toMatch(/href.*\/dashboard\/variants[^\/]/);
+  });
+
+  it('待处理 SKU 标签链接到 /dashboard/variants/unmatched', () => {
+    expect(layoutSrc).toContain('/dashboard/variants/unmatched');
+  });
+
+  it('使用 usePathname 判断当前路径', () => {
+    expect(layoutSrc).toContain('usePathname');
+  });
+
+  it('标签样式与现有归档筛选一致（border-b-2 + text-sm font-medium）', () => {
+    expect(layoutSrc).toContain('border-b-2');
+    expect(layoutSrc).toContain('text-sm');
+    expect(layoutSrc).toContain('font-medium');
+  });
+
+  it('活跃标签使用 border-primary text-primary', () => {
+    expect(layoutSrc).toContain('border-primary');
+    expect(layoutSrc).toContain('text-primary');
+  });
+
+  it('是 client component（use client）', () => {
+    expect(layoutSrc).toContain("'use client'");
+  });
+});
+
+// ─── SKU-UNMATCHED-MERGE — 页面不再重复渲染标题 ──────────────────────
+
+describe('SKU-UNMATCHED-MERGE — 页面标题去重', () => {
+  let pageSrc: string;
+  let unmatchedSrc: string;
+
+  beforeAll(() => {
+    pageSrc = fs.readFileSync(PAGE_PATH, 'utf-8');
+    unmatchedSrc = fs.readFileSync(UNMATCHED_PATH, 'utf-8');
+  });
+
+  it('page.tsx 不再包含 h1 标题', () => {
+    expect(pageSrc).not.toMatch(/<h1/);
+  });
+
+  it('unmatched/page.tsx 不再包含 h1 标题', () => {
+    expect(unmatchedSrc).not.toMatch(/<h1/);
+  });
+
+  it('unmatched/page.tsx 保留说明文字', () => {
+    expect(unmatchedSrc).toContain('尚未匹配到标准产品');
+  });
+
+  it('unmatched/page.tsx 保留空状态提示', () => {
+    expect(unmatchedSrc).toContain('暂无待处理 SKU');
+  });
+
+  it('unmatched/page.tsx 保留 getUnmatched 分页查询', () => {
+    expect(unmatchedSrc).toContain('getUnmatched');
+    expect(unmatchedSrc).toContain('page');
+    expect(unmatchedSrc).toContain('PAGE_SIZE');
+  });
+
+  it('unmatched/page.tsx 保留超出总页数重定向逻辑', () => {
+    expect(unmatchedSrc).toContain('redirect');
+    expect(unmatchedSrc).toContain('totalPages');
+  });
+});
+
+// ─── SKU-UNMATCHED-MERGE — 权限不变 ──────────────────────────────────
+
+describe('SKU-UNMATCHED-MERGE — 权限保持不变', () => {
+  let pageSrc: string;
+  let unmatchedSrc: string;
+
+  beforeAll(() => {
+    pageSrc = fs.readFileSync(PAGE_PATH, 'utf-8');
+    unmatchedSrc = fs.readFileSync(UNMATCHED_PATH, 'utf-8');
+  });
+
+  it('page.tsx 使用 requireActiveAuth（Admin 和 Operator 均可访问）', () => {
+    expect(pageSrc).toContain('requireActiveAuth');
+    expect(pageSrc).not.toContain('requireActiveAdmin');
+  });
+
+  it('unmatched/page.tsx 使用 requireActiveAuth（Admin 和 Operator 均可访问）', () => {
+    expect(unmatchedSrc).toContain('requireActiveAuth');
+    expect(unmatchedSrc).not.toContain('requireActiveAdmin');
+  });
+
+  it('page.tsx 传递 userId 到 variantRepository.list()', () => {
+    expect(pageSrc).toMatch(/userId/);
+  });
+
+  it('unmatched/page.tsx 传递 userId 到 getUnmatched()', () => {
+    expect(unmatchedSrc).toMatch(/userId/);
   });
 });

@@ -840,22 +840,9 @@ export function OverseasPageContent({ stats, warehouses, result, syncStatus, fil
                     <TableCell className="text-sm overflow-hidden truncate" title={item.warehouseName}>{item.warehouseName}</TableCell>
                     <TableCell className="text-sm min-w-0">
                       {item.matchStatus === 'matched' ? (
-                        <div className="flex flex-col min-w-0">
-                          {/* 主行：BigSeller 原始品名（始终显示） */}
-                          <span className="block min-w-0 truncate" title={item.variantName ?? item.productName ?? undefined}>
-                            {item.variantName ?? item.productName ?? <span className="text-muted-foreground">—</span>}
-                          </span>
-                          {/* 辅助信息：标准产品绑定信息 */}
-                          {item.standardProductName ? (
-                            <span className="block text-xs text-muted-foreground truncate" title={item.standardProductName}>
-                              标准品：{item.standardProductName}
-                            </span>
-                          ) : (
-                            <span className="block text-xs text-muted-foreground truncate italic">
-                              已匹配标准品缺失
-                            </span>
-                          )}
-                        </div>
+                        <span className="block min-w-0 truncate" title={item.variantName ?? item.productName ?? undefined}>
+                          {item.variantName ?? item.productName ?? <span className="text-muted-foreground">—</span>}
+                        </span>
                       ) : (
                         <div className="flex flex-col min-w-0 gap-0.5">
                           <div className="flex w-full min-w-0 items-center gap-1.5">

@@ -73,14 +73,13 @@ describe('P6-PRODUCT-NAME: 品名显示逻辑', () => {
     expect(afterMatched).toMatch(/item\.variantName/);
   });
 
-  it('matched 状态下显示标准品辅助信息"标准品：xxx"', () => {
-    expect(contentSrc).toMatch(/标准品：/);
-    expect(contentSrc).toMatch(/item\.standardProductName/);
+  it('matched 状态下不显示标准产品辅助信息（P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY）', () => {
+    expect(contentSrc).not.toMatch(/标准品：/);
+    expect(contentSrc).not.toMatch(/已匹配标准品缺失/);
   });
 
-  it('standardProductName 为空时显示"已匹配标准品缺失"（不再显示"已匹配产品缺失"）', () => {
-    expect(contentSrc).toMatch(/已匹配标准品缺失/);
-    expect(contentSrc).not.toMatch(/已匹配产品缺失/);
+  it('主品名仍使用 variantName 作为 BigSeller 原始品名', () => {
+    expect(contentSrc).toMatch(/item\.variantName/);
   });
 
   it('unmatched 状态显示 BigSeller 品名或"未匹配产品" fallback', () => {

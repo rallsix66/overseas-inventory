@@ -65,8 +65,9 @@ describe('P6-UI-CLARITY: "绑定产品"UI 占位入口', () => {
     expect(contentSrc).not.toMatch(/\{item\.productName \?/);
   });
 
-  it('matchStatus === "matched" 但 standardProductName 为空 → 显示"已匹配标准品缺失"只读异常状态', () => {
-    expect(contentSrc).toMatch(/已匹配标准品缺失/);
+  it('matchStatus === "matched" 时只显示仓库原始品名，不显示标准产品辅助信息（P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY）', () => {
+    expect(contentSrc).not.toMatch(/标准品：/);
+    expect(contentSrc).not.toMatch(/已匹配标准品缺失/);
   });
 
   it('handleBindProduct 设置 bindTarget 打开 BindProductDialog（P6-UX-V2-D 真实绑定）', () => {

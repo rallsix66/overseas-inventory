@@ -61,34 +61,21 @@ describe('P6-UX-V2-D: 未匹配行绑定入口', () => {
   });
 
   it('matchStatus === "matched" 时不显示"绑定产品"按钮', () => {
-    // 三元结构：matchStatus === 'matched' ? (matched 分支) : (unmatched 分支含绑定按钮)
-    // "已匹配标准品缺失" 只在 matched 分支中，绑定按钮在 unmatched 分支的 {canBindProduct && ( ... )} 内
+    // 三元结构：matched 分支只渲染单个 span，unmatched 分支含绑定按钮
     const matchedIdx = contentSrc.indexOf('item.matchStatus === \'matched\'');
     const unmatchedIdx = contentSrc.indexOf('未匹配产品');
-    // matched 分支在 unmatched 分支之前
     expect(matchedIdx).toBeLessThan(unmatchedIdx);
-    // "已匹配标准品缺失" 在 matched 分支
-    const anomalyIdx = contentSrc.indexOf('已匹配标准品缺失');
-    expect(anomalyIdx).toBeGreaterThan(matchedIdx);
-    expect(anomalyIdx).toBeLessThan(unmatchedIdx);
-    // "绑定产品" 按钮 JSX 文本在 unmatched 分支（{canBindProduct && ( ... )} 内）
-    // 从 unmatched 标签位置往后搜索按钮文本（跳过前面注释中的 "绑定产品"）
+    // matched 分支不含"绑定产品"（仅一个可截断 span）
+    const matchedBranch = contentSrc.slice(matchedIdx, unmatchedIdx);
+    expect(matchedBranch).not.toMatch(/绑定产品/);
+    // "绑定产品"按钮在 unmatched 分支中
     const bindBtnIdx = contentSrc.indexOf('绑定产品', unmatchedIdx);
     expect(bindBtnIdx).toBeGreaterThan(unmatchedIdx);
   });
 
-  it('matchStatus === "matched" 但 standardProductName 为空 → 显示"已匹配标准品缺失"只读文案，不显示绑定按钮', () => {
-    // matched 分支中 standardProductName 为空时显示异常状态文案
-    expect(contentSrc).toMatch(/已匹配标准品缺失/);
-    // "已匹配标准品缺失"在 matched 分支（true 分支），"绑定产品"在 unmatched 分支（false 分支）
-    const anomalyIdx = contentSrc.indexOf('已匹配标准品缺失');
-    const unmatchedLabelIdx = contentSrc.indexOf('未匹配产品');
-    // 异常文案在未匹配标签之前（即 matched 分支中）
-    expect(anomalyIdx).toBeGreaterThan(-1);
-    expect(anomalyIdx).toBeLessThan(unmatchedLabelIdx);
-    // 绑定按钮不在 matched 分支（它在 unmatched 分支中，位于 "未匹配产品" 之后）
-    const bindBtnIdx = contentSrc.indexOf('绑定产品', unmatchedLabelIdx);
-    expect(bindBtnIdx).toBeGreaterThan(unmatchedLabelIdx);
+  it('matched 分支不显示"已匹配标准品缺失"和"标准品："（P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY）', () => {
+    expect(contentSrc).not.toMatch(/已匹配标准品缺失/);
+    expect(contentSrc).not.toMatch(/标准品：/);
   });
 });
 
@@ -499,19 +486,26 @@ describe('P6-UX-V2-D: 海外库存列表主品名显示 BigSeller 原始品名',
     expect(afterMatched).toMatch(/item\.variantName/);
   });
 
-  it('matched 状态下标准产品名仅作为辅助信息展示', () => {
-    expect(contentSrc).toMatch(/标准品：/);
-    expect(contentSrc).toMatch(/item\.standardProductName/);
+  it('matched 状态下不显示标准产品辅助信息（P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY）', () => {
+    expect(contentSrc).not.toMatch(/标准品：/);
+    expect(contentSrc).not.toMatch(/已匹配标准品缺失/);
   });
 
-  it('matched 状态下标准产品名使用 secondary 样式（text-xs text-muted-foreground）', () => {
-    const standardProductIdx = contentSrc.indexOf('标准品：');
-    const context = contentSrc.slice(Math.max(0, standardProductIdx - 200), standardProductIdx + 50);
-    expect(context).toMatch(/text-xs text-muted-foreground/);
+  it('matched 分支只渲染单个可截断 span（无 flex flex-col 包装）', () => {
+    // 找到 matched 条件，然后在 ? 到 : 之间的 true 分支中验证
+    const matchedIdx = contentSrc.indexOf('item.matchStatus === \'matched\'');
+    const ternaryThen = contentSrc.indexOf('? (', matchedIdx);
+    const ternaryElse = contentSrc.indexOf(') : (', ternaryThen);
+    const trueBranch = contentSrc.slice(ternaryThen, ternaryElse);
+    expect(trueBranch).not.toMatch(/flex flex-col/);
+    expect(trueBranch).toMatch(/block min-w-0 truncate/);
   });
 
-  it('matched + standardProductName 为空 → 显示"已匹配标准品缺失"', () => {
-    expect(contentSrc).toMatch(/已匹配标准品缺失/);
+  it('matched 分支显示 variantName ?? productName 原始品名', () => {
+    const matchedIdx = contentSrc.indexOf('item.matchStatus === \'matched\'');
+    const afterMatched = contentSrc.slice(matchedIdx, matchedIdx + 200);
+    expect(afterMatched).toMatch(/item\.variantName/);
+    expect(afterMatched).toMatch(/item\.productName/);
   });
 
   it('matched 状态下不显示"绑定产品"按钮', () => {
@@ -534,17 +528,12 @@ describe('P6-UX-V2-D: 海外库存列表主品名显示 BigSeller 原始品名',
     expect(context).toMatch(/item\.variantName/);
   });
 
-  it('主品名列始终使用 variantName/productName（BigSeller 品名），standardProductName 仅作为辅助信息', () => {
-    // 主显示行使用 variantName ?? productName，不会以 standardProductName 为主品名
-    // standardProductName 只出现在 "标准品：" 辅助行中，不直接作为主品名展示
-    const standardProductIdx = contentSrc.indexOf('标准品：');
-    expect(standardProductIdx).toBeGreaterThan(-1);
-    // 主品名行（在"标准品："前面的 variantName）是主显示
-    const beforeStandard = contentSrc.slice(Math.max(0, standardProductIdx - 800), standardProductIdx);
-    expect(beforeStandard).toMatch(/variantName/);
-    // standardProductName 仅出现在辅助信息上下文中（"标准品："之后）
-    const afterStandard = contentSrc.slice(standardProductIdx, standardProductIdx + 100);
-    expect(afterStandard).toMatch(/standardProductName/);
+  it('主品名列仅使用 variantName/productName（BigSeller 品名），不引用 standardProductName', () => {
+    // P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY: 页面不再显示标准产品辅助信息
+    expect(contentSrc).not.toMatch(/标准品：/);
+    // 主品名仍使用 BigSeller 原始品名
+    expect(contentSrc).toMatch(/item\.variantName/);
+    expect(contentSrc).toMatch(/item\.productName/);
   });
 });
 
@@ -944,17 +933,18 @@ describe('P6-UX-V2-D: 列宽拖拽伸缩', () => {
     expect(contentSrc).toMatch(/removeEventListener\('mouseup'/);
   });
 
-  it('未匹配分支使用 flex flex-col min-w-0（纵向两行布局，非 inline-flex）', () => {
-    // P6-UX-IN-TRANSIT-OPTIMIZATION: 未匹配分支改为纵向两行布局
-    // 外层 flex flex-col min-w-0（第一行品名 + 第二行 badge/按钮）
+  it('未匹配分支使用 flex flex-col min-w-0（外层竖排 + 内层单行品名/badge/按钮）', () => {
+    // 外层 flex flex-col min-w-0 gap-0.5（可容纳第二行内容如待确认原因）
+    // 内层 flex w-full min-w-0 items-center gap-1.5（品名 + badge + 按钮同一行）
     expect(contentSrc).toMatch(/flex flex-col min-w-0/);
   });
 
-  it('未匹配分支品名文本使用 block min-w-0 truncate', () => {
-    // P6-UX-IN-TRANSIT-OPTIMIZATION: 品名 span 使用 block min-w-0 truncate
+  it('未匹配分支品名文本使用 min-w-0 flex-1 truncate', () => {
+    // P6-UX-IN-TRANSIT-OPTIMIZATION: 品名 span 在内层 flex row 中使用 min-w-0 flex-1 truncate
+    // 与 badge/按钮（shrink-0）同在一行，flex-1 确保品名填满可用空间
     const unmatchedIdx = contentSrc.lastIndexOf('未匹配产品');
     const context = contentSrc.slice(Math.max(0, unmatchedIdx - 250), unmatchedIdx + 80);
-    expect(context).toMatch(/block min-w-0 truncate/);
+    expect(context).toMatch(/min-w-0 flex-1 truncate/);
   });
 
   it('未匹配分支"未匹配" badge 使用 shrink-0', () => {

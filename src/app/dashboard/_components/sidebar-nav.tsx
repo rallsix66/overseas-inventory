@@ -11,7 +11,6 @@ import {
   Tag,
   List,
   Barcode,
-  AlertTriangle,
   Ship,
   Users,
   ChevronDown,
@@ -51,7 +50,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard/products', label: '产品列表', icon: List, phase: '0' },
       { href: '/dashboard/variants', label: 'SKU 管理', icon: Barcode, phase: '0' },
-      { href: '/dashboard/variants/unmatched', label: '待处理 SKU', icon: AlertTriangle, phase: '0' },
     ],
   },
   {

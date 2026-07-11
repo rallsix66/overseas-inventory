@@ -43,13 +43,10 @@ export default async function VariantsPage({
   });
 
   return (
-    <div className="px-6">
-      <h1 className="text-xl font-semibold mb-5">SKU 管理</h1>
-      <VariantPageContent
-        result={result}
-        archiveStatus={archiveStatus}
-        search={sp.search ?? ''}
-      />
-    </div>
+    <VariantPageContent
+      result={result}
+      archiveStatus={archiveStatus}
+      search={sp.search ?? ''}
+    />
   );
 }
