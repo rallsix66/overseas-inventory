@@ -4,7 +4,7 @@
 
 | 项目 | 状态 |
 |------|------|
-| P7-PRODUCT-OVERVIEW | **BLOCKED_BY_DOMESTIC_INVENTORY** — P7-PLAN DONE，P7-MVP 不接通国内库存前不启动 |
+| P7-PRODUCT-OVERVIEW | **可实施** — P7-PLAN DONE（Codex 复验通过）；v4 合并整合（2026-07-12）解除 `BLOCKED_BY_DOMESTIC_INVENTORY`：P7-A 海外基础总览 + 国内占位可开工，P7-B 增强层待 P1 落盘后叠加，国内真实接入划归 P8（P7-C 启用国内补给判断） |
 | P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
 | P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
 | 全量测试 | **3524/3524**（0 failures）— P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY 收口完成 |
@@ -43,7 +43,7 @@
 
 ## 当前阻塞
 
-- **P7-MVP** → 等待国内库存真实接入方案确认（P8-DOMESTIC-INVENTORY-PLAN）。不接通国内库存前不做 P7。
+- **P7-MVP（已解除 BLOCKED_BY_DOMESTIC_INVENTORY，2026-07-12 v4 合并整合）**：P7-A 海外基础总览 + 国内占位可开工；P7-B 作战室增强层待 P1 补货引擎落盘（提供共享 `forecast_stockout(...)`）后叠加；国内真实库存接入为独立后续 **P8**（不阻塞 P7-A/P7-B）。
 - **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。
 
 ## 质量门（全阶段通用）
