@@ -3,7 +3,7 @@
 // GET /api/cron/golucky
 // Authorization: Bearer <CRON_SECRET>
 //
-// Vercel Cron 定时调用此端点（schedule: 0 */6 * * *），拉取全部 active 喜运达外部物流记录的轨迹。
+// Vercel Cron 定时调用此端点（schedule: 0 2 * * *，UTC 02:00 / 北京时间 10:00，兼容 Hobby），拉取全部 active 喜运达外部物流记录的轨迹。
 //
 // 本 route 仅负责 CRON_SECRET 鉴权 + 服务端依赖注入。
 // 实际同步逻辑收拢于 src/features/in-transit/golucky-sync.ts。

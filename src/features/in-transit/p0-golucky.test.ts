@@ -257,7 +257,7 @@ describe('P0-GOLUCKY — Cron 鉴权与调度配置', () => {
     const crons = (vercelJson as { crons: Array<{ path: string; schedule: string }> }).crons;
     const goluckyCrons = crons.filter((c) => c.path === '/api/cron/golucky');
     expect(goluckyCrons.length, 'golucky cron 必须恰好一条').toBe(1);
-    expect(goluckyCrons[0].schedule).toBe('0 */6 * * *');
+    expect(goluckyCrons[0].schedule).toBe('0 2 * * *');
   });
 });
 

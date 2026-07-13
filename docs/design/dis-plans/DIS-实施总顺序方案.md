@@ -30,7 +30,7 @@
 - 核心边界：
   - 新建 `src/app/api/cron/golucky/route.ts`；现有 `/api/cron/dry-run` 保留。
   - `CRON_SECRET` 只用于 golucky；`CRON_API_KEY` 只用于 dry-run；两个 secret 不得混用。
-  - golucky schedule 固定 `0 */6 * * *`（UTC）；`vercel.json` 中 golucky 只能保留一个调度来源；不允许 Vercel Cron 与 Supabase Scheduled Functions 双调度 golucky。
+  - golucky schedule 固定 `0 2 * * *`（UTC 02:00 / 北京时间 10:00，兼容 Hobby 计划每天一次）；`vercel.json` 中 golucky 只能保留一个调度来源；不允许 Vercel Cron 与 Supabase Scheduled Functions 双调度 golucky。
   - 缺失 `CRON_SECRET` 时先返回 HTTP 500，不读取 Authorization、不访问 DB、不刷新 Token、不调用物流 API；鉴权失败返回 401。
   - P0 只写 `tracking_event_external` 及外部表同步字段；不回写 `shipment.status`；不写 `tracking_event`；不写 `inventory`；不写 `estimated_arrival`。
   - P0 外部轨迹不进入 P1/P7 的 V1 预测计算。

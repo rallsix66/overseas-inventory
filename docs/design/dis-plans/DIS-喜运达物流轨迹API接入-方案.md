@@ -24,7 +24,7 @@
 **v6→v7 三项修改原因**
 1. 固定 `CRON_SECRET` 缺失时的唯一处理方式和鉴权顺序（取消「启动失败 / 500」二选一，统一为请求返回 500，并明确配置检查优先于请求鉴权）。
 2. 将 waybill 重复预检从「人工查看 SELECT」改为明确的**可执行阻断机制**（重复即非零退出 / 抛异常，阻止唯一索引创建）。
-3. 明确 golucky Cron 的具体 schedule（`0 */6 * * *`，每 6 小时）与时区（UTC）。
+3. 明确 golucky Cron 的具体 schedule（`0 2 * * *`，每天一次 UTC 02:00 / 北京时间 10:00，兼容 Hobby）与时区（UTC）。
 
 **v7→v8 修改原因**
 取消 waybill 预检实现方式二选一，固定采用 Migration 内 DO 块阻断；异常必须直接输出重复 provider、waybill_no 和数量。
@@ -362,9 +362,9 @@ RLS **只给 operator SELECT**；导入/绑定/重激活写入**不走直接表 
 1. **P0 新增** `src/app/api/cron/golucky/route.ts`（由 `CRON_SECRET` 鉴权）。
 2. 🔴 **现有 dry-run Cron 必须保留**：不得删除、替换或改造成 golucky Cron；它是独立的既有调度，与 golucky 互不影响。
 3. 🔴 **实施阶段应在 `vercel.json` 中新增 golucky 调度配置，同时保留 dry-run 配置**（本轮仅记录要求，不修改 `vercel.json`）：新增一条 `/api/cron/golucky` 的 cron 项，原有 `/api/cron/dry-run` 项保持不变。
-4. 🔴 **golucky Cron 的具体 schedule 与时区（v7 明确）**：
-   - golucky 同步**默认每 6 小时执行一次**；
-   - schedule 表达式明确写为 **`0 */6 * * *`**；
+4. 🔴 **golucky Cron 的具体 schedule 与时区（v8 最终）**：
+   - golucky 同步**每天一次**（兼容 Vercel Hobby 计划限制）；
+   - schedule 表达式明确写为 **`0 2 * * *`**（UTC 02:00，北京时间 10:00）；
    - 🔴 **该表达式按 UTC 执行**（Vercel Cron 的 cron 表达式以 UTC 解释，非本地时区）；
    - `vercel.json` 最终应**同时存在** `/api/cron/dry-run` 与 `/api/cron/golucky` 两条配置；
    - 🔴 **golucky 只能有一个配置**，不得重复添加第二条 golucky Cron。
@@ -507,7 +507,7 @@ Shipment 详情页 (shipments/[id])
 4. 扩展 `ExternalProvider` 类型 + `externalProviderSchema`。
 5. `lib/providers/golucky/` 六件套（client/schema/parse-response【哈希+分类+provider 派生】/dry-run/types/index）。
 6. repository 新方法（getExternalRefsByProvider / upsertGoluckyEvents【派生 provider】/ updateExternalRefSync / getExternalTrackingByShipment / listUnboundExternalRefs）。
-7. `golucky-sync.ts` 编排（仅写 `tracking_event_external` + 更新 sync_status）+ cron route【**新建** `src/app/api/cron/golucky/route.ts`】（CRON_SECRET 失败关闭：先配置检查再鉴权 + token 租约 + 批处理/失败隔离/终态降频）；`vercel.json` 新增 `/api/cron/golucky` 项，**schedule 为 `0 */6 * * *`（每 6 小时，UTC）**，同时**保留既有 `/api/cron/dry-run` 项**，golucky 仅此一条配置。
+7. `golucky-sync.ts` 编排（仅写 `tracking_event_external` + 更新 sync_status）+ cron route【**新建** `src/app/api/cron/golucky/route.ts`】（CRON_SECRET 失败关闭：先配置检查再鉴权 + token 租约 + 批处理/失败隔离/终态降频）；`vercel.json` 新增 `/api/cron/golucky` 项，**schedule 为 `0 2 * * *`（每天一次，UTC 02:00 / 北京时间 10:00，兼容 Hobby）**，同时**保留既有 `/api/cron/dry-run` 项**，golucky 仅此一条配置。
 8. 导入入口页 + 导入逻辑（手动文本粘贴 / **CSV** → 组装 `p_items` → 调 `import_golucky_refs`；Excel 推迟）。
 9. Shipment 详情页「外部物流轨迹」+「外部物流记录」列表（绑定/重激活走 RPC）。
 10. **dry-run 验证**（样本运单 `GLLAN26062906249PHE`：gettoken→tracking→过滤标题节点→落 `tracking_event_external`，不写 `tracking_event`/`shipment.status`）。
@@ -576,4 +576,4 @@ Shipment 详情页 (shipments/[id])
 20. **waybill 重复预检失败时必须非零退出并阻止唯一索引创建**：构造重复 `(provider, waybill_no)` 数据时，预检（固定为 Migration 内 `DO` 异常阻断，v8 已取消 preflight 脚本二选一）必须**非零退出 / 抛异常**，使 `CREATE UNIQUE INDEX` **不被执行**，并在异常 `DETAIL` 中输出重复的 provider / waybill_no / 数量。
 21. **waybill 无重复时预检通过并允许创建唯一索引**：0 条重复时预检通过，正常执行 `CREATE UNIQUE INDEX idx_shipment_external_ref_provider_waybill`。
 22. **预检失败不得修改或删除历史数据**：预检中止时绝不删除、合并或随机保留任何重复记录，历史数据保持原样，须人工确认后再迁移。
-23. **golucky Cron schedule 为 `0 */6 * * *`、时区 UTC**：`vercel.json` 中 golucky 项 schedule 固定为 `0 */6 * * *`（每 6 小时，UTC 解释）；现有 `/api/cron/dry-run` 保留，且**只存在一个 golucky Cron 配置**。
+23. **golucky Cron schedule 为 `0 2 * * *`、时区 UTC**：`vercel.json` 中 golucky 项 schedule 固定为 `0 2 * * *`（每天一次，UTC 02:00 / 北京时间 10:00，兼容 Hobby 计划限制）；现有 `/api/cron/dry-run` 保留，且**只存在一个 golucky Cron 配置**。
