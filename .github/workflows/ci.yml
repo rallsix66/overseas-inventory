@@ -1,0 +1,103 @@
+# DIS 自动化质量门（CI）
+# 作用：每次 push / PR 自动跑 lint + build + 测试，红了禁止合并。
+# 这是防"AI 改坏没人发现"的强制护栏——配一次，永久生效。
+#
+# 使用前必须做两件事：
+# 1) 在 GitHub 仓库 Settings → Secrets and variables → Actions 中添加以下 Secrets：
+#      NEXT_PUBLIC_SUPABASE_URL        （supabase.com 项目 API 中的 URL）
+#      NEXT_PUBLIC_SUPABASE_ANON_KEY   （anon public key）
+#      SUPABASE_SERVICE_ROLE_KEY       （service_role key，仅服务端用）
+# 2) 把本文件连同代码一起 commit & push 到 GitHub，Actions 会自动启用。
+#
+# 说明：
+# - 默认测试（npm run test）已排除并发测试与 live 物流测试，不依赖外部数据库。
+# - 并发锁测试（concurrency）单独一个 job，用 GitHub 托管的 Postgres 容器跑，
+#   它会自建测试 schema，无需手动迁移。
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# 同一分支多次 push 时取消旧的运行，省资源
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Job 1：静态检查 + 构建 + 单元测试（核心门） ──────────────
+  verify:
+    name: Lint / Build / Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖（精确锁版本）
+        run: npm ci
+
+      - name: 代码规范检查
+        run: npm run lint
+
+      - name: 生产构建
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # 构建期不连真实 DB；以下开关保持关闭，避免构建阶段触发真实写入
+          WEBSYNC_REAL_WRITE_ENABLED: "false"
+
+      - name: 单元测试（排除并发 / live 测试）
+        run: npm run test
+
+  # ── Job 2：并发锁原子性验证（自建 PG schema） ───────────────
+  concurrency:
+    name: Concurrency Lock Test (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dis_test
+        ports:
+          - 5432:5432
+        # 等 PG 真正接受连接再继续
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 运行并发锁测试（真双事务 PostgreSQL）
+        run: npm run test:concurrency
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGDATABASE: dis_test
+          PGUSER: postgres
+          PGPASSWORD: postgres

@@ -346,40 +346,43 @@ describe('P3-S1A — 00001~00016 Migration 完整性', () => {
 
 // ─── 11. 范围约束 — P3-S1A 禁止事项 ──────────────────────────────────
 
-describe('P3-S1A — 范围约束', () => {
-  it('src/features/in-transit/ 仅包含 types.ts / schema.ts / 测试文件', () => {
+describe('P3-S1A — 范围约束（P0 更新：喜运达 golucky 模块新增文件）', () => {
+  it('src/features/in-transit/ 文件集合符合 P0 预期', () => {
     const inTransitDir = path.resolve(process.cwd(), 'src/features/in-transit');
     if (fs.existsSync(inTransitDir)) {
       const files = fs.readdirSync(inTransitDir);
-      const allowedFiles = ['types.ts', 'schema.ts', 'p3-s1a-migration.test.ts'];
+      const allowedFiles = [
+        'types.ts', 'schema.ts', 'p3-s1a-migration.test.ts',
+        'actions.ts', 'repository.ts', 'golucky-sync.ts', 'golucky-import.ts',
+      ];
       for (const file of files) {
         const ext = path.extname(file);
         if (ext === '.ts' || ext === '.tsx') {
-          expect(allowedFiles, `P3-S1A 禁止创建 ${file}`).toContain(file);
+          expect(allowedFiles, `${file} 未在 P0 允许列表中`).toContain(file);
         }
       }
     }
   });
 
-  it('未创建 API Client 文件', () => {
+  it('未创建 API Client 文件（API client 应在 src/lib/providers/ 下）', () => {
     const inTransitDir = path.resolve(process.cwd(), 'src/features/in-transit');
     if (fs.existsSync(inTransitDir)) {
       const files = fs.readdirSync(inTransitDir);
       const forbidden = ['client.ts', 'api.ts', 'best-client.ts', 'best-api.ts'];
       for (const file of files) {
-        expect(forbidden, `P3-S1A 禁止创建 ${file}`).not.toContain(file);
+        expect(forbidden, `${file} 应在 lib/providers/ 下`).not.toContain(file);
       }
     }
   });
 
-  it('未创建 Repository 文件', () => {
+  it('P0 已创建 Repository 文件', () => {
     const repoPath = path.resolve(process.cwd(), 'src/features/in-transit/repository.ts');
-    expect(fs.existsSync(repoPath)).toBe(false);
+    expect(fs.existsSync(repoPath)).toBe(true);
   });
 
-  it('未创建 Server Action 文件', () => {
+  it('P0 已创建 Server Action 文件', () => {
     const actionsPath = path.resolve(process.cwd(), 'src/features/in-transit/actions.ts');
-    expect(fs.existsSync(actionsPath)).toBe(false);
+    expect(fs.existsSync(actionsPath)).toBe(true);
   });
 
   it('未创建 UI 组件', () => {

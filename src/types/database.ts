@@ -325,10 +325,11 @@ export type Database = {
         Row: {
           id: string
           provider: string
-          external_order_no: string
+          external_order_no: string | null
           waybill_no: string | null
           country: string
           warehouse_id: string | null
+          shipment_id: string | null
           raw_payload: Record<string, unknown>
           sync_status: string
           last_synced_at: string | null
@@ -338,10 +339,11 @@ export type Database = {
         Insert: {
           id?: string
           provider: string
-          external_order_no: string
+          external_order_no?: string | null
           waybill_no?: string | null
           country: string
           warehouse_id?: string | null
+          shipment_id?: string | null
           raw_payload?: Record<string, unknown>
           sync_status?: string
           last_synced_at?: string | null
@@ -351,10 +353,11 @@ export type Database = {
         Update: {
           id?: string
           provider?: string
-          external_order_no?: string
+          external_order_no?: string | null
           waybill_no?: string | null
           country?: string
           warehouse_id?: string | null
+          shipment_id?: string | null
           raw_payload?: Record<string, unknown>
           sync_status?: string
           last_synced_at?: string | null
@@ -404,7 +407,8 @@ export type Database = {
           id: string
           external_ref_id: string
           provider: string
-          external_event_id: string | null
+          external_event_id: string
+          external_category: string
           status: string | null
           description: string | null
           occurred_at: string | null
@@ -416,7 +420,8 @@ export type Database = {
           id?: string
           external_ref_id: string
           provider: string
-          external_event_id?: string | null
+          external_event_id: string
+          external_category?: string
           status?: string | null
           description?: string | null
           occurred_at?: string | null
@@ -428,7 +433,8 @@ export type Database = {
           id?: string
           external_ref_id?: string
           provider?: string
-          external_event_id?: string | null
+          external_event_id?: string
+          external_category?: string
           status?: string | null
           description?: string | null
           occurred_at?: string | null
@@ -582,6 +588,33 @@ export type Database = {
           user_id?: string
           warehouse_id?: string
           created_at?: string
+        }
+        Relationships: []
+      }
+      provider_token_cache: {
+        Row: {
+          provider: string
+          access_token: string
+          expires_at: string
+          lease_owner: string | null
+          lease_until: string | null
+          updated_at: string
+        }
+        Insert: {
+          provider: string
+          access_token: string
+          expires_at: string
+          lease_owner?: string | null
+          lease_until?: string | null
+          updated_at?: string
+        }
+        Update: {
+          provider?: string
+          access_token?: string
+          expires_at?: string
+          lease_owner?: string | null
+          lease_until?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -756,6 +789,36 @@ export type Database = {
           p_is_active: boolean
           p_operator_user_id: string
         }
+        Returns: void
+      }
+      /** P0 golucky: 批量导入喜运达运单 */
+      import_golucky_refs: {
+        Args: { p_items: unknown }
+        Returns: Record<string, unknown>
+      }
+      /** P0 golucky: 绑定外部物流记录到 Shipment */
+      bind_external_ref_to_shipment: {
+        Args: { p_ref_id: string; p_shipment_id: string }
+        Returns: void
+      }
+      /** P0 golucky: 重激活外部物流记录同步 */
+      reactivate_external_ref: {
+        Args: { p_ref_id: string }
+        Returns: void
+      }
+      /** P0 golucky: 获取 Token 租约 */
+      acquire_token_lease: {
+        Args: { p_provider: string; p_lease_id: string }
+        Returns: Record<string, unknown>
+      }
+      /** P0 golucky: 写回 Token（校验租约所有权） */
+      store_token_with_lease: {
+        Args: { p_provider: string; p_access_token: string; p_expires_at: string; p_lease_id: string }
+        Returns: void
+      }
+      /** P0 golucky: 释放 Token 租约 */
+      release_token_lease: {
+        Args: { p_provider: string; p_lease_id: string }
         Returns: void
       }
     }

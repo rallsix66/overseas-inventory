@@ -1232,4 +1232,19 @@ export const shipmentRepository = {
 
     return true;
   },
+
+  /** P0: 检查 Shipment 是否已绑定外部物流记录（换仓保护预校验） */
+  async existsBoundExternalRef(shipmentId: string): Promise<boolean> {
+    const supabase = await createClient();
+    const { count, error } = await supabase
+      .from('shipment_external_ref')
+      .select('id', { count: 'exact', head: true })
+      .eq('shipment_id', shipmentId);
+
+    if (error) {
+      throw new ShipmentError('查询外部物流绑定失败，请稍后重试', 'DB_ERROR');
+    }
+
+    return (count ?? 0) > 0;
+  },
 };

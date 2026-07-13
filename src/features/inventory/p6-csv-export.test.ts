@@ -291,12 +291,15 @@ describe('P6-CSV-EXPORT — 页面组件 (源码)', () => {
 // ─── 4. 不新增 Migration / RPC / RLS / 不改 Repository ────────────
 
 describe('P6-CSV-EXPORT — 架构边界', () => {
-  it('migrations/ 下 00037 为 P6-UX-V2-F stockStatus in_transit 扩展，无 00038+ CSV 不相干文件', () => {
+  it('migrations/ 包含 P0 喜运达 00038–00040（Stage 1 新增 Migration，非 CSV 变更）', () => {
     const m36 = path.resolve(process.cwd(), 'supabase/migrations/00036_');
     const files = fs.readdirSync(path.dirname(m36));
-    const post36 = files.filter((f) => /^0003[7-9]|^000[4-9]|^00[1-9]/.test(f));
-    // 00037 = P6-UX-V2-F in_transit stockStatus 扩展（合理）
-    expect(post36).toEqual(['00037_add_in_transit_stock_status.sql']);
+    const post36 = files.filter((f) => /^0003[7-9]|^0004[0-2]/.test(f));
+    expect(post36).toContain('00037_add_in_transit_stock_status.sql');
+    expect(post36).toContain('00038_golucky_schema.sql');
+    expect(post36).toContain('00039_golucky_rls_rpc.sql');
+    expect(post36).toContain('00040_golucky_token_cache.sql');
+    expect(post36.length).toBe(4);
   });
 
   it('inventoryRepository 签名未修改（exportCsvSchema 不在 repository.ts 中）', () => {

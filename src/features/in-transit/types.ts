@@ -10,7 +10,7 @@ export type ShipmentExternalItemUpdate = Database['public']['Tables']['shipment_
 
 export type TrackingEventExternalRow = Database['public']['Tables']['tracking_event_external']['Row'];
 
-export type ExternalProvider = 'best';
+export type ExternalProvider = 'best' | 'golucky';
 
 export type ExternalSyncStatus = 'active' | 'stale' | 'error';
 

@@ -1,17 +1,17 @@
 # Current Task Packet
 
-## 状态概览（2026-07-10）
+## 状态概览（2026-07-13）
 
 | 项目 | 状态 |
 |------|------|
-| P7-PRODUCT-OVERVIEW | **可实施** — P7-PLAN DONE（Codex 复验通过）；v4 合并整合（2026-07-12）解除 `BLOCKED_BY_DOMESTIC_INVENTORY`：P7-A 海外基础总览 + 国内占位可开工，P7-B 增强层待 P1 落盘后叠加，国内真实接入划归 P8（P7-C 启用国内补给判断） |
+| Stage 0 治理 | **Stage 0A 审计完成** — 五份定稿方案（P0/P1/P7/首页/总顺序）已通过 Codex 架构终审 |
+| Stage 1 P0 喜运达物流轨迹 API 接入 | **代码完成，待验收** — Migration 00038–00040 已创建（尚未执行）；golucky provider / in-transit 模块 / cron route / 导入页 / 换仓保护已落盘。全量测试 3524/3524。P0 验收通过后进入 Stage 2 P1 |
+| Stage 2 P1 预测式补货引擎 | **待开工** — 依赖 P0 完成，Migration 00041–00044。P1 完成后进入 Stage 3 P7 |
+| Stage 3 P7 全球库存作战室 | **待开工** — 依赖 P1 完成（P7 E/00045 依赖 P1 C/00043，P7 F/00046 依赖 P1 C/00043 + D/00044）。P7 不先于 P1 开工 |
+| Stage 4 首页决策看板 | **待开工** — 依赖 P1 + P7 完成，Migration 00047 |
 | P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
 | P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
-| 全量测试 | **3524/3524**（0 failures）— P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY 收口完成 |
-| 团队账号 | **侧边栏入口已开放**（TEAM-ACCOUNTS-SIDEBAR） |
-| Select controlled warning | **已修复**（TEAM-ACCOUNTS-SELECT-CONTROLLED） |
-| SKU 管理 — 待处理合并 | **DONE**（SKU-MANAGEMENT-UNMATCHED-MERGE） |
-| 海外库存产品名称简化 | **DONE**（P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY） |
+| 全量测试 | **3524/3524**（0 failures） |
 
 ## 最近已完成（2026-07-10）
 
@@ -43,8 +43,8 @@
 
 ## 当前阻塞
 
-- **P7-MVP（已解除 BLOCKED_BY_DOMESTIC_INVENTORY，2026-07-12 v4 合并整合）**：P7-A 海外基础总览 + 国内占位可开工；P7-B 作战室增强层待 P1 补货引擎落盘（提供共享 `forecast_stockout(...)`）后叠加；国内真实库存接入为独立后续 **P8**（不阻塞 P7-A/P7-B）。
-- **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。
+- **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。与 P0 喜运达物流轨迹 API 接入无关，不阻塞 Stage 1。
+- **P7 不能先于 P1 开工**：P7 的 Migration 00045（E）依赖 P1 的 00043（C），00046（F）依赖 P1 的 00043（C）与 00044（D）。P0 → P1 → P7 → 首页 严格串行。
 
 ## 质量门（全阶段通用）
 
@@ -55,9 +55,26 @@ npm run lint          # 0 errors / 25 warnings（all pre-existing）
 git diff --check      # 无 trailing whitespace / 冲突标记
 ```
 
+## 实施顺序与 Migration 依赖（定稿）
+
+固定串行顺序：**Stage 1 P0 → Stage 2 P1 → Stage 3 P7 → Stage 4 首页**
+
+| Stage | 方案 | Migration | 依赖 |
+|-------|------|-----------|------|
+| 1 | P0 喜运达物流轨迹 API 接入 | 00038 A / 00039 B / 00040 C | 无（仅依赖现有 00037） |
+| 2 | P1 预测式补货引擎 | 00041 A / 00042 B / 00043 C / 00044 D | P0 完成 |
+| 3 | P7 全球库存作战室 | 00045 E / 00046 F | P1 C/00043 + P1 D/00044 |
+| 4 | 首页决策看板 | 00047 | P1 + P7 完成 |
+
+关键规则：
+- P7 的 00045/00046 必须作为新 Migration 创建，不能修改已执行的 00001–00037
+- P7 不能先于 P1 开工（P7 E 依赖 P1 C 的共用预测函数，P7 F 依赖 P1 C+D 的 `get_replenishment_suggestions`）
+- P0 优先实施仅为降低后续并行变更冲突，不是 P1/P7 的计算依赖
+- 首页必须在 P1 与 P7 完成后实施，首页不是并行快赢
+
 ## 禁止事项（全阶段）
 
-- 不新增 Migration / RPC / RLS（除非新 Task 明确需要）
+- 不新增 Migration / RPC / RLS（除非当前 Stage 明确需要）
 - 不修改 Product → ProductVariant → Inventory 核心模型
 - 不绕过 Repository Pattern / Server Actions / RLS
 - 不提交 `.claude/context-status.json`

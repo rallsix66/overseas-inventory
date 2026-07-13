@@ -95,6 +95,17 @@ export async function updateShipment(
       return { success: false, error: parsed.error.issues[0]?.message ?? '表单校验失败' };
     }
 
+    // P0 换仓保护：已绑定外部物流记录的不允许改 warehouse_id
+    if (parsed.data.warehouseId) {
+      const existing = await shipmentRepository.getById(parsed.data.id);
+      if (existing && existing.warehouse_id !== parsed.data.warehouseId) {
+        const hasBound = await shipmentRepository.existsBoundExternalRef(parsed.data.id);
+        if (hasBound) {
+          return { success: false, error: '该在途记录已绑定外部物流，暂不支持换仓' };
+        }
+      }
+    }
+
     // Warehouse consistency validation
     if (parsed.data.warehouseId) {
       await shipmentRepository.validateWarehouseForShipment(parsed.data.warehouseId, parsed.data.country);

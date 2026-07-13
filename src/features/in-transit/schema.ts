@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const externalProviderSchema = z.enum(['best'], {
+export const externalProviderSchema = z.enum(['best', 'golucky'], {
   error: '不支持的外部供应商',
 });
 
