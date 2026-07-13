@@ -8,7 +8,9 @@
 
 import { requireActiveAuth } from '@/lib/auth';
 import { GoluckyImportForm } from './_components/golucky-import-form';
+import { GoluckyFailedRecords } from '@/features/in-transit/components/golucky-failed-records';
 import { inventoryRepository } from '@/features/inventory/repository';
+import { externalTrackingRepository } from '@/features/in-transit/repository';
 
 export default async function GoluckyImportPage() {
   const user = await requireActiveAuth();
@@ -26,6 +28,23 @@ export default async function GoluckyImportPage() {
     // 仓库加载失败不阻塞页面渲染
   }
 
+  // 获取同步失败的喜运达记录
+  let failedRecords: Array<{
+    id: string;
+    waybill_no: string | null;
+    sync_status: string;
+    last_synced_at: string | null;
+    raw_payload: Record<string, unknown> | null;
+    provider: string;
+    country: string | null;
+    warehouse_id: string | null;
+  }> = [];
+  try {
+    failedRecords = await externalTrackingRepository.listFailedExternalRefs('golucky');
+  } catch {
+    // 失败记录加载失败不阻塞页面渲染
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
@@ -39,6 +58,9 @@ export default async function GoluckyImportPage() {
         warehouses={warehouses}
         isAdmin={user.roleName === 'admin'}
       />
+
+      {/* 同步失败记录 */}
+      <GoluckyFailedRecords records={failedRecords} />
     </div>
   );
 }

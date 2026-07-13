@@ -608,6 +608,173 @@ describe('P0-GOLUCKY — Shipment rewarehouse 双保险', () => {
   });
 });
 
+// ─── 9. 同步失败错误持久化与重试 ─────────────────────────────────────
+
+describe('P0-GOLUCKY — 同步失败错误持久化与重试', () => {
+  let syncSrc: string;
+  let repoPath: string;
+  let repoSrc: string;
+  let actionsPath: string;
+  let actionsSrc: string;
+
+  beforeAll(() => {
+    syncSrc = fs.readFileSync(path.resolve(IN_TRANSIT_DIR, 'golucky-sync.ts'), 'utf-8');
+    repoPath = path.resolve(IN_TRANSIT_DIR, 'repository.ts');
+    repoSrc = fs.readFileSync(repoPath, 'utf-8');
+    actionsPath = path.resolve(IN_TRANSIT_DIR, 'actions.ts');
+    actionsSrc = fs.readFileSync(actionsPath, 'utf-8');
+  });
+
+  // ── 9.1 syncSingleRef 错误持久化 ──
+
+  it('syncSingleRef catch 块调用 updateExternalRefSync 传入 errorMessage', () => {
+    // 错误时应将 _sync_error 写入 raw_payload
+    const catchBlock = extractTsMethod(syncSrc, 'syncSingleRef');
+    expect(catchBlock).toMatch(/_sync_error/);
+  });
+
+  it('syncSingleRef 错误时 lastSyncedAt 不为 undefined', () => {
+    // 错误时仍记录 last_synced_at 为 new Date().toISOString()
+    const catchBlock = extractTsMethod(syncSrc, 'syncSingleRef');
+    expect(catchBlock).toMatch(/updateExternalRefSync\(/);
+    // 不应传入 undefined（需传入真实 ISO 时间戳）
+    expect(catchBlock).toMatch(/new Date\(\)\.toISOString\(\)/);
+  });
+
+  it('syncSingleRef 错误时 raw_payload 含 _sync_error 和 _failed_at', () => {
+    const catchBlock = extractTsMethod(syncSrc, 'syncSingleRef');
+    expect(catchBlock).toMatch(/_sync_error/);
+    expect(catchBlock).toMatch(/_failed_at/);
+  });
+
+  // ── 9.2 Repository — listFailedExternalRefs ──
+
+  it('repository 导出 listFailedExternalRefs 方法', () => {
+    expect(repoSrc).toMatch(/listFailedExternalRefs/);
+  });
+
+  it('listFailedExternalRefs 按 sync_status = error 查询', () => {
+    expect(repoSrc).toMatch(/\.eq\(['"]sync_status['"],\s*['"]error['"]\)/);
+  });
+
+  it('listFailedExternalRefs 支持 optional provider 过滤', () => {
+    expect(repoSrc).toMatch(/provider\?/);
+    // provider 存在时附加 .eq('provider', provider)
+    expect(repoSrc).toMatch(/\.eq\(['"]provider['"],\s*provider\)/);
+  });
+
+  it('listFailedExternalRefs 按 last_synced_at desc 排序', () => {
+    expect(repoSrc).toMatch(/last_synced_at/);
+    expect(repoSrc).toMatch(/ascending:\s*false/);
+  });
+
+  it('listFailedExternalRefs 使用 handlePgError 传播 DB 错误', () => {
+    expect(repoSrc).toMatch(/handlePgError/);
+  });
+
+  // ── 9.3 Server Action — listFailedExternalRefs ──
+
+  it('actions.ts 导出 listFailedExternalRefs 函数', () => {
+    expect(actionsSrc).toMatch(/export async function listFailedExternalRefs/);
+  });
+
+  it('listFailedExternalRefs action 调用 requireActiveAuth', () => {
+    const fn = extractTsMethod(actionsSrc, 'listFailedExternalRefs');
+    expect(fn).toMatch(/requireActiveAuth/);
+  });
+
+  it('listFailedExternalRefs action 通过 repository 查询（不直接 supabase.from）', () => {
+    const fn = extractTsMethod(actionsSrc, 'listFailedExternalRefs');
+    expect(fn).toMatch(/externalTrackingRepository\.listFailedExternalRefs/);
+  });
+
+  it('listFailedExternalRefs action try/catch 返回中文错误', () => {
+    const fn = extractTsMethod(actionsSrc, 'listFailedExternalRefs');
+    expect(fn).toMatch(/catch/);
+    expect(fn).toMatch(/未知错误/);
+  });
+
+  // ── 9.4 重激活链路不变 ──
+
+  it('reactivateExternalRef action 仍通过 RPC 重激活', () => {
+    const fn = extractTsMethod(actionsSrc, 'reactivateExternalRef');
+    expect(fn).toMatch(/reactivate_external_ref/);
+  });
+
+  it('reactivateExternalRef Zod schema 仅需 refId', () => {
+    // reactivateExternalRefSchema = z.object({ refId: z.string().uuid() })
+    expect(actionsSrc).toMatch(/reactivateExternalRefSchema\s*=.*z\.object/);
+    expect(actionsSrc).toContain("refId: z.string().uuid()");
+  });
+
+  // ── 9.5 UI 组件 — GoluckyFailedRecords ──
+
+  it('components 目录含 golucky-failed-records.tsx', () => {
+    const compDir = path.resolve(IN_TRANSIT_DIR, 'components');
+    const files = fs.readdirSync(compDir);
+    expect(files).toContain('golucky-failed-records.tsx');
+  });
+
+  it('GoluckyFailedRecords 导入 reactivateExternalRef action', () => {
+    const compPath = path.resolve(IN_TRANSIT_DIR, 'components', 'golucky-failed-records.tsx');
+    const compSrc = fs.readFileSync(compPath, 'utf-8');
+    expect(compSrc).toMatch(/import.*reactivateExternalRef/);
+  });
+
+  it('GoluckyFailedRecords 含重试按钮调用 reactivateExternalRef', () => {
+    const compPath = path.resolve(IN_TRANSIT_DIR, 'components', 'golucky-failed-records.tsx');
+    const compSrc = fs.readFileSync(compPath, 'utf-8');
+    expect(compSrc).toMatch(/reactivateExternalRef/);
+  });
+
+  it('GoluckyFailedRecords 不直接调用 supabase.from 或 supabase.rpc', () => {
+    const compPath = path.resolve(IN_TRANSIT_DIR, 'components', 'golucky-failed-records.tsx');
+    const compSrc = fs.readFileSync(compPath, 'utf-8');
+    expect(compSrc).not.toMatch(/supabase\.from/);
+    expect(compSrc).not.toMatch(/supabase\.rpc/);
+  });
+
+  it('GoluckyFailedRecords 提取 raw_payload._sync_error 展示失败原因', () => {
+    const compPath = path.resolve(IN_TRANSIT_DIR, 'components', 'golucky-failed-records.tsx');
+    const compSrc = fs.readFileSync(compPath, 'utf-8');
+    expect(compSrc).toMatch(/_sync_error/);
+  });
+
+  it('GoluckyFailedRecords 处理空列表状态（无失败记录）', () => {
+    const compPath = path.resolve(IN_TRANSIT_DIR, 'components', 'golucky-failed-records.tsx');
+    const compSrc = fs.readFileSync(compPath, 'utf-8');
+    expect(compSrc).toMatch(/暂无同步失败的记录/);
+  });
+
+  it('GoluckyFailedRecords 成功后从列表移除已重激活记录', () => {
+    const compPath = path.resolve(IN_TRANSIT_DIR, 'components', 'golucky-failed-records.tsx');
+    const compSrc = fs.readFileSync(compPath, 'utf-8');
+    expect(compSrc).toMatch(/filter/);
+  });
+
+  // ── 9.6 导入页集成 ──
+
+  it('golucky 导入页引入 externalTrackingRepository', () => {
+    const pagePath = path.resolve(process.cwd(), 'src/app/dashboard/shipments/import/golucky/page.tsx');
+    const pageSrc = fs.readFileSync(pagePath, 'utf-8');
+    expect(pageSrc).toMatch(/import.*externalTrackingRepository/);
+  });
+
+  it('golucky 导入页服务端获取 failedRecords 并传入 GoluckyFailedRecords', () => {
+    const pagePath = path.resolve(process.cwd(), 'src/app/dashboard/shipments/import/golucky/page.tsx');
+    const pageSrc = fs.readFileSync(pagePath, 'utf-8');
+    expect(pageSrc).toMatch(/listFailedExternalRefs/);
+    expect(pageSrc).toMatch(/GoluckyFailedRecords/);
+  });
+
+  it('golucky 导入页 failedRecords 获取失败不阻塞页面渲染（try/catch）', () => {
+    const pagePath = path.resolve(process.cwd(), 'src/app/dashboard/shipments/import/golucky/page.tsx');
+    const pageSrc = fs.readFileSync(pagePath, 'utf-8');
+    expect(pageSrc).toMatch(/catch/);
+    expect(pageSrc).toContain('失败记录加载失败不阻塞页面渲染');
+  });
+});
+
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 /** 从 TypeScript 源码中提取指定方法的函数体（大括号匹配） */

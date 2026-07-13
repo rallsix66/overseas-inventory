@@ -8,6 +8,7 @@ import { requireActiveAuth } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import type { ActionResult } from '@/types/common';
+import { externalTrackingRepository } from './repository';
 
 // ─── Zod Schemas ────────────────────────────────────────
 
@@ -164,6 +165,17 @@ export async function listUnboundExternalRefs(provider?: string) {
     }
 
     return { success: true, data: data ?? [] };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : '未知错误' };
+  }
+}
+
+/** P0: 获取同步失败的外部物流记录列表 */
+export async function listFailedExternalRefs(provider?: string) {
+  try {
+    await requireActiveAuth();
+    const data = await externalTrackingRepository.listFailedExternalRefs(provider);
+    return { success: true, data };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : '未知错误' };
   }

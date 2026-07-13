@@ -120,8 +120,14 @@ export async function syncSingleRef(
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : '未知错误';
 
-    // 单条失败不中断整批：标记 error，继续下一条
-    await externalTrackingRepository.updateExternalRefSync(refId, 'error', undefined, undefined, db).catch(() => {
+    // 单条失败不中断整批：标记 error，持久化可诊断错误信息
+    await externalTrackingRepository.updateExternalRefSync(
+      refId,
+      'error',
+      new Date().toISOString(),
+      { _sync_error: errorMessage, _failed_at: new Date().toISOString() },
+      db,
+    ).catch(() => {
       // 更新同步状态失败不影响错误传播
     });
 

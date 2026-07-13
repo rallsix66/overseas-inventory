@@ -189,6 +189,27 @@ export const externalTrackingRepository = {
     return data ?? [];
   },
 
+  /** P0: 查询同步失败的外部物流记录 */
+  async listFailedExternalRefs(
+    provider?: string,
+  ): Promise<ShipmentExternalRefRow[]> {
+    const supabase = await createClient();
+
+    let query = supabase
+      .from('shipment_external_ref')
+      .select('*')
+      .eq('sync_status', 'error');
+
+    if (provider) {
+      query = query.eq('provider', provider);
+    }
+
+    const { data, error } = await query.order('last_synced_at', { ascending: false });
+
+    handlePgError(error, '查询失败记录失败');
+    return data ?? [];
+  },
+
   /** P0: 按 ID 获取单条外部物流记录 */
   async getExternalRefById(refId: string): Promise<ShipmentExternalRefRow | null> {
     const supabase = await createClient();
