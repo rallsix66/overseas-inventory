@@ -3,6 +3,10 @@
 // 仅查询运单物流轨迹（GET /tmsapi/tracking/list）。
 // Token 管理采用租约模型：抢租约短事务 → 事务外调外部 API → 写回校验所有权。
 //
+// 并发安全：TokenLease 为操作级句柄，每个 acquireLease 返回独立的 lease 对象，
+// storeToken / releaseLease 必须使用同一次 acquireLease 返回的 lease。
+// 不存在共享可变 _leaseId，多线程/并发安全。
+//
 // 安全约束：本模块不记录 token / appSecret 到日志或错误。
 
 import {
@@ -18,37 +22,49 @@ import { parseTrackingResponse } from './parse-response';
 
 export type FetchFn = typeof fetch;
 
+// ─── Token 租约句柄（操作级，非实例级） ──────────────────
+
+/** 每次 acquireLease 返回的独立租约句柄。storeToken / releaseLease 必须使用同一次 acquire 返回的 lease。 */
+export interface TokenLease {
+  action: 'reuse' | 'refresh' | 'first_time' | 'lease_held_by_other';
+  accessToken: string | null;
+  expiresAt: string | null;
+  /** 不透明租约 ID — storeToken / releaseLease 需要此值校验所有权 */
+  readonly leaseId: string;
+}
+
 // ─── Token 缓存接口（由调用方注入，隔离数据库访问） ──────
 
 export interface TokenCache {
-  /** 阶段一：抢租约（短事务无网络）→ 返回 cachedToken 或 null（需刷新） */
-  acquireLease(provider: string): Promise<{ action: 'reuse' | 'refresh' | 'first_time'; accessToken: string | null; expiresAt: string | null }>;
-  /** 阶段二：写回 token（校验 lease_owner 所有权） */
-  storeToken(provider: string, accessToken: string, expiresAt: string): Promise<void>;
-  /** 释放租约（刷新失败时调用） */
-  releaseLease(provider: string): Promise<void>;
+  /** 阶段一：抢租约（短事务无网络）→ 返回 TokenLease 句柄 */
+  acquireLease(provider: string): Promise<TokenLease>;
+  /** 阶段二：写回 token（校验 lease_owner 所有权）。lease 必须是同一次 acquireLease 的返回值 */
+  storeToken(provider: string, accessToken: string, expiresAt: string, lease: TokenLease): Promise<void>;
+  /** 释放租约（刷新失败时调用）。lease 必须是同一次 acquireLease 的返回值 */
+  releaseLease(provider: string, lease: TokenLease): Promise<void>;
 }
 
-/** 默认 TokenCache（供测试/无 DB 场景使用） */
+/** 默认 TokenCache（供测试/无 DB 场景使用）。并发安全：无共享可变状态 */
 export class InMemoryTokenCache implements TokenCache {
   private cache = new Map<string, { token: string; expiresAt: string }>();
 
-  async acquireLease(_provider: string) {
+  async acquireLease(_provider: string): Promise<TokenLease> {
     const entry = this.cache.get(_provider);
+    const leaseId = globalThis.crypto.randomUUID();
     if (entry && new Date(entry.expiresAt).getTime() - 5 * 60 * 1000 > Date.now()) {
-      return { action: 'reuse' as const, accessToken: entry.token, expiresAt: entry.expiresAt };
+      return { action: 'reuse' as const, accessToken: entry.token, expiresAt: entry.expiresAt, leaseId };
     }
     if (entry) {
-      return { action: 'refresh' as const, accessToken: entry.token, expiresAt: entry.expiresAt };
+      return { action: 'refresh' as const, accessToken: entry.token, expiresAt: entry.expiresAt, leaseId };
     }
-    return { action: 'first_time' as const, accessToken: null, expiresAt: null };
+    return { action: 'first_time' as const, accessToken: null, expiresAt: null, leaseId };
   }
 
-  async storeToken(provider: string, accessToken: string, expiresAt: string) {
+  async storeToken(provider: string, accessToken: string, expiresAt: string, _lease: TokenLease) {
     this.cache.set(provider, { token: accessToken, expiresAt });
   }
 
-  async releaseLease(_provider: string) {
+  async releaseLease(_provider: string, _lease: TokenLease) {
     // no-op — in-memory 无并发锁需求
   }
 }
@@ -92,6 +108,9 @@ export class GoluckyClient {
   /**
    * 查询单运单全量物流轨迹（只读）。
    *
+   * 并发安全：每次调用 obtainToken 获取独立的 TokenLease 句柄，
+   * 不存在跨并发请求的共享可变状态。
+   *
    * @param transportNumber — 运单号
    * @returns 解析后的轨迹事件列表
    */
@@ -115,13 +134,30 @@ export class GoluckyClient {
     return { events, rawResponse: raw };
   }
 
-  // ─── Token 管理（租约模型） ─────────────────────────────
+  // ─── Token 管理（租约模型，并发安全） ─────────────────────
 
+  /**
+   * 获取有效 access token。
+   *
+   * 每个并发调用独立获取 TokenLease，lease 句柄随调用链路传递，
+   * 不存储在任何共享可变字段中。
+   */
   private async obtainToken(): Promise<string> {
     const lease = await this.tokenCache.acquireLease(GoluckyClient.PROVIDER);
 
     if (lease.action === 'reuse' && lease.accessToken) {
       return lease.accessToken;
+    }
+
+    // 租约被他人持有 → 使用旧 token 降级，或抛出可重试错误
+    if (lease.action === 'lease_held_by_other') {
+      if (lease.accessToken && lease.expiresAt && new Date(lease.expiresAt).getTime() > Date.now()) {
+        return lease.accessToken;
+      }
+      throw new GoluckyApiError(
+        'Token 租约被其他进程持有且旧 token 已过期，请稍后重试',
+        'LEASE_HELD_BY_OTHER',
+      );
     }
 
     // 需要刷新或首次获取
@@ -133,21 +169,21 @@ export class GoluckyClient {
       newToken = result.token;
       newExpiresAt = result.expiresAt;
     } catch (err) {
-      // 刷新失败但旧 token 仍有效 → 继续用旧 token
+      // 刷新失败但旧 token 仍有效 → 继续用旧 token，释放租约
       if (lease.accessToken && lease.expiresAt && new Date(lease.expiresAt).getTime() > Date.now()) {
-        await this.tokenCache.releaseLease(GoluckyClient.PROVIDER);
+        await this.tokenCache.releaseLease(GoluckyClient.PROVIDER, lease);
         return lease.accessToken;
       }
-      // 旧 token 也已过期 → 抛出
-      await this.tokenCache.releaseLease(GoluckyClient.PROVIDER);
+      // 旧 token 也已过期 → 释放租约并抛出
+      await this.tokenCache.releaseLease(GoluckyClient.PROVIDER, lease);
       throw new GoluckyApiError(
         `Token 获取失败且旧 Token 已过期: ${(err as Error).message}`,
         'TOKEN_FAILED',
       );
     }
 
-    // 写回 token（校验租约所有权）
-    await this.tokenCache.storeToken(GoluckyClient.PROVIDER, newToken, newExpiresAt);
+    // 写回 token（使用本次 acquireLease 返回的 lease，校验所有权）
+    await this.tokenCache.storeToken(GoluckyClient.PROVIDER, newToken, newExpiresAt, lease);
     return newToken;
   }
 

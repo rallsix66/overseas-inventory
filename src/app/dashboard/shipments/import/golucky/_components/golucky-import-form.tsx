@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2, Upload, FileText } from 'lucide-react';
 import { importGoluckyRefs } from '@/features/in-transit/actions';
-import { parseWaybillInput, parseWaybillsInline } from '@/features/in-transit/golucky-import';
+import { parseWaybillInput } from '@/features/in-transit/golucky-import';
 
 interface Warehouse {
   id: string;

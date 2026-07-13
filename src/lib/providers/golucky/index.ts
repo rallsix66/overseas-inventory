@@ -6,7 +6,8 @@
 // API 事实经正式环境实测确认。
 
 export { GoluckyClient, createGoluckyClient, InMemoryTokenCache } from './client';
-export type { TokenCache, GoluckyClientConfig, FetchFn } from './client';
+export type { TokenCache, TokenLease, GoluckyClientConfig, FetchFn } from './client';
+export { SupabaseTokenCache } from './token-cache';
 export { dryRunWaybill, createDryRunClient } from './dry-run';
 export { parseTrackingResponse } from './parse-response';
 export {

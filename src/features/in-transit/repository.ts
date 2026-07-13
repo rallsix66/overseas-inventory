@@ -1,6 +1,12 @@
 // 外部物流模块数据访问层
 // P0: 新增 golucky (喜运达) provider 支持
+//
+// 所有查询方法接受可选的 SupabaseClient 参数：
+//   - 不传 → 使用用户会话客户端（createClient，含 RLS）
+//   - 传入 service_role 客户端 → 绕过 RLS（仅 cron / 服务端同步任务）
 import { createClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database';
 import type {
   ShipmentExternalRefRow,
   TrackingEventExternalRow,
@@ -27,10 +33,15 @@ function handlePgError(error: PostgrestError | null, message: string): void {
   }
 }
 
+type DbClient = SupabaseClient<Database>;
+
 export const externalTrackingRepository = {
   /** P0: 按 provider 查询 active 外部物流记录 */
-  async getExternalRefsByProvider(provider: string): Promise<ShipmentExternalRefRow[]> {
-    const supabase = await createClient();
+  async getExternalRefsByProvider(
+    provider: string,
+    db?: DbClient,
+  ): Promise<ShipmentExternalRefRow[]> {
+    const supabase = db ?? await createClient();
     const { data, error } = await supabase
       .from('shipment_external_ref')
       .select('*')
@@ -53,12 +64,13 @@ export const externalTrackingRepository = {
       occurredAt: string;
       rawPayload: Record<string, unknown>;
     }>,
+    db?: DbClient,
   ): Promise<{ inserted: number; skipped: number }> {
     if (events.length === 0) {
       return { inserted: 0, skipped: 0 };
     }
 
-    const supabase = await createClient();
+    const supabase = db ?? await createClient();
     let inserted = 0;
     let skipped = 0;
 
@@ -103,8 +115,9 @@ export const externalTrackingRepository = {
     syncStatus: 'active' | 'stale' | 'error',
     lastSyncedAt?: string,
     rawPayload?: Record<string, unknown>,
+    db?: DbClient,
   ): Promise<void> {
-    const supabase = await createClient();
+    const supabase = db ?? await createClient();
 
     const { error } = await supabase
       .from('shipment_external_ref')

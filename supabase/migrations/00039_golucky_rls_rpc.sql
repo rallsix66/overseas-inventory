@@ -318,10 +318,11 @@ BEGIN
 
   v_caller_role := public.get_user_role();
 
-  -- ── 读取 external_ref ──────────────────────────────────
+  -- ── 读取 external_ref（FOR UPDATE 行锁，防止并发绑定） ──
   SELECT * INTO v_ref
   FROM public.shipment_external_ref
-  WHERE id = p_ref_id;
+  WHERE id = p_ref_id
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION '外部物流记录不存在'
@@ -348,7 +349,7 @@ BEGIN
   END IF;
 
   -- ── 业务规则校验 ───────────────────────────────────────
-  -- 已绑定校验
+  -- 已绑定校验（在行锁保护下判断）
   IF v_ref.shipment_id IS NOT NULL THEN
     RAISE EXCEPTION '该外部物流记录已绑定 Shipment（%），请先解绑后再操作', v_ref.shipment_id
       USING HINT = 'ALREADY_BOUND';
@@ -367,12 +368,18 @@ BEGIN
       USING HINT = 'COUNTRY_MISMATCH';
   END IF;
 
-  -- ── 写入绑定 ──────────────────────────────────────────
+  -- ── 写入绑定（再次校验 shipment_id IS NULL，防止 TOCTOU） ──
   UPDATE public.shipment_external_ref
   SET shipment_id = p_shipment_id,
       warehouse_id = v_shipment.warehouse_id,
       updated_at   = now()
-  WHERE id = p_ref_id;
+  WHERE id = p_ref_id
+    AND shipment_id IS NULL;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '该外部物流记录已被其他操作绑定，无法重复绑定'
+      USING HINT = 'CONCURRENT_BINDING';
+  END IF;
 END;
 $$;
 

@@ -4,8 +4,17 @@
 // 不回写 shipment.status / tracking_event / inventory / estimated_arrival。
 //
 // 调用链：
-//   cron route (service_role) → golucky-sync → golucky client + externalTrackingRepository
+//   cron route (CRON_SECRET 鉴权 + 依赖注入)
+//     → syncAllGoluckyRefs(client, concurrency, serviceClient)
+//       → externalTrackingRepository (service_role client)
+//         → provider_token_cache RPC + tracking_event_external 写入
+//
+// serviceClient 参数：
+//   - 传入 service_role 客户端 → cron 同步（绕过 RLS，直接写库）
+//   - 不传 → 使用用户会话客户端（Server Action 调用，经过 RLS）
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database';
 import { GoluckyClient } from '@/lib/providers/golucky/client';
 import { externalTrackingRepository } from './repository';
 import type { GoluckySyncResult } from '@/lib/providers/golucky/types';
@@ -15,23 +24,27 @@ const DEFAULT_CONCURRENCY = 5;
 /** 终态轨迹节点 → 标记 stale，后续 cron 跳过 */
 const TERMINAL_CATEGORIES = new Set(['delivered', 'exception']);
 
+type DbClient = SupabaseClient<Database>;
+
 /**
  * 同步全部 active 喜运达外部物流记录。
  *
- * @param client — GoluckyClient 实例
+ * @param client — GoluckyClient 实例（已注入 TokenCache）
  * @param concurrency — 并发上限（默认 5）
+ * @param db — 可选 SupabaseClient。cron 传入 service_role 客户端；页面/Server Action 不传使用用户会话
  * @returns 逐单同步结果
  */
 export async function syncAllGoluckyRefs(
   client: GoluckyClient,
   concurrency: number = DEFAULT_CONCURRENCY,
+  db?: DbClient,
 ): Promise<{
   total: number;
   succeeded: number;
   failed: number;
   results: GoluckySyncResult[];
 }> {
-  const refs = await externalTrackingRepository.getExternalRefsByProvider('golucky');
+  const refs = await externalTrackingRepository.getExternalRefsByProvider('golucky', db);
 
   if (refs.length === 0) {
     return { total: 0, succeeded: 0, failed: 0, results: [] };
@@ -43,7 +56,7 @@ export async function syncAllGoluckyRefs(
   for (let i = 0; i < refs.length; i += concurrency) {
     const batch = refs.slice(i, i + concurrency);
     const batchResults = await Promise.all(
-      batch.map((ref) => syncSingleRef(client, ref.id, ref.waybill_no)),
+      batch.map((ref) => syncSingleRef(client, ref.id, ref.waybill_no, db)),
     );
     results.push(...batchResults);
 
@@ -64,9 +77,10 @@ export async function syncSingleRef(
   client: GoluckyClient,
   refId: string,
   waybillNo: string | null,
+  db?: DbClient,
 ): Promise<GoluckySyncResult> {
   if (!waybillNo) {
-    await externalTrackingRepository.updateExternalRefSync(refId, 'error');
+    await externalTrackingRepository.updateExternalRefSync(refId, 'error', undefined, undefined, db);
     return {
       waybillNo: waybillNo ?? '(无运单号)',
       eventCount: 0,
@@ -83,6 +97,7 @@ export async function syncSingleRef(
       refId,
       'golucky',
       events,
+      db,
     );
 
     // 判断是否终态
@@ -94,6 +109,7 @@ export async function syncSingleRef(
       newSyncStatus,
       new Date().toISOString(),
       rawResponse as Record<string, unknown>,
+      db,
     );
 
     return {
@@ -105,7 +121,7 @@ export async function syncSingleRef(
     const errorMessage = err instanceof Error ? err.message : '未知错误';
 
     // 单条失败不中断整批：标记 error，继续下一条
-    await externalTrackingRepository.updateExternalRefSync(refId, 'error').catch(() => {
+    await externalTrackingRepository.updateExternalRefSync(refId, 'error', undefined, undefined, db).catch(() => {
       // 更新同步状态失败不影响错误传播
     });
 

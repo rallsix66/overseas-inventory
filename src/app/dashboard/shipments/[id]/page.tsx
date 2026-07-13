@@ -6,9 +6,11 @@
 import { notFound } from 'next/navigation';
 import { getShipmentDetail } from '@/features/shipments/actions';
 import { shipmentRepository } from '@/features/shipments/repository';
+import { externalTrackingRepository } from '@/features/in-transit/repository';
 import { getCurrentActiveUser } from '@/lib/auth';
 import { ArrowLeft, Anchor, MapPin, Calendar, User, FileText, Hash } from 'lucide-react';
 import { ShipmentDetailClient } from '@/features/shipments/components/shipment-detail-client';
+import { ExternalTrackingTimeline } from '@/features/in-transit/components/external-tracking-timeline';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 
@@ -55,6 +57,16 @@ export default async function ShipmentDetailPage({
 
   const shipment = detailResult.data!;
   const isAdmin = user?.roleName === 'admin';
+
+  // P0: 查询绑定的喜运达外部物流轨迹
+  let externalTrackingData: Awaited<
+    ReturnType<typeof externalTrackingRepository.getExternalTrackingByShipment>
+  > = [];
+  try {
+    externalTrackingData = await externalTrackingRepository.getExternalTrackingByShipment(id);
+  } catch {
+    // 外部轨迹查询失败不阻塞详情页 — 降级不展示外部轨迹区块
+  }
 
   // Fetch warehouse list for edit form
   let warehouses: { id: string; name: string; country: string }[] = [];
@@ -183,6 +195,15 @@ export default async function ShipmentDetailPage({
           </div>
         )}
       </div>
+
+      {/* P0: 喜运达外部物流轨迹（与内部状态轨迹明确区分） */}
+      <ExternalTrackingTimeline
+        data={externalTrackingData.map((ref) => ({
+          provider: ref.provider,
+          waybillNo: ref.waybill_no,
+          events: ref.events,
+        }))}
+      />
     </div>
   );
 }

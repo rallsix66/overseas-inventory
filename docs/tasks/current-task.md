@@ -5,13 +5,13 @@
 | 项目 | 状态 |
 |------|------|
 | Stage 0 治理 | **Stage 0A 审计完成** — 五份定稿方案（P0/P1/P7/首页/总顺序）已通过 Codex 架构终审 |
-| Stage 1 P0 喜运达物流轨迹 API 接入 | **代码完成，待验收** — Migration 00038–00040 已创建（尚未执行）；golucky provider / in-transit 模块 / cron route / 导入页 / 换仓保护已落盘。全量测试 3524/3524。P0 验收通过后进入 Stage 2 P1 |
+| Stage 1 P0 喜运达物流轨迹 API 接入 | **Codex 复验通过，交付收口完成** — Migration 00038–00040 已创建（尚未执行生产库）；golucky provider（含 SupabaseTokenCache / TokenLease 并发安全修复）/ in-transit 模块 / cron route（同步链路收拢）/ 导入页 / 换仓保护 / 详情页外部轨迹展示已落盘。全量测试 3596/3596（82 files, 0 failures），lint 0/32。等待用户执行生产 Migration 与冒烟验证后进入 Stage 2 P1 |
 | Stage 2 P1 预测式补货引擎 | **待开工** — 依赖 P0 完成，Migration 00041–00044。P1 完成后进入 Stage 3 P7 |
 | Stage 3 P7 全球库存作战室 | **待开工** — 依赖 P1 完成（P7 E/00045 依赖 P1 C/00043，P7 F/00046 依赖 P1 C/00043 + D/00044）。P7 不先于 P1 开工 |
 | Stage 4 首页决策看板 | **待开工** — 依赖 P1 + P7 完成，Migration 00047 |
 | P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
 | P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
-| 全量测试 | **3524/3524**（0 failures） |
+| 全量测试 | **3596/3596**（82 files, 0 failures） |
 
 ## 最近已完成（2026-07-10）
 
@@ -43,15 +43,16 @@
 
 ## 当前阻塞
 
+- **P0 交付收口完成，等待用户执行生产 Migration 与冒烟验证**：Codex 复验通过。Migration 00038–00040 尚未执行生产库。lint 收口完成（未使用 import 已清理，4 intentional warnings 已记录）。用户需在 Supabase SQL Editor 执行 Migration 00038/00039/00040，配置 GOLUCKY_BASE_URL/GOLUCKY_APP_KEY/GOLUCKY_APP_SECRET/CRON_SECRET 环境变量，部署 Vercel Cron 后执行冒烟验证。
 - **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。与 P0 喜运达物流轨迹 API 接入无关，不阻塞 Stage 1。
 - **P7 不能先于 P1 开工**：P7 的 Migration 00045（E）依赖 P1 的 00043（C），00046（F）依赖 P1 的 00043（C）与 00044（D）。P0 → P1 → P7 → 首页 严格串行。
 
 ## 质量门（全阶段通用）
 
 ```bash
-npm run test          # 3524/3524（0 failures）
+npm run test          # 3596/3596（82 files, 0 failures）
 npm run build         # Turbopack 构建成功
-npm run lint          # 0 errors / 25 warnings（all pre-existing）
+npm run lint          # 0 errors / 32 warnings（P0: 4 intentional + 28 pre-existing）
 git diff --check      # 无 trailing whitespace / 冲突标记
 ```
 
