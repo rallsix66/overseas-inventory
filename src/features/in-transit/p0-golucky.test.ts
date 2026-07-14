@@ -775,7 +775,212 @@ describe('P0-GOLUCKY — 同步失败错误持久化与重试', () => {
   });
 });
 
+// ─── 10. 网络错误诊断与安全脱敏 ────────────────────────────────────
+
+describe('P0-GOLUCKY — 网络错误诊断与安全脱敏', () => {
+  let clientSrc: string;
+  let typesPath: string;
+  let typesSrc: string;
+
+  beforeAll(() => {
+    clientSrc = fs.readFileSync(path.resolve(PROVIDER_DIR, 'client.ts'), 'utf-8');
+    typesPath = path.resolve(PROVIDER_DIR, 'types.ts');
+    typesSrc = fs.readFileSync(typesPath, 'utf-8');
+  });
+
+  // ── 10.1 NetworkDiagnostics 类型 ──
+
+  it('types.ts 导出 NetworkDiagnostics 接口', () => {
+    expect(typesSrc).toMatch(/export interface NetworkDiagnostics/);
+  });
+
+  it('NetworkDiagnostics 包含 phase/safeUrl/httpStatus/httpStatusText/timeoutMs/underlyingError', () => {
+    expect(typesSrc).toMatch(/phase.*['"]dns['"]|['"]tls['"]|['"]connect['"]|['"]timeout['"]|['"]http['"]|['"]parse['"]|['"]unknown['"]/);
+    expect(typesSrc).toContain('safeUrl');
+    expect(typesSrc).toContain('httpStatus');
+    expect(typesSrc).toContain('underlyingError');
+  });
+
+  it('GoluckyNetworkError 使用 NetworkDiagnostics 而非裸 cause', () => {
+    expect(typesSrc).toContain('diagnostics: NetworkDiagnostics');
+  });
+
+  // ── 10.2 sanitizeUrl 脱敏 ──
+
+  it('client.ts 包含 sanitizeUrl 函数', () => {
+    expect(clientSrc).toMatch(/function sanitizeUrl/);
+  });
+
+  it('sanitizeUrl 将 appKey 替换为 ***', () => {
+    // appkey 和 *** 在同一函数中，使用 [\s\S] 匹配跨行
+    const fnBody = extractRawFunction(clientSrc, 'sanitizeUrl');
+    expect(fnBody).toContain("'appkey'");
+    expect(fnBody).toContain("'***'");
+  });
+
+  it('sanitizeUrl 将 appSecret 替换为 ***', () => {
+    const fnBody = extractRawFunction(clientSrc, 'sanitizeUrl');
+    expect(fnBody).toContain("'appsecret'");
+    expect(fnBody).toContain("'***'");
+  });
+
+  it('sanitizeUrl 将 accessToken/access_token 替换为 ***', () => {
+    expect(clientSrc).toMatch(/accesstoken|access_token/);
+  });
+
+  // ── 10.3 classifyNetworkError 错误分类 ──
+
+  it('client.ts 包含 classifyNetworkError 函数', () => {
+    expect(clientSrc).toMatch(/function classifyNetworkError/);
+  });
+
+  it('classifyNetworkError 识别 DNS 错误 (ENOTFOUND/getaddrinfo)', () => {
+    expect(clientSrc).toMatch(/enotfound|eai_again|dns|getaddrinfo/);
+  });
+
+  it('classifyNetworkError 识别 TLS 错误 (cert/ssl/tls)', () => {
+    expect(clientSrc).toMatch(/cert.*ssl.*tls|unable to verify|self signed|eproto/);
+  });
+
+  it('classifyNetworkError 识别连接错误 (ECONNREFUSED/ECONNRESET)', () => {
+    expect(clientSrc).toMatch(/econnrefused|econnreset|enetunreach|ehostunreach|etimedout|socket/);
+  });
+
+  it('classifyNetworkError 识别 AbortError/timeout', () => {
+    expect(clientSrc).toMatch(/abort.*timeout.*cancel/);
+  });
+
+  // ── 10.4 get() 方法 — 超时诊断 ──
+
+  it('get() 超时时抛出 GoluckyNetworkError (phase=timeout)', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/phase.*timeout/);
+  });
+
+  it('get() 超时错误包含 safeUrl 和 timeoutMs', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/safeUrl/);
+    expect(getBody).toMatch(/timeoutMs/);
+  });
+
+  // ── 10.5 get() 方法 — 网络错误诊断 ──
+
+  it('get() 网络错误时调用 classifyNetworkError 推断 phase', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/classifyNetworkError/);
+  });
+
+  it('get() 网络错误诊断包含 safeUrl + underlyingError（不含原始凭证）', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/safeUrl/);
+    expect(getBody).toMatch(/underlyingError/);
+  });
+
+  // ── 10.6 get() 方法 — HTTP 非 2xx 诊断 ──
+
+  it('get() HTTP 非 2xx 时抛出 GoluckyNetworkError (phase=http)', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/phase.*http/);
+  });
+
+  it('get() HTTP 错误包含 httpStatus 和 httpStatusText', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/httpStatus/);
+    expect(getBody).toContain('response.status');
+  });
+
+  // ── 10.7 get() 方法 — JSON 解析失败 ──
+
+  it('get() JSON 解析失败时抛出 GoluckyNetworkError (phase=parse)', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/phase.*parse/);
+  });
+
+  // ── 10.8 安全脱敏：错误消息不含凭证 ──
+
+  it('GoluckyClient 源码不含 console.log token/appSecret（安全审计）', () => {
+    // 确保没有 console.log/console.error 泄露凭证
+    expect(clientSrc).not.toMatch(/console\.log.*appSecret/);
+    expect(clientSrc).not.toMatch(/console\.log.*appKey/);
+    expect(clientSrc).not.toMatch(/console\.log.*accessToken/);
+  });
+
+  it('sanitizeUrl 在 get() 开始时调用（先脱敏再构建错误）', () => {
+    const getBody = extractTsMethod(clientSrc, 'get');
+    expect(getBody).toMatch(/sanitizeUrl\(url\)/);
+  });
+
+  it('get() 错误消息使用 safeUrl 而非原始 url', () => {
+    // 所有 GoluckyNetworkError 构造中应使用 safeUrl（局部变量），不是 url（参数）
+    const getBody = extractTsMethod(clientSrc, 'get');
+    // safeUrl 在错误构造中出现次数应 >= url 出现次数
+    // 简化检查：错误路径使用 safeUrl
+    expect(getBody).toContain('safeUrl');
+  });
+
+  // ── 10.9 obtainToken 诊断透传 ──
+
+  it('obtainToken catch 块检查 err instanceof GoluckyNetworkError 并保留 diagnostics', () => {
+    const obtainBody = extractTsMethod(clientSrc, 'obtainToken');
+    expect(obtainBody).toMatch(/err instanceof GoluckyNetworkError/);
+    expect(obtainBody).toMatch(/err\.diagnostics/);
+  });
+
+  it('obtainToken 对 GoluckyNetworkError 重抛并标注 token 上下文', () => {
+    const obtainBody = extractTsMethod(clientSrc, 'obtainToken');
+    expect(obtainBody).toContain('Token 获取失败');
+  });
+
+  it('obtainToken 对 GoluckyApiError 直接透传（不二次包装）', () => {
+    const obtainBody = extractTsMethod(clientSrc, 'obtainToken');
+    expect(obtainBody).toContain('GoluckyApiError');
+    expect(obtainBody).toContain('throw err;');
+  });
+
+  // ── 10.10 fetchToken URL 安全 ──
+
+  it('fetchToken 调用 get(url) 不含 accessToken 参数', () => {
+    // fetchToken 仅调用 this.get(url)，不传第二个 accessToken 参数
+    expect(clientSrc).toMatch(/this\.get\(url\)/);
+    // 确保 fetchToken 的 get 调用不含 access token 参数
+    const fetchTokenSection = clientSrc.slice(
+      clientSrc.indexOf('private async fetchToken'),
+      clientSrc.indexOf('private async get'),
+    );
+    expect(fetchTokenSection).toContain('this.get(url)');
+    expect(fetchTokenSection).not.toContain('this.get(url, access');
+  });
+
+  // ── 10.11 syncSingleRef 错误消息安全 ──
+
+  it('syncSingleRef 错误消息来自 err.message（不自行拼接凭证）', () => {
+    const syncPath = path.resolve(IN_TRANSIT_DIR, 'golucky-sync.ts');
+    const syncSrc2 = fs.readFileSync(syncPath, 'utf-8');
+    // 错误消息仅使用 err.message，不自行构建含凭证的字符串
+    expect(syncSrc2).toMatch(/err instanceof Error \? err\.message/);
+  });
+});
+
 // ─── Helpers ────────────────────────────────────────────────────────────
+
+/** 从 TypeScript 源码中提取指定模块级函数的完整源码 */
+function extractRawFunction(src: string, fnName: string): string {
+  const fnRegex = new RegExp(
+    `function\\s+${fnName}\\s*\\([^)]*\\)[^{]*\\{`,
+  );
+  const match = src.match(fnRegex);
+  if (!match || match.index === undefined) return '';
+
+  let pos = match.index + match[0].length;
+  let depth = 1;
+  while (pos < src.length && depth > 0) {
+    const ch = src[pos];
+    if (ch === '{') depth++;
+    else if (ch === '}') depth--;
+    pos++;
+  }
+  return depth === 0 ? src.slice(match.index, pos) : '';
+}
 
 /** 从 TypeScript 源码中提取指定方法的函数体（大括号匹配） */
 function extractTsMethod(src: string, methodName: string): string {

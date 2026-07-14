@@ -71,6 +71,22 @@ export interface GoluckyBatchSyncResult {
 
 // ─── 错误类型 ────────────────────────────────────────────
 
+/** 网络请求诊断信息（安全脱敏，不输出凭证） */
+export interface NetworkDiagnostics {
+  /** 故障阶段：dns | tls | connect | timeout | http | parse | unknown */
+  phase: 'dns' | 'tls' | 'connect' | 'timeout' | 'http' | 'parse' | 'unknown';
+  /** 脱敏 URL（凭证已替换为 ***） */
+  safeUrl: string;
+  /** HTTP 状态码（仅 phase='http' 时有值） */
+  httpStatus?: number;
+  /** HTTP 状态描述（仅 phase='http' 时有值） */
+  httpStatusText?: string;
+  /** 超时毫秒数（仅 phase='timeout' 时有值） */
+  timeoutMs?: number;
+  /** 原始底层错误信息（脱敏） */
+  underlyingError?: string;
+}
+
 export class GoluckyApiError extends Error {
   constructor(
     message: string,
@@ -83,12 +99,16 @@ export class GoluckyApiError extends Error {
 }
 
 export class GoluckyNetworkError extends Error {
+  /** 结构化诊断信息（不含凭证） */
+  public readonly diagnostics: NetworkDiagnostics;
+
   constructor(
     message: string,
-    public readonly cause?: unknown,
+    diagnostics: NetworkDiagnostics,
   ) {
     super(message);
     this.name = 'GoluckyNetworkError';
+    this.diagnostics = diagnostics;
   }
 }
 

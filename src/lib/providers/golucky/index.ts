@@ -14,6 +14,7 @@ export {
   GoluckyApiError,
   GoluckyNetworkError,
   GoluckyValidationError,
+  type NetworkDiagnostics,
   type GoluckyTokenResponse,
   type GoluckyTrackingResponse,
   type GoluckyTrackingNode,

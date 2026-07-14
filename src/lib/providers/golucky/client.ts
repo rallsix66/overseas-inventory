@@ -12,6 +12,7 @@
 import {
   GoluckyApiError,
   GoluckyNetworkError,
+  type NetworkDiagnostics,
   type ParsedGoluckyEvent,
 } from './types';
 import {
@@ -174,10 +175,21 @@ export class GoluckyClient {
         await this.tokenCache.releaseLease(GoluckyClient.PROVIDER, lease);
         return lease.accessToken;
       }
-      // 旧 token 也已过期 → 释放租约并抛出
+      // 旧 token 也已过期 → 释放租约并抛出（保留原始诊断信息）
       await this.tokenCache.releaseLease(GoluckyClient.PROVIDER, lease);
+
+      if (err instanceof GoluckyNetworkError) {
+        // 重抛并标注 token 上下文（保留底层诊断）
+        throw new GoluckyNetworkError(
+          `Token 获取失败 (${err.diagnostics.phase}): ${err.message}`,
+          err.diagnostics,
+        );
+      }
+      if (err instanceof GoluckyApiError) {
+        throw err; // API 错误直接透传（含 code）
+      }
       throw new GoluckyApiError(
-        `Token 获取失败且旧 Token 已过期: ${(err as Error).message}`,
+        `Token 获取失败且旧 Token 已过期: ${(err as Error)?.message ?? '未知错误'}`,
         'TOKEN_FAILED',
       );
     }
@@ -214,6 +226,7 @@ export class GoluckyClient {
   // ─── 内部 HTTP 方法 ────────────────────────────────────
 
   private async get(url: string, accessToken?: string): Promise<unknown> {
+    const safeUrl = sanitizeUrl(url);
     const headers: Record<string, string> = {
       'Accept': 'application/json',
     };
@@ -233,27 +246,104 @@ export class GoluckyClient {
         signal: controller.signal,
       });
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        throw new GoluckyNetworkError(`请求超时 (${this.config.timeoutMs}ms)`);
-      }
-      throw new GoluckyNetworkError('网络请求失败', err);
-    } finally {
       clearTimeout(timer);
+
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new GoluckyNetworkError(
+          `请求超时 (${this.config.timeoutMs}ms) → ${safeUrl}`,
+          {
+            phase: 'timeout',
+            safeUrl,
+            timeoutMs: this.config.timeoutMs,
+          },
+        );
+      }
+
+      const phase = classifyNetworkError(err);
+      const underlyingError = (err as Error)?.message ?? String(err);
+      throw new GoluckyNetworkError(
+        `网络请求失败 (${phase}) → ${safeUrl}: ${underlyingError}`,
+        {
+          phase,
+          safeUrl,
+          underlyingError,
+        },
+      );
     }
+
+    clearTimeout(timer);
 
     if (!response.ok) {
       throw new GoluckyNetworkError(
-        `HTTP ${response.status}: ${response.statusText}`,
-        { status: response.status },
+        `HTTP ${response.status}: ${response.statusText || '无状态描述'} → ${safeUrl}`,
+        {
+          phase: 'http',
+          safeUrl,
+          httpStatus: response.status,
+          httpStatusText: response.statusText || undefined,
+        },
       );
     }
 
     try {
       return await response.json();
     } catch {
-      throw new GoluckyApiError('响应不是合法 JSON', 'INVALID_JSON');
+      throw new GoluckyNetworkError(
+        `响应不是合法 JSON → ${safeUrl}`,
+        {
+          phase: 'parse',
+          safeUrl,
+        },
+      );
     }
   }
+}
+
+// ─── 工具函数（模块级私有） ──────────────────────────────
+
+/** 脱敏 URL：将 appKey、appSecret、accessToken 等凭证参数替换为 *** */
+function sanitizeUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    const redacted = new URL(u.origin + u.pathname);
+    // 保留非敏感参数
+    for (const [key, value] of u.searchParams) {
+      const lower = key.toLowerCase();
+      if (lower === 'appkey' || lower === 'appsecret' || lower === 'accesstoken' || lower === 'access_token' || lower === 'transportnumber') {
+        redacted.searchParams.set(key, '***');
+      } else {
+        redacted.searchParams.set(key, value);
+      }
+    }
+    return redacted.toString();
+  } catch {
+    // URL 解析失败 → 移除整个 query string
+    return raw.split('?')[0] ?? raw;
+  }
+}
+
+/** 根据 fetch 抛出的错误推断故障阶段 */
+function classifyNetworkError(err: unknown): NetworkDiagnostics['phase'] {
+  const msg = (err as Error)?.message ?? String(err);
+  const lower = msg.toLowerCase();
+
+  // AbortError（非 DOMException 或非标准实现）
+  if (lower.includes('abort') || lower.includes('timeout') || lower.includes('cancel')) {
+    return 'timeout';
+  }
+
+  // Node.js fetch 错误分类
+  if (lower.includes('enotfound') || lower.includes('eai_again') || lower.includes('dns') || lower.includes('getaddrinfo')) {
+    return 'dns';
+  }
+  if (lower.includes('cert') || lower.includes('ssl') || lower.includes('tls') || lower.includes('unable to verify') || lower.includes('self signed') || lower.includes('eproto')) {
+    return 'tls';
+  }
+  if (lower.includes('econnrefused') || lower.includes('econnreset') || lower.includes('enetunreach') || lower.includes('ehostunreach') || lower.includes('etimedout') || lower.includes('socket')) {
+    return 'connect';
+  }
+
+  return 'unknown';
 }
 
 /** 从环境变量创建 GoluckyClient */
