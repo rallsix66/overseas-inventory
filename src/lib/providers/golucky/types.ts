@@ -13,7 +13,8 @@ export interface GoluckyTokenResponse {
     accessToken?: string;
     expiresIn?: number;
   };
-  code?: string;
+  /** Golucky 实际返回 number，文档示例为 string；Zod 归一化为 string */
+  code?: string | number;
   message?: string;
 }
 
@@ -30,7 +31,8 @@ export interface GoluckyTrackingNode {
 /** tracking/list 响应 */
 export interface GoluckyTrackingResponse {
   data?: GoluckyTrackingNode[];
-  code?: string;
+  /** Golucky 实际返回 number，文档示例为 string；Zod 归一化为 string */
+  code?: string | number;
   message?: string;
 }
 
