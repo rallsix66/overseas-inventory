@@ -9,8 +9,10 @@
 import { requireActiveAuth } from '@/lib/auth';
 import { GoluckyImportForm } from './_components/golucky-import-form';
 import { GoluckyFailedRecords } from '@/features/in-transit/components/golucky-failed-records';
+import { GoluckyUnboundRecords } from '@/features/in-transit/components/golucky-unbound-records';
 import { inventoryRepository } from '@/features/inventory/repository';
 import { externalTrackingRepository } from '@/features/in-transit/repository';
+import type { ShipmentExternalRefRow } from '@/features/in-transit/types';
 
 export default async function GoluckyImportPage() {
   const user = await requireActiveAuth();
@@ -45,6 +47,14 @@ export default async function GoluckyImportPage() {
     // 失败记录加载失败不阻塞页面渲染
   }
 
+  // 获取尚未绑定内部 Shipment 的喜运达记录
+  let unboundRecords: ShipmentExternalRefRow[] = [];
+  try {
+    unboundRecords = await externalTrackingRepository.listUnboundExternalRefs('golucky');
+  } catch {
+    // 未绑定记录加载失败不阻塞导入与失败重试
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
@@ -55,6 +65,13 @@ export default async function GoluckyImportPage() {
       </div>
 
       <GoluckyImportForm
+        warehouses={warehouses}
+        isAdmin={user.roleName === 'admin'}
+      />
+
+      {/* 未绑定外部物流记录 */}
+      <GoluckyUnboundRecords
+        records={unboundRecords}
         warehouses={warehouses}
         isAdmin={user.roleName === 'admin'}
       />

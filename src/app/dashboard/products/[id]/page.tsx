@@ -2,8 +2,9 @@
 // Server Component：读取 params、获取详情数据、处理 404
 // 客户端交互（编辑 Sheet）委托给 ProductDetailClient
 import { notFound } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth';
+import { requireActiveAuth } from '@/lib/auth';
 import { productRepository } from '@/features/products/repository';
+import { replenishmentRepository } from '@/features/replenishment/repository';
 import { ProductDetailClient } from '../_components/product-detail-client';
 import type { Metadata } from 'next';
 
@@ -20,15 +21,26 @@ export default async function ProductDetailPage({
 
   // PERF-C2B: getCurrentUser() 与 productRepository.getById(id) 互不依赖，并行执行
   const [user, product] = await Promise.all([
-    getCurrentUser(),
+    requireActiveAuth(),
     productRepository.getById(id),
   ]);
 
-  const isAdmin = user?.roleName === 'admin';
+  const isAdmin = user.roleName === 'admin';
 
   if (!product) {
     notFound();
   }
 
-  return <ProductDetailClient product={product} isAdmin={isAdmin} />;
+  const replenishmentSuggestions = await replenishmentRepository.getSuggestionsForVariants(
+    user.id,
+    product.variants.map((variant) => variant.id),
+  );
+
+  return (
+    <ProductDetailClient
+      product={product}
+      isAdmin={isAdmin}
+      replenishmentSuggestions={replenishmentSuggestions}
+    />
+  );
 }

@@ -52,8 +52,9 @@ describe('P5-SY12D — Dashboard 数据获取链路', () => {
     expect(src).not.toMatch(/\bany\b/);
   });
 
-  it('Dashboard 错误状态声明 followedError: string | null', () => {
-    expect(src).toMatch(/followedError:\s*string\s*\|\s*null/);
+  it('Dashboard 通过通用 LoadResult 保留关注区错误状态', () => {
+    expect(src).toMatch(/interface LoadResult<T>[\s\S]*error: string \| null/);
+    expect(src).toContain('followedResult.error');
   });
 });
 

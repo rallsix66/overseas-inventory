@@ -3,8 +3,8 @@
 // 物流模块 Server Actions
 // 管理员维护在途记录；运营只读查看已分配仓库数据
 import { revalidatePath } from 'next/cache';
-import { requireActiveAuth } from '@/lib/auth';
-import { shipmentRepository } from './repository';
+import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
+import { ShipmentError, shipmentRepository } from './repository';
 import {
   createShipmentSchema,
   updateShipmentSchema,
@@ -18,6 +18,8 @@ import {
   confirmBigsellerAbsorptionSchema,
   batchWarehouseShipmentsSchema,
   eligibleShipmentFiltersSchema,
+  createPlannedShipmentSchema,
+  cancelPlannedShipmentSchema,
   // warehouseShipmentSchema — P3-S5B0 移除引用，旧 warehouseShipment action 已改为阻断桩
 } from './schema';
 import type { ActionResult } from '@/types/common';
@@ -37,7 +39,104 @@ import type {
   BatchWarehouseItemResult,
   EligibleShipmentFilters,
   EligibleShipmentItem,
+  CreatePlannedShipmentData,
 } from './types';
+import {
+  generatePlannedShipmentNo,
+  normalizeWarehouseCountry,
+  resolvePlannedEstimatedArrival,
+} from './planned-shipment';
+
+/** P1: 创建 admin-only booking 计划发货；内部单号冲突总尝试次数最多 3 次。 */
+export async function createPlannedShipment(
+  input: CreatePlannedShipmentData,
+): Promise<ActionResult<string>> {
+  try {
+    await requireActiveAdmin();
+    const parsed = createPlannedShipmentSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '计划发货参数无效' };
+    }
+
+    const context = await shipmentRepository.getPlannedShipmentContext(
+      parsed.data.warehouseId,
+      parsed.data.variantId,
+    );
+    const country = normalizeWarehouseCountry(context.warehouseCountry);
+    if (context.variantCountry !== country) {
+      return { success: false, error: 'SKU 国家与仓库国家不一致' };
+    }
+
+    const estimatedArrival = resolvePlannedEstimatedArrival(
+      parsed.data.expectedArrivalDate,
+      parsed.data.plannedShipDate,
+      context.leadTimeDays,
+    );
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const shipmentNo = generatePlannedShipmentNo(country, context.warehouseId);
+      try {
+        const shipmentId = await shipmentRepository.create({
+          shipmentNo,
+          country,
+          warehouseId: context.warehouseId,
+          estimatedArrival,
+          note: '预测式补货引擎创建的计划发货',
+          items: [{ variantId: context.variantId, quantity: parsed.data.quantity }],
+        });
+
+        const readBack = await shipmentRepository.getPlannedShipmentReadBack(shipmentId);
+        if (!readBack || readBack.status !== 'booking' || readBack.cancelledAt !== null) {
+          return { success: false, error: '计划发货写后校验失败' };
+        }
+
+        revalidatePath('/dashboard/replenishment');
+        revalidatePath('/dashboard/shipments');
+        return { success: true, data: shipmentId };
+      } catch (error) {
+        const isShipmentNoConflict =
+          error instanceof ShipmentError
+          && error.meta?.dbCode === '23505'
+          && error.meta.constraint === 'shipment_no_unique';
+
+        if (isShipmentNoConflict && attempt < 3) continue;
+        if (isShipmentNoConflict) {
+          return { success: false, error: '生成计划单号失败，请重试' };
+        }
+        throw error;
+      }
+    }
+
+    return { success: false, error: '生成计划单号失败，请重试' };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '创建计划发货失败，请稍后重试',
+    };
+  }
+}
+
+/** P1: 取消 admin-only booking 计划发货。 */
+export async function cancelPlannedShipment(shipmentId: string): Promise<ActionResult> {
+  try {
+    await requireActiveAdmin();
+    const parsed = cancelPlannedShipmentSchema.safeParse({ shipmentId });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '计划发货 ID 无效' };
+    }
+
+    await shipmentRepository.cancelPlannedShipment(parsed.data.shipmentId);
+    revalidatePath('/dashboard/replenishment');
+    revalidatePath('/dashboard/shipments');
+    revalidatePath(`/dashboard/shipments/${parsed.data.shipmentId}`);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '取消计划发货失败，请稍后重试',
+    };
+  }
+}
 
 export async function createShipment(
   formData: CreateShipmentData,

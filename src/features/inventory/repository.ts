@@ -8,7 +8,13 @@
 //           get_overseas_stats / get_in_transit_confirmed_aggregate），移除 JS 全量过滤分页和 N+1 查询。
 import { createClient } from '@/lib/supabase/server';
 import { unwrapJoin } from '@/lib/supabase/helpers';
-import type { InventoryItem, InventoryFilters, OverseasStats, WarehouseOption } from './types';
+import type {
+  InventoryItem,
+  InventoryFilters,
+  OverseasStats,
+  WarehouseHealthOverview,
+  WarehouseOption,
+} from './types';
 import type { PaginatedResult } from '@/types/common';
 
 const PAGE_SIZE = 20;
@@ -80,6 +86,76 @@ function mapOverseasRow(row: RawOverseasInventoryRow): InventoryItem {
 }
 
 export const inventoryRepository = {
+  /** 首页库存健康度：调用 00047 JSONB RPC，分类与权限均在数据库内完成。 */
+  async getWarehouseHealthOverview(userId: string): Promise<WarehouseHealthOverview> {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc('get_warehouse_health_overview', {
+      p_user_id: userId,
+    });
+
+    if (error) {
+      throw new Error('库存健康度加载失败，请稍后重试');
+    }
+
+    const raw = data as {
+      summary?: {
+        distinct_variant_count?: number;
+        total_position_count?: number;
+        normal_count?: number;
+        low_stock_count?: number;
+        out_of_stock_count?: number;
+        unmatched_count?: number;
+        health_rate?: number | null;
+        total_quantity?: number;
+      };
+      warehouses?: Array<{
+        warehouse_id: string;
+        warehouse_name: string;
+        country: string;
+        total_position_count: number;
+        normal_count: number;
+        low_stock_count: number;
+        out_of_stock_count: number;
+        unmatched_count: number;
+        health_rate: number | null;
+        lead_time_days: number | null;
+      }>;
+    } | null;
+
+    if (!raw?.summary || !Array.isArray(raw.warehouses)) {
+      throw new Error('库存健康度返回结构校验失败');
+    }
+
+    return {
+      summary: {
+        distinctVariantCount: Number(raw.summary.distinct_variant_count ?? 0),
+        totalPositionCount: Number(raw.summary.total_position_count ?? 0),
+        normalCount: Number(raw.summary.normal_count ?? 0),
+        lowStockCount: Number(raw.summary.low_stock_count ?? 0),
+        outOfStockCount: Number(raw.summary.out_of_stock_count ?? 0),
+        unmatchedCount: Number(raw.summary.unmatched_count ?? 0),
+        healthRate:
+          raw.summary.health_rate === null || raw.summary.health_rate === undefined
+            ? null
+            : Number(raw.summary.health_rate),
+        totalQuantity: Number(raw.summary.total_quantity ?? 0),
+      },
+      warehouses: raw.warehouses.map((warehouse) => ({
+        warehouseId: warehouse.warehouse_id,
+        warehouseName: warehouse.warehouse_name,
+        country: warehouse.country,
+        totalPositionCount: Number(warehouse.total_position_count),
+        normalCount: Number(warehouse.normal_count),
+        lowStockCount: Number(warehouse.low_stock_count),
+        outOfStockCount: Number(warehouse.out_of_stock_count),
+        unmatchedCount: Number(warehouse.unmatched_count),
+        healthRate:
+          warehouse.health_rate === null ? null : Number(warehouse.health_rate),
+        leadTimeDays: warehouse.lead_time_days,
+      })),
+    };
+  },
+
   /** 分页列表（关联 product_variant + product + warehouse） */
   async list(filters: InventoryFilters = {}): Promise<PaginatedResult<InventoryItem>> {
     const supabase = await createClient();

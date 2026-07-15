@@ -145,6 +145,9 @@ export type Database = {
           sync_url: string | null
           last_sync_at: string | null
           lead_time_days: number | null
+          buffer_ratio: number
+          target_cover_multiplier: number
+          updated_at: string
           created_at: string
         }
         Insert: {
@@ -156,6 +159,9 @@ export type Database = {
           sync_url: string | null
           last_sync_at: string | null
           lead_time_days?: number | null
+          buffer_ratio?: number
+          target_cover_multiplier?: number
+          updated_at?: string
           created_at?: string
         }
         Update: {
@@ -167,6 +173,9 @@ export type Database = {
           sync_url?: string | null
           last_sync_at?: string | null
           lead_time_days?: number | null
+          buffer_ratio?: number
+          target_cover_multiplier?: number
+          updated_at?: string
           created_at?: string
         }
         Relationships: []
@@ -225,6 +234,7 @@ export type Database = {
           created_at: string
           updated_at: string
           bigseller_absorbed_at: string | null
+          cancelled_at: string | null
         }
         Insert: {
           id?: string
@@ -243,6 +253,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           bigseller_absorbed_at?: string | null
+          cancelled_at?: string | null
         }
         Update: {
           id?: string
@@ -261,6 +272,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           bigseller_absorbed_at?: string | null
+          cancelled_at?: string | null
         }
         Relationships: []
       }
@@ -761,6 +773,67 @@ export type Database = {
           p_warehouse_ids?: string[] | null
         }
         Returns: unknown[]
+      }
+      /** P1: ETA 感知在途明细 */
+      get_in_transit_detail: {
+        Args: {
+          p_user_id: string
+          p_warehouse_id?: string | null
+          p_variant_id?: string | null
+        }
+        Returns: unknown[]
+      }
+      /** P1: 补货建议分页 RPC */
+      get_replenishment_suggestions: {
+        Args: {
+          p_user_id: string
+          p_variant_id?: string | null
+          p_warehouse_id?: string | null
+          p_country?: string | null
+          p_urgency?: string | null
+          p_search?: string | null
+          p_include_zero?: boolean
+          p_page?: number
+          p_page_size?: number
+        }
+        Returns: Record<string, unknown>
+      }
+      /** P7: 全球库存作战室列表 JSONB 信封 */
+      get_product_overview: {
+        Args: {
+          p_user_id: string
+          p_page?: number
+          p_page_size?: number
+          p_search?: string | null
+          p_stockout_urgency?: string | null
+          p_country?: string | null
+        }
+        Returns: Record<string, unknown>
+      }
+      /** P7: 全球库存作战室按 SKU 懒加载详情 */
+      get_war_room_variant_detail: {
+        Args: { p_user_id: string; p_variant_id: string }
+        Returns: Record<string, unknown>
+      }
+      /** 首页: 仓库库存健康度 JSONB 信封 */
+      get_warehouse_health_overview: {
+        Args: { p_user_id: string }
+        Returns: Record<string, unknown>
+      }
+      /** P1/P7: 共用库存耗尽预测函数 */
+      forecast_stockout: {
+        Args: {
+          p_on_hand: number
+          p_daily_sales: number | null
+          p_lead_time_days: number | null
+          p_inbound: unknown
+        }
+        Returns: Array<{
+          est_stockout_date: string | null
+          effective_inbound: number
+          ds_incomplete: boolean
+          lead_incomplete: boolean
+        }>
       }
       /** PERF-D-OVERVIEW: 服务端全量仓库同步概览 RPC（Migration 00032） */
       get_sync_warehouse_overview: {

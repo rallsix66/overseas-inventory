@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Warehouse,
   PackageCheck,
+  TrendingUp,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -42,6 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard/inventory/domestic', label: '国内库存', icon: Globe, phase: '2' },
       { href: '/dashboard/inventory/overseas', label: '海外库存', icon: Globe, phase: '0' },
+      { href: '/dashboard/replenishment', label: '预测式补货', icon: TrendingUp, phase: '0' },
     ],
   },
   {
@@ -49,6 +51,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Tag,
     items: [
       { href: '/dashboard/products', label: '产品列表', icon: List, phase: '0' },
+      { href: '/dashboard/products/overview', label: '全球库存作战室', icon: Globe, phase: '0' },
       { href: '/dashboard/variants', label: 'SKU 管理', icon: Barcode, phase: '0' },
     ],
   },
@@ -106,7 +109,12 @@ export function SidebarNav({ roleName }: { roleName: string }) {
     });
   }
 
-  const isActive = (href: string) => pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+  const isActive = (href: string) => {
+    if (href === '/dashboard/products' && pathname.startsWith('/dashboard/products/overview')) {
+      return false;
+    }
+    return pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+  };
   const isAvailable = (phase: string) => phase === '0';
   const isAdmin = roleName === 'admin';
 

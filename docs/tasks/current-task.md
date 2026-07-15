@@ -5,13 +5,25 @@
 | 项目 | 状态 |
 |------|------|
 | Stage 0 治理 | **Stage 0A 审计完成** — 五份定稿方案（P0/P1/P7/首页/总顺序）已通过 Codex 架构终审 |
-| Stage 1 P0 喜运达物流轨迹 API 接入 | **交付收口完成，生产链路验证代码修复已推送** — 2026-07-15 schema code string/number 兼容性修复（30 项回归测试）。全量测试 3677/3677（83 files, 0 failures），lint 0/34。Migration 00038–00040 已执行生产库。待用户确认 Vercel 部署完成、重试运单 GLLAN26062906249PHE、运行 Cron 核对事件写入。验证通过后进入 Stage 2 P1 |
-| Stage 2 P1 预测式补货引擎 | **待开工** — 依赖 P0 生产验证完成，Migration 00041–00044。P1 完成后进入 Stage 3 P7 |
-| Stage 3 P7 全球库存作战室 | **待开工** — 依赖 P1 完成（P7 E/00045 依赖 P1 C/00043，P7 F/00046 依赖 P1 C/00043 + D/00044）。P7 不先于 P1 开工 |
-| Stage 4 首页决策看板 | **待开工** — 依赖 P1 + P7 完成，Migration 00047 |
+| Stage 1 P0 喜运达物流轨迹 API 接入 | **DONE + 绑定闭环 CODE DONE** — 既有生产 API/Cron 冒烟已完成；本分支新增未绑定记录、同仓同国 Shipment 候选与不可逆绑定 UI |
+| Stage 2 P1 预测式补货引擎 | **CODE DONE** — Migration 00041–00044、补货建议、仓库参数、ETA 明细、Admin 计划发货与取消均已落盘；待数据库运行时验收 |
+| Stage 3 P7 全球库存作战室 | **CODE DONE** — Migration 00045–00046、唯一列表/详情 RPC、决策队列、分国推演与仓库级行动均已落盘；待数据库运行时验收 |
+| Stage 4 首页决策看板 | **CODE DONE** — Migration 00047、库存健康、有效在途、未来 7 日到港、异常与快捷入口均已落盘；待数据库运行时验收 |
 | P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
 | P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
-| 全量测试 | **3677/3677**（83 files, 0 failures） |
+| 全量测试 | **3879/3879**（87 files, 0 failures）；lint 0 errors / 31 warnings；build pass |
+
+## 本次已完成（2026-07-15）
+
+### SEQUENTIAL-ROADMAP-IMPLEMENTATION
+
+- 独立 worktree：`.vercel/worktrees/codex-sequential`；独立分支：`codex/sequential-roadmap`。
+- P0：补齐未绑定喜运达记录列表、同仓同国候选查询、Server Action 绑定和绑定后列表刷新。
+- P1：新增 00041–00044、共享断货预测函数、补货建议页、仓库补货参数、计划发货与软取消。
+- P7：新增 00045–00046、全球库存 JSONB 列表/详情 RPC、权限内聚合、决策队列、详情弹窗和仓库级行动。
+- 首页：新增 00047，改为库存健康、有效计划及在途、未来 7 日到港、低库存、关注与同步异常的单屏决策看板。
+- 本地验收：两轮全量测试最终均为 3879/3879；lint 0 errors；build/TypeScript 通过；登录页及三条受保护路由浏览器冒烟通过，最终控制台 0 error/warn。
+- 未执行：00041–00047 尚未应用到目标 Supabase；因此 Admin/Operator 的真实数据与 RLS 运行时验收、Vercel Preview/Production 部署仍待后续执行。
 
 ## 最近已完成（2026-07-10）
 
@@ -43,16 +55,16 @@
 
 ## 当前阻塞
 
-- **P0 生产冒烟验证待执行**：代码修复（schema code string/number 兼容性）已推送 origin/master（commit 12c4131）。Migration 00038–00040 已在 Supabase 生产库执行。Vercel Production 环境变量 GOLUCKY_BASE_URL/GOLUCKY_APP_KEY/GOLUCKY_APP_SECRET 已修正。用户需：① 确认 Vercel 部署 READY；② 在 `/dashboard/shipments/import/golucky` 对 GLLAN26062906249PHE 点击"重试"；③ 在 Vercel Cron Jobs 手动运行 `/api/cron/golucky`；④ 核对 provider_token_cache 更新、token 租约清空、tracking_event_external 事件写入、页面显示外部物流轨迹。
+- **数据库运行时与部署验收待执行**：本地环境没有 Supabase CLI / psql / Docker，且本次未获授权直接修改生产数据库。必须先在目标 Supabase 按 00041→00047 顺序执行新 Migration，再部署 Preview；随后以 Admin/Operator 验证 RPC、RLS、计划发货写入、取消与页面真实数据。通过前不得宣称生产完成。
 - **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。与 P0 喜运达物流轨迹 API 接入无关，不阻塞 Stage 1。
-- **P7 不能先于 P1 开工**：P7 的 Migration 00045（E）依赖 P1 的 00043（C），00046（F）依赖 P1 的 00043（C）与 00044（D）。P0 → P1 → P7 → 首页 严格串行。
+- **Migration 顺序不可变**：P7 的 00045（E）依赖 P1 的 00043（C），00046（F）依赖 P1 的 00043（C）与 00044（D）；执行必须为 00041→00042→00043→00044→00045→00046→00047。
 
 ## 质量门（全阶段通用）
 
 ```bash
-npm run test          # 3677/3677（83 files, 0 failures）
+npm run test          # 3879/3879（87 files, 0 failures）
 npm run build         # Turbopack 构建成功
-npm run lint          # 0 errors / 34 warnings（P0: 6 intentional + 28 pre-existing）
+npm run lint          # 0 errors / 31 warnings（无本批次新增 error）
 git diff --check      # 无 trailing whitespace / 冲突标记
 ```
 

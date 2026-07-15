@@ -16,7 +16,9 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ProductForm } from '@/features/products/components/product-form';
+import { ProductReplenishmentCard } from '@/features/replenishment/components/product-replenishment-card';
 import type { ProductDetail } from '@/features/products/types';
+import type { ReplenishmentSuggestion } from '@/features/replenishment/types';
 
 const MATCH_STATUS_LABEL: Record<string, string> = {
   matched: '已匹配',
@@ -27,9 +29,10 @@ const MATCH_STATUS_LABEL: Record<string, string> = {
 interface Props {
   product: ProductDetail;
   isAdmin: boolean;
+  replenishmentSuggestions: ReplenishmentSuggestion[];
 }
 
-export function ProductDetailClient({ product, isAdmin }: Props) {
+export function ProductDetailClient({ product, isAdmin, replenishmentSuggestions }: Props) {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
 
@@ -152,6 +155,8 @@ export function ProductDetailClient({ product, isAdmin }: Props) {
           </Table>
         )}
       </div>
+
+      <ProductReplenishmentCard rows={replenishmentSuggestions} />
 
       {/* 各仓库存表 */}
       <div>

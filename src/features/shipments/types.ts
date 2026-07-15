@@ -113,6 +113,32 @@ export interface CreateShipmentData {
   items: { variantId: string; quantity: number }[];
 }
 
+/** P1: 从补货建议创建 booking 计划发货。内部单号由服务端生成。 */
+export interface CreatePlannedShipmentData {
+  variantId: string;
+  warehouseId: string;
+  quantity: number;
+  plannedShipDate?: string;
+  expectedArrivalDate?: string;
+}
+
+export interface PlannedShipmentContext {
+  warehouseId: string;
+  warehouseCountry: string;
+  warehouseName: string;
+  leadTimeDays: number | null;
+  variantId: string;
+  variantCountry: string;
+}
+
+export interface PlannedShipmentReadBack {
+  id: string;
+  status: string;
+  cancelledAt: string | null;
+}
+
+export type CancelPlannedShipmentResult = PlannedShipmentReadBack;
+
 /** P3-S2B: 编辑在途基本信息 */
 export interface UpdateShipmentData {
   id: string;
@@ -190,6 +216,35 @@ export interface InTransitDetailItem {
   estimatedArrival: string | null;
   /** P6-UI-CLARITY: 最近物流更新时间（tracking_event.occurred_at 或 shipment.updated_at，用于展示物流时效） */
   latestTrackingAt: string | null;
+}
+
+/** P1 首页共用：ETA 已知的有效计划及在途明细。 */
+export interface InTransitDetail {
+  shipmentId: string;
+  variantId: string;
+  warehouseId: string;
+  status: string;
+  estimatedArrival: string;
+  remainingQuantity: number;
+  isPlanned: boolean;
+}
+
+export interface InTransitDetailFilters {
+  warehouseId?: string;
+  variantId?: string;
+}
+
+export interface UpcomingArrival {
+  shipmentId: string;
+  shipmentNo: string;
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  estimatedArrival: string;
+  status: 'departed' | 'arrived' | 'customs';
+  remainingQuantity: number;
+  itemCount: number;
+  itemNames: string[];
 }
 
 // ─── P3-S5B2: 批量入仓 / BigSeller 吸收确认 ────────────────────────────────

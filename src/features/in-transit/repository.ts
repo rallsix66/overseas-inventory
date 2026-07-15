@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import type {
+  ShipmentBindingCandidate,
   ShipmentExternalRefRow,
   TrackingEventExternalRow,
 } from './types';
@@ -20,7 +21,7 @@ export type ExternalRefWithTracking = ShipmentExternalRefRow & {
 export class ExternalTrackingError extends Error {
   constructor(
     message: string,
-    public code: 'NOT_FOUND' | 'DB_ERROR' | 'FORBIDDEN',
+    public code: 'NOT_FOUND' | 'DB_ERROR' | 'FORBIDDEN' | 'VALIDATION',
   ) {
     super(message);
     this.name = 'ExternalTrackingError';
@@ -187,6 +188,58 @@ export const externalTrackingRepository = {
 
     handlePgError(error, '查询未绑定外部物流记录失败');
     return data ?? [];
+  },
+
+  /** P0: 查询与未绑定喜运达记录仓库、国家一致的 Shipment 候选。 */
+  async listShipmentBindingCandidates(
+    refId: string,
+  ): Promise<ShipmentBindingCandidate[]> {
+    const supabase = await createClient();
+
+    const { data: ref, error: refError } = await supabase
+      .from('shipment_external_ref')
+      .select('id, provider, country, warehouse_id, shipment_id')
+      .eq('id', refId)
+      .eq('provider', 'golucky')
+      .single();
+
+    if (refError) {
+      if (refError.code === 'PGRST116') {
+        throw new ExternalTrackingError('喜运达外部物流记录不存在或无权访问', 'NOT_FOUND');
+      }
+      throw new ExternalTrackingError(`查询喜运达外部物流记录失败: ${refError.message}`, 'DB_ERROR');
+    }
+
+    if (ref.shipment_id) {
+      throw new ExternalTrackingError('该外部物流记录已绑定 Shipment', 'VALIDATION');
+    }
+
+    if (!ref.warehouse_id) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('shipment')
+      .select(
+        'id, shipment_no, purchase_order_no, country, warehouse_id, status, estimated_arrival, created_at',
+      )
+      .eq('warehouse_id', ref.warehouse_id)
+      .eq('country', ref.country)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    handlePgError(error, '查询可绑定 Shipment 失败');
+
+    return (data ?? []).map((shipment) => ({
+      id: shipment.id,
+      shipmentNo: shipment.shipment_no,
+      purchaseOrderNo: shipment.purchase_order_no,
+      country: shipment.country,
+      warehouseId: shipment.warehouse_id,
+      status: shipment.status,
+      estimatedArrival: shipment.estimated_arrival,
+      createdAt: shipment.created_at,
+    }));
   },
 
   /** P0: 查询同步失败的外部物流记录 */

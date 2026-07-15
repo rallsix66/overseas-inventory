@@ -891,14 +891,19 @@ describe('P3-S5B5: 海外库存页列数与展开行', () => {
 describe('P3-S5B5: 权限审计 — P3-S5B2/B4 Actions', () => {
   const actionsSrc = readSrc('src/features/shipments/actions.ts');
 
-  it('actions.ts 共 13 个 export async function', () => {
+  it('actions.ts 共 15 个 export async function（P1 新增创建/取消计划）', () => {
     const fnCount = (actionsSrc.match(/export async function/g) || []).length;
-    expect(fnCount).toBe(13);
+    expect(fnCount).toBe(15);
   });
 
   it('12 个调用 requireActiveAuth + 1 个阻断桩（warehouseShipment）', () => {
     const authCount = (actionsSrc.match(/requireActiveAuth\(\)/g) || []).length;
     expect(authCount).toBe(12);
+  });
+
+  it('P1 两个计划发货写操作直接调用 requireActiveAdmin', () => {
+    const adminAuthCount = (actionsSrc.match(/requireActiveAdmin\(\)/g) || []).length;
+    expect(adminAuthCount).toBe(2);
   });
 
   it('8 个 Admin-only（含 P3-S5B2/B4 新增 4 个）', () => {

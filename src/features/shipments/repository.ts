@@ -20,15 +20,50 @@ import type {
   EligibleShipmentFilters,
   EligibleShipmentItem,
   ConfirmedWarehousedAggregation,
+  PlannedShipmentContext,
+  PlannedShipmentReadBack,
+  CancelPlannedShipmentResult,
+  InTransitDetail,
+  InTransitDetailFilters,
+  UpcomingArrival,
 } from './types';
 import type { PaginatedResult } from '@/types/common';
 
 const PAGE_SIZE = 20;
 
+export interface ShipmentDbErrorMeta {
+  dbCode?: string;
+  constraint?: string;
+  dbMessage?: string;
+  dbDetails?: string;
+  dbHint?: string;
+}
+
+export function extractShipmentDbErrorMeta(error: unknown): ShipmentDbErrorMeta {
+  const raw = (error ?? {}) as Record<string, unknown>;
+  const dbMessage = typeof raw.message === 'string' ? raw.message : undefined;
+  const structuredConstraint =
+    typeof raw.constraint === 'string' ? raw.constraint : undefined;
+  const exactConstraint = dbMessage?.match(
+    /duplicate key value violates unique constraint "shipment_no_unique"/,
+  )
+    ? 'shipment_no_unique'
+    : undefined;
+
+  return {
+    dbCode: typeof raw.code === 'string' ? raw.code : undefined,
+    constraint: structuredConstraint ?? exactConstraint,
+    dbMessage,
+    dbDetails: typeof raw.details === 'string' ? raw.details : undefined,
+    dbHint: typeof raw.hint === 'string' ? raw.hint : undefined,
+  };
+}
+
 export class ShipmentError extends Error {
   constructor(
     message: string,
     public code: 'VALIDATION' | 'NOT_FOUND' | 'DB_ERROR' | 'FORBIDDEN',
+    public meta?: ShipmentDbErrorMeta,
   ) {
     super(message);
     this.name = 'ShipmentError';
@@ -59,6 +94,137 @@ const getUserRole = cache(
 );
 
 export const shipmentRepository = {
+  /** P1: 复用 get_in_transit_detail RPC；可选筛选未提供时映射为 RPC null。 */
+  async getInTransitDetail(
+    userId: string,
+    filters: InTransitDetailFilters = {},
+  ): Promise<InTransitDetail[]> {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc('get_in_transit_detail', {
+      p_user_id: userId,
+      p_warehouse_id: filters.warehouseId ?? null,
+      p_variant_id: filters.variantId ?? null,
+    });
+
+    if (error) {
+      throw new ShipmentError('查询 ETA 已知的计划及在途失败', 'DB_ERROR');
+    }
+
+    if (!Array.isArray(data)) {
+      throw new ShipmentError('计划及在途返回结构校验失败', 'DB_ERROR');
+    }
+
+    return data.map((value) => {
+      const row = value as Record<string, unknown>;
+      if (
+        typeof row.shipment_id !== 'string'
+        || typeof row.variant_id !== 'string'
+        || typeof row.warehouse_id !== 'string'
+        || typeof row.status !== 'string'
+        || typeof row.estimated_arrival !== 'string'
+        || typeof row.remaining_quantity !== 'number'
+        || typeof row.is_planned !== 'boolean'
+      ) {
+        throw new ShipmentError('计划及在途返回结构校验失败', 'DB_ERROR');
+      }
+      return {
+        shipmentId: row.shipment_id,
+        variantId: row.variant_id,
+        warehouseId: row.warehouse_id,
+        status: row.status,
+        estimatedArrival: row.estimated_arrival,
+        remainingQuantity: row.remaining_quantity,
+        isPlanned: row.is_planned,
+      };
+    });
+  },
+
+  /** 首页：未来 days 日内已发货且仍有剩余数量的 Top4 到港单。 */
+  async getUpcomingArrivals(userId: string, days = 7): Promise<UpcomingArrival[]> {
+    if (!Number.isInteger(days) || days < 1 || days > 30) {
+      throw new ShipmentError('到港查询天数必须是 1 到 30 的整数', 'VALIDATION');
+    }
+
+    const accessibleIds = await warehouseAccessRepository.getAccessibleWarehouseIds(userId);
+    if (accessibleIds.size === 0) return [];
+
+    const today = new Date();
+    const startDate = today.toISOString().slice(0, 10);
+    const end = new Date(`${startDate}T00:00:00.000Z`);
+    end.setUTCDate(end.getUTCDate() + days);
+    const endDate = end.toISOString().slice(0, 10);
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('shipment')
+      .select(
+        `id, shipment_no, warehouse_id, country, estimated_arrival, status,
+         warehouse:warehouse_id(name),
+         items:shipment_item(
+           quantity, warehoused_quantity,
+           variant:variant_id(name, sku)
+         )`,
+      )
+      .in('warehouse_id', [...accessibleIds])
+      .in('status', ['departed', 'arrived', 'customs'])
+      .is('cancelled_at', null)
+      .is('bigseller_absorbed_at', null)
+      .not('estimated_arrival', 'is', null)
+      .gte('estimated_arrival', startDate)
+      .lte('estimated_arrival', endDate);
+
+    if (error) {
+      throw new ShipmentError('查询近期到港失败，请稍后重试', 'DB_ERROR');
+    }
+
+    const rows = (data ?? []) as unknown as Array<{
+      id: string;
+      shipment_no: string;
+      warehouse_id: string;
+      country: string;
+      estimated_arrival: string;
+      status: 'departed' | 'arrived' | 'customs';
+      warehouse: { name: string } | null;
+      items: Array<{
+        quantity: number;
+        warehoused_quantity: number;
+        variant: { name: string; sku: string } | null;
+      }>;
+    }>;
+
+    const arrivals: UpcomingArrival[] = [];
+    for (const row of rows) {
+      const validItems = (row.items ?? []).filter(
+        (item) => item.quantity - item.warehoused_quantity > 0,
+      );
+      const remainingQuantity = validItems.reduce(
+        (sum, item) => sum + item.quantity - item.warehoused_quantity,
+        0,
+      );
+      if (remainingQuantity <= 0) continue;
+
+      arrivals.push({
+        shipmentId: row.id,
+        shipmentNo: row.shipment_no,
+        warehouseId: row.warehouse_id,
+        warehouseName: row.warehouse?.name ?? '未命名仓库',
+        country: row.country,
+        estimatedArrival: row.estimated_arrival,
+        status: row.status,
+        remainingQuantity,
+        itemCount: validItems.length,
+        itemNames: validItems.map((item) => item.variant?.name || item.variant?.sku || '未命名 SKU'),
+      });
+    }
+
+    arrivals.sort(
+      (a, b) =>
+        a.estimatedArrival.localeCompare(b.estimatedArrival)
+        || a.shipmentNo.localeCompare(b.shipmentNo),
+    );
+    return arrivals.slice(0, 4);
+  },
+
   /** P3-S2A/P3-S2B: 在途列表（不含 warehoused），含仓库隔离 */
   async list(
     filters: ShipmentFilters = {},
@@ -542,12 +708,115 @@ export const shipmentRepository = {
     });
 
     if (error) {
-      throw new ShipmentError('创建在途记录失败，请稍后重试', 'DB_ERROR');
+      throw new ShipmentError(
+        '创建在途记录失败，请稍后重试',
+        'DB_ERROR',
+        extractShipmentDbErrorMeta(error),
+      );
     }
     if (!shipmentId) {
       throw new ShipmentError('创建在途记录失败，请稍后重试', 'DB_ERROR');
     }
     return shipmentId;
+  },
+
+  /** P1: 读取创建计划所需的仓库/SKU 事实，供 Server Action 做一致性校验。 */
+  async getPlannedShipmentContext(
+    warehouseId: string,
+    variantId: string,
+  ): Promise<PlannedShipmentContext> {
+    const supabase = await createClient();
+    const [warehouseResult, variantResult] = await Promise.all([
+      supabase
+        .from('warehouse')
+        .select('id, name, country, type, is_active, lead_time_days')
+        .eq('id', warehouseId)
+        .single(),
+      supabase
+        .from('product_variant')
+        .select('id, country')
+        .eq('id', variantId)
+        .single(),
+    ]);
+
+    if (warehouseResult.error || !warehouseResult.data) {
+      throw new ShipmentError('仓库不存在或无权访问', 'NOT_FOUND');
+    }
+    if (!warehouseResult.data.is_active || warehouseResult.data.type !== 'overseas') {
+      throw new ShipmentError('只能为启用中的海外仓创建计划发货', 'VALIDATION');
+    }
+    if (variantResult.error || !variantResult.data) {
+      throw new ShipmentError('SKU 不存在或无权访问', 'NOT_FOUND');
+    }
+
+    return {
+      warehouseId: warehouseResult.data.id,
+      warehouseCountry: warehouseResult.data.country,
+      warehouseName: warehouseResult.data.name,
+      leadTimeDays: warehouseResult.data.lead_time_days,
+      variantId: variantResult.data.id,
+      variantCountry: variantResult.data.country,
+    };
+  },
+
+  async getPlannedShipmentReadBack(shipmentId: string): Promise<PlannedShipmentReadBack | null> {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('shipment')
+      .select('id, status, cancelled_at')
+      .eq('id', shipmentId)
+      .maybeSingle();
+
+    if (error) {
+      throw new ShipmentError('计划发货写后校验失败', 'DB_ERROR');
+    }
+    if (!data) return null;
+    return { id: data.id, status: data.status, cancelledAt: data.cancelled_at };
+  },
+
+  /** P1: 软取消 booking。UPDATE 只修改 cancelled_at，0 行时回查原因。 */
+  async cancelPlannedShipment(shipmentId: string): Promise<CancelPlannedShipmentResult> {
+    const supabase = await createClient();
+    const { data: updated, error } = await supabase
+      .from('shipment')
+      .update({ cancelled_at: new Date().toISOString() })
+      .eq('id', shipmentId)
+      .eq('status', 'booking')
+      .is('cancelled_at', null)
+      .select('id, status, cancelled_at')
+      .maybeSingle();
+
+    if (error) {
+      throw new ShipmentError('取消计划发货失败，请稍后重试', 'DB_ERROR');
+    }
+
+    if (updated) {
+      if (!updated.cancelled_at) {
+        throw new ShipmentError('计划发货取消写后校验失败', 'DB_ERROR');
+      }
+      return {
+        id: updated.id,
+        status: updated.status,
+        cancelledAt: updated.cancelled_at,
+      };
+    }
+
+    const { data: current, error: currentError } = await supabase
+      .from('shipment')
+      .select('id, status, cancelled_at')
+      .eq('id', shipmentId)
+      .maybeSingle();
+
+    if (currentError || !current) {
+      throw new ShipmentError('计划不存在或无权限', 'NOT_FOUND');
+    }
+    if (current.cancelled_at) {
+      throw new ShipmentError('该计划已取消', 'VALIDATION');
+    }
+    if (current.status !== 'booking') {
+      throw new ShipmentError('仅计划发货（booking）可取消', 'VALIDATION');
+    }
+    throw new ShipmentError('取消计划发货失败，请稍后重试', 'DB_ERROR');
   },
 
   /** P3-S2B: 编辑在途基本信息 */

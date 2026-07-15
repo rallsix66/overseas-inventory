@@ -35,6 +35,8 @@ interface WarehouseGroup {
 interface Props {
   items: LowStockSummaryItem[];
   error?: string | null;
+  limit?: number;
+  compact?: boolean;
 }
 
 const MAX_DISPLAY = 15;
@@ -56,11 +58,17 @@ function groupByWarehouse(items: LowStockSummaryItem[]): WarehouseGroup[] {
   });
 }
 
-export function LowStockSummarySection({ items, error }: Props) {
+export function LowStockSummarySection({
+  items,
+  error,
+  limit = MAX_DISPLAY,
+  compact = false,
+}: Props) {
+  const containerClass = `rounded-lg border ${compact ? 'p-4' : 'p-5 mb-6'}`;
   // 错误状态
   if (error) {
     return (
-      <section className="rounded-lg border border-red-200 bg-red-50/50 p-5 mb-6">
+      <section className={`${containerClass} border-red-200 bg-red-50/50`}>
         <div className="flex items-center gap-2 text-red-600">
           <AlertTriangle className="h-4 w-4" />
           <h2 className="text-sm font-semibold">低库存汇总</h2>
@@ -73,7 +81,7 @@ export function LowStockSummarySection({ items, error }: Props) {
   // 空状态
   if (items.length === 0) {
     return (
-      <section className="rounded-lg border border-green-200 bg-green-50/50 p-5 mb-6">
+      <section className={`${containerClass} border-green-200 bg-green-50/50`}>
         <div className="flex items-center gap-2 text-green-600">
           <Package className="h-4 w-4" />
           <h2 className="text-sm font-semibold">低库存汇总</h2>
@@ -86,10 +94,10 @@ export function LowStockSummarySection({ items, error }: Props) {
   }
 
   const grouped = groupByWarehouse(items);
-  const remaining = Math.max(0, items.length - MAX_DISPLAY);
+  const remaining = Math.max(0, items.length - limit);
 
   return (
-    <section className="rounded-lg border p-5 mb-6">
+    <section className={containerClass}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -110,7 +118,7 @@ export function LowStockSummarySection({ items, error }: Props) {
       {grouped.map((group) => {
         const visibleItems = group.items.filter((_, i) => {
           const globalIdx = items.indexOf(group.items[i]);
-          return globalIdx < MAX_DISPLAY;
+          return globalIdx < limit;
         });
 
         if (visibleItems.length === 0) return null;

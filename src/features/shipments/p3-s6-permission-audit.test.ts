@@ -641,15 +641,16 @@ describe('P3-S6: 边界状态覆盖', () => {
 // ─── 6. 权限链路矩阵完整性 ──────────────────────────────────────────────
 
 describe('P3-S6: 权限链路矩阵', () => {
-  describe('Server Action 层 — 全部 13 个 Action 有显式校验', () => {
+  describe('Server Action 层 — 全部 15 个 Action 有显式校验', () => {
     const actionsSrc = readSrc('actions.ts');
 
-    it('全部 13 个 export async function 均含 requireActiveAuth', () => {
+    it('15 个导出函数由 12 个 active auth、2 个 active admin 与 1 个阻断桩组成', () => {
       const fnCount = (actionsSrc.match(/export async function/g) || []).length;
       const authCount = (actionsSrc.match(/requireActiveAuth\(\)/g) || []).length;
-      // 13 exported functions: 12 call requireActiveAuth + 1 (warehouseShipment) is P3-S5B0 blocking stub
-      expect(fnCount).toBe(13);
+      const adminAuthCount = (actionsSrc.match(/requireActiveAdmin\(\)/g) || []).length;
+      expect(fnCount).toBe(15);
       expect(authCount).toBe(12); // warehouseShipment 阻断桩不调用 requireActiveAuth
+      expect(adminAuthCount).toBe(2); // P1 createPlannedShipment / cancelPlannedShipment
     });
 
     it('写操作 = 5 个 Admin-only（P3-S5B0: warehouseShipment 已改为阻断桩；P3-S5B4: 新增 listEligibleForBatchWarehousingAction Admin-only）', () => {
@@ -660,12 +661,12 @@ describe('P3-S6: 权限链路矩阵', () => {
       expect(adminOnlyCount).toBe(8); // P3-S5B0: warehouseShipment no longer checks role; P3-S5B4: +1 admin-only
     });
 
-    it('4 读操作 + 8 写操作 + 1 阻断桩 = 13 总函数', () => {
+    it('4 读操作 + 8 旧写操作 + 2 P1 admin 写操作 + 1 阻断桩 = 15', () => {
       const readWithoutRoleCheck = 4; // listShipments, getShipmentDetail, searchVariants, getInTransitDetails
       const adminOnlyCount = (actionsSrc.match(/roleName\s*!==\s*'admin'/g) || []).length;
-      const total = 13;
-      // 8 admin-only write + 4 read-all + 1 blocking stub (warehouseShipment) = 13
-      expect(adminOnlyCount + readWithoutRoleCheck + 1).toBe(total);
+      const directAdminActions = (actionsSrc.match(/requireActiveAdmin\(\)/g) || []).length;
+      const total = 15;
+      expect(adminOnlyCount + directAdminActions + readWithoutRoleCheck + 1).toBe(total);
     });
   });
 

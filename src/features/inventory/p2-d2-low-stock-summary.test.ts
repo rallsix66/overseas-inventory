@@ -36,16 +36,16 @@ describe('P2-D2 — Dashboard 低库存数据获取', () => {
   });
 
   it('getLowStock 失败不崩溃 Dashboard', () => {
-    expect(page).toContain('lowStockError');
-    // .catch() 返回结构化结果 { data, error }，Promise.all 之后赋值 lowStockError
+    expect(page).toContain('lowStockResult.error');
+    // load() 返回结构化结果 { data, error }，单区块失败不影响其它区块
     expect(page).toContain("'低库存数据加载失败'");
-    expect(page).toContain('lowStockError = lsResult.error');
+    expect(page).toContain('load<InventoryItem[]>');
   });
 
-  it('未登录（无 user.id）时不调用 getLowStock', () => {
-    // getLowStock 调用仅发生在 if (user?.id) 内
-    const body = page;
-    expect(body).toContain('if (user?.id)');
+  it('Dashboard 强制 active auth 后使用服务端 user.id', () => {
+    expect(page).toContain('requireActiveAuth()');
+    expect(page).toContain('userId: user.id');
+    expect(page).not.toContain('user?.id');
   });
 
   it('gap 计算为 Math.max(safetyStock - quantity, 0)，非负', () => {
@@ -58,11 +58,10 @@ describe('P2-D2 — Dashboard 低库存数据获取', () => {
     expect(page).toContain('a.quantity - b.quantity');
   });
 
-  it('lowStockError 为 null 时不传 error prop', () => {
-    // 检查 JSX 中 <LowStockSummarySection items={lowStockItems} error={lowStockError} />
+  it('低库存区接收独立错误状态', () => {
     expect(page).toContain('<LowStockSummarySection');
     expect(page).toContain('items={lowStockItems}');
-    expect(page).toContain('error={lowStockError}');
+    expect(page).toContain('error={lowStockResult.error}');
   });
 });
 
@@ -234,18 +233,15 @@ describe('P2-D2 — 关注与低库存隔离', () => {
   });
 
   it('Dashboard 中 getLowStock 和 getFollowedVariantsBasic 各自有独立错误处理', () => {
-    // PERF-C1: 两者在同一个 Promise.all 中并行执行，各自通过 .then()+.catch() 返回结构化结果
-    // getLowStock 失败 → lsResult.error 赋值给 lowStockError
-    // getFollowedVariantsBasic 失败 → fvResult.error 赋值给 followedError
+    // 两者在同一个 Promise.all 中并行执行，各自通过 load() 返回结构化结果
     const lowStockIdx = page.indexOf('getLowStock');
     const followedIdx = page.indexOf('getFollowedVariantsBasic');
     expect(lowStockIdx).toBeGreaterThan(0);
     expect(followedIdx).toBeGreaterThan(0);
     // Promise.all 确保并行执行
     expect(page).toContain('Promise.all');
-    // 每个查询有独立的 .catch() 返回结构化结果
-    expect(page).toContain('followedError = fvResult.error');
-    expect(page).toContain('lowStockError = lsResult.error');
+    expect(page).toContain('followedResult.error');
+    expect(page).toContain('lowStockResult.error');
   });
 
   it('LowStockSummarySection 不引用 FollowedProductsSection', () => {
@@ -324,13 +320,13 @@ describe('P2-D2 — 不破坏 P5-SY12D 关注产品动态', () => {
   });
 
   it('仍注入 inTransitQuantity 到关注产品行', () => {
-    expect(page).toContain('v.inTransitQuantity = inTransitMap.get(v.variantId)');
+    expect(page).toContain('inTransitQuantity: inTransitByVariant.get(variant.variantId)');
   });
 
   it('仍在 JSX 中渲染 FollowedProductsSection', () => {
     expect(page).toContain('<FollowedProductsSection');
     expect(page).toContain('variants={followedVariants}');
-    expect(page).toContain('error={followedError}');
+    expect(page).toContain('error={followedResult.error}');
   });
 });
 
@@ -347,45 +343,40 @@ describe('PERF-C1 — Dashboard 首页并行查询', () => {
     expect(page).toContain('Promise.all');
   });
 
-  it('getOverseasStats 在 Promise.all 中，.catch(() => undefined) 静默失败', () => {
-    // overseas stats 失败不设错误状态，返回 undefined
-    expect(page).toMatch(/getOverseasStats\(user\.id\)\s*\.catch\s*\(\s*\(\)\s*=>\s*undefined\s*\)/);
+  it('健康度 RPC 在 Promise.all 中并保留错误状态', () => {
+    expect(page).toContain('getWarehouseHealthOverview(user.id)');
+    expect(page).toContain("'库存健康度加载失败'");
   });
 
-  it('getInTransitByVariant 在 Promise.all 中，.catch(() => new Map()) 静默失败', () => {
-    // 在途数据获取失败返回空 Map，不设错误变量
-    expect(page).toMatch(/getInTransitByVariant\(user\.id\)\s*\.catch\s*\(/);
+  it('P1 getInTransitDetail 在 Promise.all 中并保留错误状态', () => {
+    expect(page).toContain('getInTransitDetail(user.id)');
+    expect(page).toContain("'计划及在途加载失败'");
+    expect(page).not.toContain('getInTransitByVariant(user.id)');
   });
 
-  it('getFollowedVariantsBasic 在 Promise.all 中，.catch() 返回结构化结果，Promise.all 后赋值 followedError', () => {
-    // .then()+.catch() 返回 { data, error }，不再在 .catch() 内修改外层变量
+  it('getFollowedVariantsBasic 在 Promise.all 中由 load 返回结构化结果', () => {
     expect(page).toContain('getFollowedVariantsBasic(user.id)');
     expect(page).toContain("'关注产品加载失败'");
-    expect(page).toContain('followedError = fvResult.error');
+    expect(page).toContain('followedResult.error');
   });
 
-  it('getLowStock 在 Promise.all 中，.catch() 返回结构化结果，Promise.all 后赋值 lowStockError', () => {
-    // .then()+.catch() 返回 { data, error }，不再在 .catch() 内修改外层变量
+  it('getLowStock 在 Promise.all 中由 load 返回结构化结果', () => {
     expect(page).toContain('getLowStock');
     expect(page).toContain("'低库存数据加载失败'");
-    expect(page).toContain('lowStockError = lsResult.error');
+    expect(page).toContain('lowStockResult.error');
   });
 
-  it('四个查询的 .catch() 各自独立，错误互不传播', () => {
-    // 每个 .catch() 设置自己的错误变量或返回默认值
-    // overseas stats → undefined（无错误变量）
-    // in-transit → new Map()（无错误变量）
-    // followed → followedError
-    // low stock → lowStockError
-    expect(page).toContain('followedError');
-    expect(page).toContain('lowStockError');
-    // 不存在一个统一的 catch 块吞掉所有错误
+  it('六个查询各自保留结果与错误，错误互不传播', () => {
+    for (const result of ['healthResult', 'inTransitResult', 'lowStockResult', 'followedResult', 'arrivalsResult', 'syncResult']) {
+      expect(page).toContain(result);
+    }
+    expect(page).toMatch(/function load<T>[\s\S]*error: errorMessage/);
   });
 
   it('inTransitQuantity 注入在 Promise.all 之后执行（保持字段语义）', () => {
     // followedVariants 和 inTransitMap 都可用后才注入
     const promiseAllIdx = page.indexOf('Promise.all');
-    const injectIdx = page.indexOf('v.inTransitQuantity');
+    const injectIdx = page.indexOf('inTransitQuantity: inTransitByVariant');
     expect(promiseAllIdx).toBeGreaterThan(0);
     expect(injectIdx).toBeGreaterThan(promiseAllIdx);
   });
@@ -397,23 +388,16 @@ describe('PERF-C1 — Dashboard 首页并行查询', () => {
     expect(mapIdx).toBeGreaterThan(promiseAllIdx);
   });
 
-  it('未登录时仅调用 getOverseasStats，不调用依赖 user.id 的三个查询', () => {
-    // else 分支：无 user.id 时只调 overseasStats
-    // 使用 } else { 精确定位 else 分支（而非 else 关键字）
-    const elseIdx = page.indexOf('} else {');
-    expect(elseIdx).toBeGreaterThan(0);
-    const elseBlock = page.slice(elseIdx);
-    expect(elseBlock).toContain('getOverseasStats');
-    expect(elseBlock).not.toContain('getInTransitByVariant');
-    expect(elseBlock).not.toContain('getFollowedVariantsBasic');
-    expect(elseBlock).not.toContain('getLowStock');
+  it('未登录与停用用户由 requireActiveAuth 阻断，无旧兜底查询', () => {
+    expect(page).toContain('const user = await requireActiveAuth()');
+    expect(page).not.toContain('getOverseasStats');
+    expect(page).not.toContain('if (user?.id)');
   });
 
-  it('user.id 存在时不使用串行 await（四个查询在单个 Promise.all 内）', () => {
-    // 确认未对四个查询使用独立的 await xxxRepository.xxx 串行调用
-    // 注意：getOverseasStats 在 else 分支（无 user.id 时）仍有单独 await，属预期行为
+  it('六个独立查询不使用串行 await', () => {
     expect(page).toContain('Promise.all');
-    expect(page).not.toMatch(/\bawait\s+shipmentRepository\.getInTransitByVariant\b/);
+    expect(page).not.toMatch(/\bawait\s+shipmentRepository\.getInTransitDetail\b/);
+    expect(page).not.toMatch(/\bawait\s+shipmentRepository\.getUpcomingArrivals\b/);
     expect(page).not.toMatch(/\bawait\s+preferencesRepository\.getFollowedVariantsBasic\b/);
     expect(page).not.toMatch(/\bawait\s+inventoryRepository\.getLowStock\b/);
   });

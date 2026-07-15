@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import type { ActionResult } from '@/types/common';
 import { externalTrackingRepository } from './repository';
+import type { ShipmentBindingCandidate } from './types';
 
 // ─── Zod Schemas ────────────────────────────────────────
 
@@ -34,6 +35,10 @@ const reactivateExternalRefSchema = z.object({
   refId: z.string().uuid(),
 });
 
+const listShipmentBindingCandidatesSchema = z.object({
+  refId: z.string().uuid(),
+});
+
 // ─── Actions ────────────────────────────────────────────
 
 /** P0: 批量导入喜运达运单 */
@@ -41,7 +46,7 @@ export async function importGoluckyRefs(
   items: z.infer<typeof importGoluckyItemSchema>[],
 ): Promise<ActionResult<{ succeeded: number; duplicated: number; failed: unknown[] }>> {
   try {
-    const user = await requireActiveAuth();
+    await requireActiveAuth();
 
     // Admin/Operator 均可导入
     const parsed = importGoluckyRefsSchema.safeParse({ items });
@@ -74,6 +79,7 @@ export async function importGoluckyRefs(
     };
 
     revalidatePath('/dashboard/shipments');
+    revalidatePath('/dashboard/shipments/import/golucky');
     return { success: true, data: result };
   } catch (err) {
     const message = err instanceof Error ? err.message : '未知错误';
@@ -87,7 +93,7 @@ export async function bindExternalRefToShipment(
   shipmentId: string,
 ): Promise<ActionResult> {
   try {
-    const user = await requireActiveAuth();
+    await requireActiveAuth();
 
     const parsed = bindExternalRefSchema.safeParse({ refId, shipmentId });
     if (!parsed.success) {
@@ -106,6 +112,7 @@ export async function bindExternalRefToShipment(
     }
 
     revalidatePath('/dashboard/shipments');
+    revalidatePath('/dashboard/shipments/import/golucky');
     revalidatePath(`/dashboard/shipments/${shipmentId}`);
     return { success: true };
   } catch (err) {
@@ -117,7 +124,7 @@ export async function bindExternalRefToShipment(
 /** P0: 重激活外部物流记录同步 */
 export async function reactivateExternalRef(refId: string): Promise<ActionResult> {
   try {
-    const user = await requireActiveAuth();
+    await requireActiveAuth();
 
     const parsed = reactivateExternalRefSchema.safeParse({ refId });
     if (!parsed.success) {
@@ -135,6 +142,7 @@ export async function reactivateExternalRef(refId: string): Promise<ActionResult
     }
 
     revalidatePath('/dashboard/shipments');
+    revalidatePath('/dashboard/shipments/import/golucky');
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : '未知错误';
@@ -146,27 +154,32 @@ export async function reactivateExternalRef(refId: string): Promise<ActionResult
 export async function listUnboundExternalRefs(provider?: string) {
   try {
     await requireActiveAuth();
-    const supabase = await createClient();
-
-    let query = supabase
-      .from('shipment_external_ref')
-      .select('*, warehouse:warehouse_id(name)')
-      .is('shipment_id', null)
-      .order('created_at', { ascending: false });
-
-    if (provider) {
-      query = query.eq('provider', provider);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, data: data ?? [] };
+    const data = await externalTrackingRepository.listUnboundExternalRefs(provider);
+    return { success: true, data };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : '未知错误' };
+  }
+}
+
+/** P0: 获取与指定喜运达记录仓库、国家一致的 Shipment 候选。 */
+export async function listShipmentBindingCandidates(
+  refId: string,
+): Promise<ActionResult<ShipmentBindingCandidate[]>> {
+  try {
+    await requireActiveAuth();
+
+    const parsed = listShipmentBindingCandidatesSchema.safeParse({ refId });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0]?.message ?? '参数校验失败' };
+    }
+
+    const data = await externalTrackingRepository.listShipmentBindingCandidates(parsed.data.refId);
+    return { success: true, data };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : '查询可绑定 Shipment 失败',
+    };
   }
 }
 

@@ -130,10 +130,11 @@ describe('P5-SY11G-D — Inventory Actions 传递 userId', () => {
 // ─── dashboard page 传递 userId ───────────────────────────────────────
 
 describe('P5-SY11G-D — Dashboard page 传递 userId', () => {
-  it('page.tsx 传递 user?.id 到 getOverseasStats', () => {
+  it('page.tsx 传递服务端 user.id 到仓库健康度 RPC Repository', () => {
     const pagePath = path.resolve(process.cwd(), 'src/app/dashboard/page.tsx');
     const pageSrc = fs.readFileSync(pagePath, 'utf-8');
-    expect(pageSrc).toMatch(/getOverseasStats\s*\(\s*user\?\.id/);
+    expect(pageSrc).toMatch(/getWarehouseHealthOverview\s*\(\s*user\.id/);
+    expect(pageSrc).not.toContain('getOverseasStats');
   });
 });
 

@@ -60,12 +60,12 @@ describe('PERF-C2B — 产品详情页并行编排', () => {
     page = readSrc('app/dashboard/products/[id]/page.tsx');
   });
 
-  it('getCurrentUser() 与 productRepository.getById(id) 通过 Promise.all 并行', () => {
+  it('requireActiveAuth() 与 productRepository.getById(id) 通过 Promise.all 并行', () => {
     expect(page).toContain('Promise.all');
     const promiseAllIdx = page.indexOf('Promise.all([');
     expect(promiseAllIdx).toBeGreaterThan(0);
     const block = page.slice(promiseAllIdx, promiseAllIdx + 200);
-    expect(block).toContain('getCurrentUser()');
+    expect(block).toContain('requireActiveAuth()');
     expect(block).toContain('productRepository.getById');
   });
 

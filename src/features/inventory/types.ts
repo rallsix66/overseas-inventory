@@ -66,6 +66,35 @@ export interface OverseasStats {
   inTransitTotalQuantity: number;
 }
 
+export interface WarehouseHealthSummary {
+  distinctVariantCount: number;
+  totalPositionCount: number;
+  normalCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  unmatchedCount: number;
+  healthRate: number | null;
+  totalQuantity: number;
+}
+
+export interface WarehouseHealthItem {
+  warehouseId: string;
+  warehouseName: string;
+  country: string;
+  totalPositionCount: number;
+  normalCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  unmatchedCount: number;
+  healthRate: number | null;
+  leadTimeDays: number | null;
+}
+
+export interface WarehouseHealthOverview {
+  summary: WarehouseHealthSummary;
+  warehouses: WarehouseHealthItem[];
+}
+
 /** 仓库选项（用于筛选下拉） */
 export interface WarehouseOption {
   id: string;

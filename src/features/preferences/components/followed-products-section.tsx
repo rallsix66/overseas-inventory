@@ -41,18 +41,26 @@ const UNMATCHED_HINT =
 interface FollowedProductsSectionProps {
   variants: FollowedVariantBasic[];
   error: string | null;
+  limit?: number;
+  compact?: boolean;
 }
 
 // ─── 组件 ──────────────────────────────────────────────────────────────
 
-export function FollowedProductsSection({ variants, error }: FollowedProductsSectionProps) {
+export function FollowedProductsSection({
+  variants,
+  error,
+  limit,
+  compact = false,
+}: FollowedProductsSectionProps) {
   const [filter, setFilter] = useState<AlertFilter>('all');
+  const containerClass = `rounded-lg border ${compact ? 'p-4' : 'p-5 mb-6'}`;
 
   // ── 错误状态 ──────────────────────────────────────────────────────
 
   if (error) {
     return (
-      <div className="rounded-lg border p-5 mb-6">
+      <div className={containerClass}>
         <div className="flex items-center gap-2 mb-4">
           <Star className="h-4 w-4 text-amber-500" />
           <h2 className="text-sm font-semibold text-gray-900">关注产品动态</h2>
@@ -70,7 +78,7 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
 
   if (!variants || variants.length === 0) {
     return (
-      <div className="rounded-lg border p-5 mb-6">
+      <div className={containerClass}>
         <div className="flex items-center gap-2 mb-4">
           <Star className="h-4 w-4 text-amber-500" />
           <h2 className="text-sm font-semibold text-gray-900">关注产品动态</h2>
@@ -90,6 +98,8 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
 
   const filtered =
     filter === 'all' ? variants : variants.filter((v) => v.alertLevel === filter);
+  const displayed = limit === undefined ? filtered : filtered.slice(0, limit);
+  const remaining = filtered.length - displayed.length;
 
   const criticalCount = variants.filter((v) => v.alertLevel === 'critical').length;
   const warningCount = variants.filter((v) => v.alertLevel === 'warning').length;
@@ -102,7 +112,7 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
   // ── 渲染 ──────────────────────────────────────────────────────────
 
   return (
-    <div className="rounded-lg border p-5 mb-6">
+    <div className={containerClass}>
       {/* 标题行 + 汇总 */}
       <div className="flex items-center gap-2 mb-4">
         <Star className="h-4 w-4 text-amber-500" />
@@ -178,7 +188,7 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((v) => (
+                {displayed.map((v) => (
                   <tr
                     key={`${v.variantId}-${v.warehouseId}`}
                     className="border-b last:border-0 hover:bg-gray-50"
@@ -283,7 +293,7 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
 
           {/* 告警摘要条 — 使用当前筛选结果（visibleAlertItems） */}
           {(() => {
-            const visibleAlertItems = filtered.filter(
+            const visibleAlertItems = displayed.filter(
               (v) => v.alertLevel === 'critical' || v.alertLevel === 'warning',
             );
             if (visibleAlertItems.length === 0) return null;
@@ -310,6 +320,14 @@ export function FollowedProductsSection({ variants, error }: FollowedProductsSec
               </div>
             );
           })()}
+          {remaining > 0 && (
+            <p className="mt-3 border-t pt-3 text-center text-xs text-muted-foreground">
+              还有 {remaining} 个关注项，{' '}
+              <Link href="/dashboard/inventory/overseas" className="text-blue-600 hover:underline">
+                查看全部库存
+              </Link>
+            </p>
+          )}
         </>
       )}
     </div>

@@ -19,3 +19,15 @@ export interface ShipmentExternalRefDetail extends ShipmentExternalRefRow {
   items: ShipmentExternalItemRow[];
   events: TrackingEventExternalRow[];
 }
+
+/** 可与未绑定外部物流记录关联的内部 Shipment。 */
+export interface ShipmentBindingCandidate {
+  id: string;
+  shipmentNo: string;
+  purchaseOrderNo: string | null;
+  country: string;
+  warehouseId: string | null;
+  status: string;
+  estimatedArrival: string | null;
+  createdAt: string;
+}

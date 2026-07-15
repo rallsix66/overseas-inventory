@@ -653,10 +653,8 @@ describe('SKU-UNMATCHED-MERGE — 侧边栏', () => {
   it('/dashboard/variants/unmatched 路径仍让 SKU 管理入口处于 active', () => {
     // isActive 逻辑: pathname.startsWith(href) — /dashboard/variants/unmatched
     // 以 /dashboard/variants 开头，所以 SKU 管理入口保持 active
-    const isActiveFn = src.match(
-      /const isActive = \(href: string\) => pathname === href \|\| \(href !== '\/dashboard' && pathname\.startsWith\(href\)\)/
-    );
-    expect(isActiveFn).not.toBeNull();
+    expect(src).toContain("pathname.startsWith(href)");
+    expect(src).toContain("href !== '/dashboard'");
   });
 });
 

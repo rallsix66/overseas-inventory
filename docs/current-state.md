@@ -4,21 +4,21 @@
 
 ## Current Phase
 
-**Stage 1 — P0 喜运达物流轨迹 API 接入实施完成**（2026-07-15）。P0 核心代码已落盘：Migration 00038–00040（含 service_role 显式授权 + 并发安全修复）、golucky provider adapter（含 SupabaseTokenCache 操作级租约句柄并发安全修复）、in-transit 模块扩展、cron route（同步链路收拢至 golucky-sync）、导入页面、换仓保护（DB 触发器 + 应用层双保险）、Shipment 详情页外部轨迹展示。**2026-07-15 schema code 兼容性修复**：Golucky API 返回 `code: 0`（number），旧 Zod schema 只接受 string → 生产 Cron 报"Token 响应结构校验失败"。修复：`schema.ts` token/tracking 响应顶层 code 改用 `z.union([z.string(), z.number()]).transform(String).optional()`，30 项回归测试，`.env.local` 移除多余前导 `=`。全量测试 **3677/3677（83 files, 0 failures）**，lint **0 errors / 34 warnings**（P0 6 intentional: client.ts ×3 `_lease`/`_provider` + parse-response.ts ×1 `_waybillNo` + schema.test.ts ×2 `_url` mock + 28 pre-existing），build pass。**Migration 00038–00040 已在 Supabase 生产库执行**，Vercel Production 环境变量已修正（去除前导 `=`）。**生产冒烟验证**：待用户执行 — 重试运单 GLLAN26062906249PHE → 运行 Cron `/api/cron/golucky` → 核对 tracking_event_external 事件写入。验证通过后进入 **Stage 2：P1 预测式补货引擎**。实施顺序固定为 **P0 → P1 → P7 → 首页（Stage 1 → Stage 4）**，严格串行。
+**Stage 1–4 顺序实施代码完成，进入部署前收口**（2026-07-15，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3879/3879（87 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过，浏览器未登录冒烟通过且控制台 0 error/warn。**Migration 00041–00047 尚未执行到 Supabase，新增已登录数据页面尚未做真实数据库运行时验收；当前代码也尚未部署到 Vercel Production。**
 
 ## Current Task
 
-**Stage 1 P0 喜运达物流轨迹 API 接入** — 代码实现完成（2026-07-13），Codex 复验通过，交付收口完成。核心交付：Migration 00038（schema）+ 00039（RLS + RPC + FOR UPDATE 并发修复）+ 00040（token 缓存表 + service_role 显式授权）、`src/lib/providers/golucky/`（7 文件，含 SupabaseTokenCache / TokenLease 并发安全修复）、`src/features/in-transit/`（actions / repository / golucky-sync / golucky-import / components/external-tracking-timeline）、`src/app/api/cron/golucky/route.ts`（同步链路收拢至 golucky-sync，生产使用 SupabaseTokenCache）、`src/app/dashboard/shipments/import/golucky/`（导入页）、Shipment 详情页外部轨迹展示（amber 主题区分）、shipment 换仓保护（DB 触发器 + 应用层预校验）。全量测试 **3596/3596（82 files, 0 failures）**，lint **0 errors / 32 warnings**（P0 相关 4 intentional + 28 pre-existing），build pass。Migration 00038–00040 已创建但**尚未在 Supabase 生产库执行**。下一 Task：等待用户执行生产 Migration 与冒烟验证，验证通过后进入 **Stage 2 P1 预测式补货引擎**。P7/首页严格串行后续，当前暂不启动。
+**DEPLOY-SEQUENTIAL-ROADMAP** — P0 绑定闭环、P1、P7 与首页代码均已完成并通过本地验收。下一 Task 不再是继续开发，而是部署验证：先在目标 Supabase 按顺序执行 00041→00047，再部署该分支 Preview，使用 Admin 与 Operator 分别验证权限、补货建议、计划发货/取消、全球库存详情和首页六块数据。数据库运行时验收通过后才可合并或提升到 Production。百世 API 外部权限与 P8 国内库存仍不属于本批次。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 
 | 阶段 | 说明 | 状态 |
 |------|------|------|
 | P7-PLAN | 文档与口径确认：数据关系图、可复用能力、已知缺口、MVP 不做项、实现任务拆分 | ✅ DONE（Codex 复验通过） |
-| P7-A | 全球库存基础总览（先上）：Product/Variant 一行、海外库存汇总、海外在途汇总、基础库存告警、国内占位、Admin/Operator warehouse_id 权限隔离 | PLAN（Stage 3 P7，依赖 P1 完成后实施） |
-| P7-B | 作战室增强层（后叠，依赖 P1）：复用 `forecast_stockout(...)` 算 earliest_stockout/urgency/分国 burn-down + 详情弹窗 + 后续 net_demand/suggest_qty/latest_order_date；与 P7-A 共用同一路由/列表 RPC/详情 RPC | PLAN（Stage 3 P7，待 P1 落盘后叠加） |
-| P7-UX | 运营可用性收口：筛选/排序/跳转/导出 | PLAN |
-| P7-REVIEW | 独立验收与文档同步 | PLAN |
+| P7-A | 全球库存基础总览（先上）：Product/Variant 一行、海外库存汇总、海外在途汇总、基础库存告警、国内占位、Admin/Operator warehouse_id 权限隔离 | ✅ CODE DONE（00045；待数据库运行时验收） |
+| P7-B | 作战室增强层（后叠，依赖 P1）：复用 `forecast_stockout(...)` 算 earliest_stockout/urgency/分国 burn-down + 详情弹窗 + 后续 net_demand/suggest_qty/latest_order_date；与 P7-A 共用同一路由/列表 RPC/详情 RPC | ✅ CODE DONE（00046；待数据库运行时验收） |
+| P7-UX | 运营可用性收口：筛选/排序/分页/详情跳转；PDF/截图导出按定稿为非本期 | ✅ CODE DONE |
+| P7-REVIEW | 独立验收与文档同步 | ✅ LOCAL REVIEW DONE；生产验收待执行 |
 | P8 | 国内库存接入（下游独立）：真实国内数据/生产周期/在途接入，建成 `/dashboard/inventory/domestic` | 待立项（原 TECH-DEBT-01） |
 | P7-C | 启用国内补给判断（依赖 P8）：DomesticJudge 由 data_unavailable 占位改为真实计算 | 待 P8 完成 |
 

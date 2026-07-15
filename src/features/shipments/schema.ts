@@ -61,6 +61,29 @@ export const createShipmentSchema = z.object({
 
 export type CreateShipmentValues = z.infer<typeof createShipmentSchema>;
 
+/** P1: 计划发货创建。必须提供预计到达日，或提供可结合 lead time 推算的发出日。 */
+export const createPlannedShipmentSchema = z
+  .object({
+    variantId: z.string().uuid('无效的 SKU ID'),
+    warehouseId: z.string().uuid('无效的仓库 ID'),
+    quantity: z.coerce.number().int('数量必须为整数').min(1, '数量最少为 1'),
+    plannedShipDate: z
+      .string()
+      .optional()
+      .refine((value) => !value || isValidDate(value), '预计发出日期不合法'),
+    expectedArrivalDate: z
+      .string()
+      .optional()
+      .refine((value) => !value || isValidDate(value), '预计到达日期不合法'),
+  })
+  .refine((value) => Boolean(value.plannedShipDate || value.expectedArrivalDate), {
+    message: '预计发出日和预计到达日至少填写一个',
+  });
+
+export const cancelPlannedShipmentSchema = z.object({
+  shipmentId: z.string().uuid('无效的计划发货 ID'),
+});
+
 /** P3-S2B: 编辑在途基本信息 */
 export const updateShipmentSchema = z.object({
   id: z.string().uuid('无效的在途记录 ID'),
