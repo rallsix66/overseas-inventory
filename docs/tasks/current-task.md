@@ -1,14 +1,14 @@
 # Current Task Packet
 
-## 状态概览（2026-07-15）
+## 状态概览（2026-07-16）
 
 | 项目 | 状态 |
 |------|------|
 | Stage 0 治理 | **Stage 0A 审计完成** — 五份定稿方案（P0/P1/P7/首页/总顺序）已通过 Codex 架构终审 |
 | Stage 1 P0 喜运达物流轨迹 API 接入 | **DONE + 绑定闭环 CODE DONE** — 既有生产 API/Cron 冒烟已完成；本分支新增未绑定记录、同仓同国 Shipment 候选与不可逆绑定 UI |
-| Stage 2 P1 预测式补货引擎 | **CODE DONE** — Migration 00041–00044、补货建议、仓库参数、ETA 明细、Admin 计划发货与取消均已落盘；待数据库运行时验收 |
-| Stage 3 P7 全球库存作战室 | **CODE DONE** — Migration 00045–00046、唯一列表/详情 RPC、决策队列、分国推演与仓库级行动均已落盘；待数据库运行时验收 |
-| Stage 4 首页决策看板 | **CODE DONE** — Migration 00047、库存健康、有效在途、未来 7 日到港、异常与快捷入口均已落盘；待数据库运行时验收 |
+| Stage 2 P1 预测式补货引擎 | **DB DEPLOYED + READ SMOKE PASS** — 00041–00044 已应用；Admin/Operator 补货与在途 RPC 通过；待 Preview 与 Admin 写入验收 |
+| Stage 3 P7 全球库存作战室 | **DB DEPLOYED + READ SMOKE PASS** — 00045–00046 已应用；列表、详情与 Operator 仓库隔离通过；待 Preview 页面验收 |
+| Stage 4 首页决策看板 | **DB DEPLOYED + READ SMOKE PASS** — 00047 已应用；Admin/Operator 仓库健康 RPC 通过；待 Preview 页面验收 |
 | P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
 | P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
 | 全量测试 | **3879/3879**（87 files, 0 failures）；lint 0 errors / 31 warnings；build pass |
@@ -23,7 +23,9 @@
 - P7：新增 00045–00046、全球库存 JSONB 列表/详情 RPC、权限内聚合、决策队列、详情弹窗和仓库级行动。
 - 首页：新增 00047，改为库存健康、有效计划及在途、未来 7 日到港、低库存、关注与同步异常的单屏决策看板。
 - 本地验收：两轮全量测试最终均为 3879/3879；lint 0 errors；build/TypeScript 通过；登录页及三条受保护路由浏览器冒烟通过，最终控制台 0 error/warn。
-- 未执行：00041–00047 尚未应用到目标 Supabase；因此 Admin/Operator 的真实数据与 RLS 运行时验收、Vercel Preview/Production 部署仍待后续执行。
+- 数据库部署：00041–00047 已于 2026-07-16 严格按序应用到目标 Supabase `DIS Project`。远端记录 7 条 migration；4 个新列、2 个约束、2 个索引、1 个触发器和 6 个 RPC 均核对通过。
+- 数据库只读验收：Admin/Operator 的补货、在途、P7 列表/详情和首页健康度 RPC 均返回正确契约；Operator 仅可见 1 个已分配仓库，补货/P7/首页/详情的仓库隔离断言全部为 true（无泄露）。迁移后安全与性能顾问未发现本批新增对象相关项。
+- 剩余：Vercel Preview/Production 尚未部署；Admin 仓库参数、计划发货与取消写入仍需在 Preview 页面完成真实验收。
 
 ## 最近已完成（2026-07-10）
 
@@ -55,9 +57,9 @@
 
 ## 当前阻塞
 
-- **数据库运行时与部署验收待执行**：本地环境没有 Supabase CLI / psql / Docker，且本次未获授权直接修改生产数据库。必须先在目标 Supabase 按 00041→00047 顺序执行新 Migration，再部署 Preview；随后以 Admin/Operator 验证 RPC、RLS、计划发货写入、取消与页面真实数据。通过前不得宣称生产完成。
+- **Preview 页面与写入验收待执行**：数据库 migration 和只读 RPC/RLS 冒烟已完成；仍须部署 `codex/sequential-roadmap` Preview，以 Admin/Operator 验证真实页面，并由 Admin 验证仓库参数、计划发货与取消写入。通过前不得宣称生产完成。
 - **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。与 P0 喜运达物流轨迹 API 接入无关，不阻塞 Stage 1。
-- **Migration 顺序不可变**：P7 的 00045（E）依赖 P1 的 00043（C），00046（F）依赖 P1 的 00043（C）与 00044（D）；执行必须为 00041→00042→00043→00044→00045→00046→00047。
+- **Migration 历史需基线化后再采用 CLI push**：00001–00040 早期通过 SQL Editor 执行且未登记在远端 migration 历史；本次 MCP 应用后远端历史仅登记 00041–00047。当前数据库对象正常，但未来启用 `supabase db push` 前必须先设计 history baseline/repair，避免旧 migration 被误判为待执行。
 
 ## 质量门（全阶段通用）
 

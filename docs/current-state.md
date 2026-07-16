@@ -4,21 +4,21 @@
 
 ## Current Phase
 
-**Stage 1–4 顺序实施代码完成，进入部署前收口**（2026-07-15，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3879/3879（87 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过，浏览器未登录冒烟通过且控制台 0 error/warn。**Migration 00041–00047 尚未执行到 Supabase，新增已登录数据页面尚未做真实数据库运行时验收；当前代码也尚未部署到 Vercel Production。**
+**Stage 1–4 顺序实施代码完成，数据库已部署，进入 Preview 验收**（2026-07-16，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3879/3879（87 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过，浏览器未登录冒烟通过且控制台 0 error/warn。**Migration 00041–00047 已按顺序应用到目标 Supabase `DIS Project`；Admin/Operator 的补货、在途、P7 列表/详情和首页健康度只读 RPC 冒烟通过，Operator 仓库隔离断言通过。当前分支尚待 Vercel Preview 页面与 Admin 写入流程验收，未提升到 Production。**
 
 ## Current Task
 
-**DEPLOY-SEQUENTIAL-ROADMAP** — P0 绑定闭环、P1、P7 与首页代码均已完成并通过本地验收。下一 Task 不再是继续开发，而是部署验证：先在目标 Supabase 按顺序执行 00041→00047，再部署该分支 Preview，使用 Admin 与 Operator 分别验证权限、补货建议、计划发货/取消、全球库存详情和首页六块数据。数据库运行时验收通过后才可合并或提升到 Production。百世 API 外部权限与 P8 国内库存仍不属于本批次。
+**DEPLOY-SEQUENTIAL-ROADMAP** — P0 绑定闭环、P1、P7 与首页代码均已完成并通过本地验收；目标 Supabase 的 00041→00047 与只读 RPC/RLS 冒烟也已完成。下一 Task 是部署该分支 Preview，使用 Admin 与 Operator 验证真实页面，再由 Admin 验证仓库参数、计划发货与取消写入。Preview 全流程通过后才可合并或提升到 Production。百世 API 外部权限与 P8 国内库存仍不属于本批次。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 
 | 阶段 | 说明 | 状态 |
 |------|------|------|
 | P7-PLAN | 文档与口径确认：数据关系图、可复用能力、已知缺口、MVP 不做项、实现任务拆分 | ✅ DONE（Codex 复验通过） |
-| P7-A | 全球库存基础总览（先上）：Product/Variant 一行、海外库存汇总、海外在途汇总、基础库存告警、国内占位、Admin/Operator warehouse_id 权限隔离 | ✅ CODE DONE（00045；待数据库运行时验收） |
-| P7-B | 作战室增强层（后叠，依赖 P1）：复用 `forecast_stockout(...)` 算 earliest_stockout/urgency/分国 burn-down + 详情弹窗 + 后续 net_demand/suggest_qty/latest_order_date；与 P7-A 共用同一路由/列表 RPC/详情 RPC | ✅ CODE DONE（00046；待数据库运行时验收） |
+| P7-A | 全球库存基础总览（先上）：Product/Variant 一行、海外库存汇总、海外在途汇总、基础库存告警、国内占位、Admin/Operator warehouse_id 权限隔离 | ✅ DB DEPLOYED；Admin/Operator 只读 RPC 与仓库隔离通过；待 Preview 页面验收 |
+| P7-B | 作战室增强层（后叠，依赖 P1）：复用 `forecast_stockout(...)` 算 earliest_stockout/urgency/分国 burn-down + 详情弹窗 + 后续 net_demand/suggest_qty/latest_order_date；与 P7-A 共用同一路由/列表 RPC/详情 RPC | ✅ DB DEPLOYED；列表/详情运行时冒烟通过；待 Preview 页面验收 |
 | P7-UX | 运营可用性收口：筛选/排序/分页/详情跳转；PDF/截图导出按定稿为非本期 | ✅ CODE DONE |
-| P7-REVIEW | 独立验收与文档同步 | ✅ LOCAL REVIEW DONE；生产验收待执行 |
+| P7-REVIEW | 独立验收与文档同步 | ✅ LOCAL + DB READ REVIEW DONE；Preview 写入与页面验收待执行 |
 | P8 | 国内库存接入（下游独立）：真实国内数据/生产周期/在途接入，建成 `/dashboard/inventory/domestic` | 待立项（原 TECH-DEBT-01） |
 | P7-C | 启用国内补给判断（依赖 P8）：DomesticJudge 由 data_unavailable 占位改为真实计算 | 待 P8 完成 |
 
