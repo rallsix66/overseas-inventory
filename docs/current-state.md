@@ -1,5 +1,7 @@
 # Current Project State
 
+> 2026-07-16 Preview wiring update: all three Supabase variables, including `SUPABASE_SERVICE_ROLE_KEY`, now target `DIS Staging` in Preview only. Production variables are unchanged. Ephemeral Admin and Operator identities are ready; the Operator is assigned to one overseas warehouse. Full page, write-path, and RLS smoke testing remains pending on the next Preview deployment.
+
 > 文档导航：[文档树](README.md) · [当前任务包](tasks/current-task.md) · [项目概览](project-overview.md) · [架构](architecture.md) · [数据库设计](database-design.md)
 
 ## Current Phase
