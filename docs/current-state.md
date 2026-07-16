@@ -4,11 +4,11 @@
 
 ## Current Phase
 
-**Stage 1–4 顺序实施代码完成，数据库已部署，进入 Preview 验收**（2026-07-16，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3879/3879（87 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过，浏览器未登录冒烟通过且控制台 0 error/warn。**Migration 00041–00047 已按顺序应用到目标 Supabase `DIS Project`；Admin/Operator 的补货、在途、P7 列表/详情和首页健康度只读 RPC 冒烟通过，Operator 仓库隔离断言通过。当前分支尚待 Vercel Preview 页面与 Admin 写入流程验收，未提升到 Production。**
+**Stage 1–4 顺序实施代码完成，Production 数据库变更已部署，独立 Staging 数据库已建立，进入 Preview 接线与验收**（2026-07-16，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3879/3879（87 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过，浏览器未登录冒烟通过且控制台 0 error/warn。**Production `DIS Project` 已应用 00041–00047；新建的 `DIS Staging`（project ref `hyarhvsjhkjpallbyifn`）已从空库严格重放 00001–00047 并通过 Schema/RLS/函数权限验收。Vercel Preview 尚未切换到 Staging，Production 环境变量未改动。**
 
 ## Current Task
 
-**DEPLOY-SEQUENTIAL-ROADMAP** — P0 绑定闭环、P1、P7 与首页代码均已完成并通过本地验收；目标 Supabase 的 00041→00047 与只读 RPC/RLS 冒烟也已完成。下一 Task 是部署该分支 Preview，使用 Admin 与 Operator 验证真实页面，再由 Admin 验证仓库参数、计划发货与取消写入。Preview 全流程通过后才可合并或提升到 Production。百世 API 外部权限与 P8 国内库存仍不属于本批次。
+**DEPLOY-SEQUENTIAL-ROADMAP** — P0 绑定闭环、P1、P7 与首页代码均已完成并通过本地验收；Production 的 00041→00047、Production 只读 RPC/RLS 冒烟，以及 Staging 从 00001→00047 的全量迁移重放均已完成。下一 Task 是把 Vercel Preview 的三项 Supabase 变量切换到 `DIS Staging`（只改 Preview，不改 Production），创建/准备 Staging Admin 与 Operator 测试身份并验证真实页面与写入流程。Preview 全流程通过后才可合并或提升到 Production。百世 API 外部权限与 P8 国内库存仍不属于本批次。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 
