@@ -29,6 +29,8 @@
 - Staging：Supabase `DIS Staging`（project ref `hyarhvsjhkjpallbyifn`，Singapore）已创建；00001–00047 共 47 条 migration 从空库重放成功，migration 历史连续无缺口。18 个 public 基础表全部启用 RLS；新增六个 P1/P7/首页 RPC 均为 `SECURITY INVOKER`、空 `search_path`、anon 无执行权、authenticated 有执行权。安全/性能顾问均为 0 error，保留的是既有策略/索引类 warning。
 - 数据库漂移：Staging 按仓库 migration 链生成，较 Production 多出 `product_variant.is_archived/archived_at/archived_by`、对应索引/外键，以及 `claim_sync_run_system(...)`。这些对象来自 00010/00011，说明 Production 早期 SQL Editor 执行结果与当前 migration 链存在历史漂移；本任务不直接改 Production，后续须单独做生产基线与补齐评审。
 - 剩余：Vercel Preview 尚未切换到 Staging；Production 环境变量保持不变。仍需在 Preview 页面完成 Admin/Operator 身份、真实页面、仓库参数、计划发货与取消写入验收。
+- 2026-07-16 最新进展：Vercel Preview 的 `NEXT_PUBLIC_SUPABASE_URL` 与 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 已仅对 Preview 指向 Staging，Production 变量未改动；`SUPABASE_SERVICE_ROLE_KEY`、Staging Admin/Operator 和页面/写入验收仍待完成。此项覆盖上方“尚未切换”的旧描述。
+
 
 ## 最近已完成（2026-07-10）
 

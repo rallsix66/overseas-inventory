@@ -8,6 +8,9 @@
 
 ## Current Task
 
+> 2026-07-16 最新进展：Vercel Preview 的公开 Supabase URL/Key 已仅对 Preview 指向 `DIS Staging`，Production 未改动；`SUPABASE_SERVICE_ROLE_KEY` 与 Staging 测试身份仍待补齐。此状态覆盖上方阶段摘要中“尚未切换”的旧描述。
+
+
 **DEPLOY-SEQUENTIAL-ROADMAP** — P0 绑定闭环、P1、P7 与首页代码均已完成并通过本地验收；Production 的 00041→00047、Production 只读 RPC/RLS 冒烟，以及 Staging 从 00001→00047 的全量迁移重放均已完成。下一 Task 是把 Vercel Preview 的三项 Supabase 变量切换到 `DIS Staging`（只改 Preview，不改 Production），创建/准备 Staging Admin 与 Operator 测试身份并验证真实页面与写入流程。Preview 全流程通过后才可合并或提升到 Production。百世 API 外部权限与 P8 国内库存仍不属于本批次。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
