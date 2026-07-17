@@ -12,9 +12,16 @@
 | DIS Staging | **READY + REAL-DATA PREVIEW PASS** — `hyarhvsjhkjpallbyifn` 已重放 00001–00047，并加载 Production 只读脱敏业务快照；Preview 三项 Supabase 变量只指向 Staging |
 | P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
 | P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
-| 全量测试 | **3879/3879**（87 files, 0 failures）；lint 0 errors / 31 warnings；build pass |
+| 全量测试 | **3883/3883**（88 files, 0 failures）；lint 0 errors / 31 warnings；build pass |
 
 ## 本次已完成（2026-07-15）
+
+### PREVIEW-SESSION-ESTABLISHMENT-GUARD（CODE COMPLETE / DEPLOY PENDING，2026-07-17）
+
+- 修复 `/dashboard/sync` 点击「重新建立登录会话」后 `spawn python ENOENT` 冒泡为生产版 Server Components 错误。
+- Vercel 环境在文件系统/子进程操作前返回明确的不可用提示；交互式 BigSeller 登录仍只能在安装 Python、Playwright 和桌面 Chrome 的同步主机执行。
+- 本地启动改为等待 child process `spawn` 成功事件，支持 `PYTHON_EXECUTABLE`，失败时清理锁与日志句柄；新增 Vercel、ENOENT、Admin 权限和成功启动 4 项回归测试。
+- 独立 worktree 未保存 Vercel 项目链接；未擅自重新绑定项目、未提交/推送、未部署 Preview。
 
 ### PREVIEW-PRODUCTION-SNAPSHOT（2026-07-17）
 
@@ -79,7 +86,7 @@
 ## 质量门（全阶段通用）
 
 ```bash
-npm run test          # 3879/3879（87 files, 0 failures）
+npm run test          # 3883/3883（88 files, 0 failures）
 npm run build         # Turbopack 构建成功
 npm run lint          # 0 errors / 31 warnings（无本批次新增 error）
 git diff --check      # 无 trailing whitespace / 冲突标记
