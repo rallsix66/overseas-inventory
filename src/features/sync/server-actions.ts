@@ -719,66 +719,121 @@ export async function establishBigSellerSession(): Promise<{
 }> {
   await requireActiveAdmin();
 
+  // Vercel Functions 没有可交互桌面，也不提供本项目所需的 Python/Chromium
+  // 运行时。此操作只能在安装了同步运行时的桌面主机上执行。
+  if (process.env.VERCEL) {
+    return {
+      success: false,
+      message:
+        '当前页面运行在 Vercel 云端，无法启动本机 Python 或弹出桌面 Chrome。' +
+        '请在安装了 Python、Playwright 和 Chrome 的同步主机上建立 BigSeller 登录会话。',
+    };
+  }
+
   const projectRoot = path.resolve(process.cwd());
   const logDir = path.join(projectRoot, 'tools', 'bigseller-scraper', 'runtime');
-  fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, 'session-establish.log');
   const lockFile = path.join(logDir, 'session-establish.lock');
+  const pythonExecutable = process.env.PYTHON_EXECUTABLE?.trim() || 'python';
+  let ownsLock = false;
+  let logFd: number | null = null;
 
-  // 防重复：如果已有会话建立进程在运行，拒绝再次启动
-  if (fs.existsSync(lockFile)) {
-    const lockAge = Date.now() - fs.statSync(lockFile).mtimeMs;
-    // 超过 10 分钟的锁文件视为过期（进程可能已异常退出）
-    if (lockAge < 10 * 60 * 1000) {
+  const cleanupLock = () => {
+    if (!ownsLock) return;
+    try { fs.unlinkSync(lockFile); } catch { /* ignore */ }
+    ownsLock = false;
+  };
+
+  const closeLogFd = () => {
+    if (logFd === null) return;
+    try { fs.closeSync(logFd); } catch { /* ignore */ }
+    logFd = null;
+  };
+
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+
+    // 防重复：如果已有会话建立进程在运行，拒绝再次启动
+    if (fs.existsSync(lockFile)) {
+      const lockAge = Date.now() - fs.statSync(lockFile).mtimeMs;
+      // 超过 10 分钟的锁文件视为过期（进程可能已异常退出）
+      if (lockAge < 10 * 60 * 1000) {
+        return {
+          success: false,
+          message:
+            '登录会话建立进程已在运行中，请在已打开的 Chrome 窗口中完成登录。' +
+            '如果确认没有 Chrome 窗口打开，请等待 10 分钟后重试。',
+        };
+      }
+      // 清理过期锁
+      fs.unlinkSync(lockFile);
+    }
+
+    fs.writeFileSync(lockFile, '', 'utf-8');
+    ownsLock = true;
+
+    // 将之前日志截断，保留最近一次
+    logFd = fs.openSync(logFile, 'w');
+
+    // detached spawn — 只等待操作系统确认子进程成功启动，不等待登录完成。
+    // stdout/stderr 写入日志文件，便于排查 session 持久化是否成功。
+    const proc = spawn(pythonExecutable, [
+      '-m', 'tools.bigseller-scraper.bigseller_scraper',
+    ], {
+      cwd: projectRoot,
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env: {
+        ...process.env,
+        BS_HEADLESS: '0',
+        BS_SESSION_ONLY: '1',
+        PYTHONIOENCODING: 'utf-8',
+      },
+    });
+
+    // Python 进程退出或后续异常时清理锁文件。
+    proc.once('close', cleanupLock);
+
+    const launchResult = await new Promise<
+      { success: true } | { success: false; error: Error }
+    >((resolve) => {
+      proc.once('spawn', () => resolve({ success: true }));
+      proc.once('error', (error: Error) => {
+        cleanupLock();
+        resolve({ success: false, error });
+      });
+    });
+
+    // spawn 成功后子进程已继承日志句柄；父进程可以安全关闭自己的句柄。
+    closeLogFd();
+
+    if (!launchResult.success) {
       return {
         success: false,
         message:
-          '登录会话建立进程已在运行中，请在已打开的 Chrome 窗口中完成登录。' +
-          '如果确认没有 Chrome 窗口打开，请等待 10 分钟后重试。',
+          `无法启动登录会话进程：${launchResult.error.message}。` +
+          '请确认 PYTHON_EXECUTABLE 指向可用的 Python，并在支持桌面 Chrome 的同步主机上重试。',
       };
     }
-    // 清理过期锁
-    fs.unlinkSync(lockFile);
+
+    proc.unref();
+
+    return {
+      success: true,
+      message:
+        '已在服务器上打开 Chrome 浏览器，请在浏览器中完成 BigSeller 登录和验证码。' +
+        '登录完成后浏览器会自动关闭，session cookie 将被持久化，之后网页端同步即可正常使用。' +
+        `（日志: ${logFile}）`,
+    };
+  } catch (error) {
+    closeLogFd();
+    cleanupLock();
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `无法建立 BigSeller 登录会话：${message}`,
+    };
   }
-
-  fs.writeFileSync(lockFile, '', 'utf-8');
-
-  // 将之前日志截断，保留最近一次
-  const logFd = fs.openSync(logFile, 'w');
-
-  // detached spawn — 不等待 Python 进程结束，立即返回
-  // stdout/stderr 写入日志文件，便于排查 session 持久化是否成功
-  const proc = spawn('python', [
-    '-m', 'tools.bigseller-scraper.bigseller_scraper',
-  ], {
-    cwd: projectRoot,
-    detached: true,
-    stdio: ['ignore', logFd, logFd],
-    env: {
-      ...process.env,
-      BS_HEADLESS: '0',
-      BS_SESSION_ONLY: '1',
-      PYTHONIOENCODING: 'utf-8',
-    },
-  });
-
-  // Python 进程退出时清理锁文件
-  proc.on('close', () => {
-    try { fs.unlinkSync(lockFile); } catch { /* ignore */ }
-  });
-  proc.on('error', () => {
-    try { fs.unlinkSync(lockFile); } catch { /* ignore */ }
-  });
-
-  proc.unref();
-
-  return {
-    success: true,
-    message:
-      '已在服务器上打开 Chrome 浏览器，请在浏览器中完成 BigSeller 登录和验证码。' +
-      '登录完成后浏览器会自动关闭，session cookie 将被持久化，之后网页端同步即可正常使用。' +
-      `（日志: ${logFile}）`,
-  };
 }
 
 // ─── P5-SY9H: 海外仓同步状态（供海外库存页使用）───────────────

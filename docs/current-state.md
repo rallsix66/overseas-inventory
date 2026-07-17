@@ -1,12 +1,14 @@
 # Current Project State
 
+> 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
+
 > 2026-07-17 Preview data update: Vercel Preview 的三项 Supabase 变量均只指向 `DIS Staging`，Production 变量与数据未改动。Staging 已用 Production 只读脱敏业务快照替换 `CODEX-SMOKE` 数据：1 Product、341 ProductVariant、341 Inventory、6 Warehouse、2 Shipment、5 手工物流事件与 11 外部物流事件；跨库内容哈希逐表一致。未复制 Production Auth、用户偏好、同步历史、Token Cache、Warehouse sync_url 或 Provider raw_payload。Staging Admin 可见全部 341 SKU / 5 个海外仓 / 34 条有效补货建议；Operator 仅分配 ID 仓并通过 RLS 仅可见 40 SKU。Preview 首页、P7 与补货页已用真实快照完成页面复验，等待用户确认后再合并主线。
 
 > 文档导航：[文档树](README.md) · [当前任务包](tasks/current-task.md) · [项目概览](project-overview.md) · [架构](architecture.md) · [数据库设计](database-design.md)
 
 ## Current Phase
 
-**Stage 1–4 顺序实施代码完成，Production 数据库变更已部署，独立 Staging 数据库与真实数据 Preview 验收完成**（2026-07-17，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3879/3879（87 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。**Production `DIS Project` 已应用 00041–00047；`DIS Staging`（project ref `hyarhvsjhkjpallbyifn`）已从空库严格重放 00001–00047，并加载 Production 只读脱敏业务快照。Preview 已验证真实页面、Admin/Operator RLS 与原有写入链路；Production 环境变量和业务数据未改动。**
+**Stage 1–4 顺序实施代码完成，Production 数据库变更已部署，独立 Staging 数据库与真实数据 Preview 验收完成**（2026-07-17，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3883/3883（88 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。**Production `DIS Project` 已应用 00041–00047；`DIS Staging`（project ref `hyarhvsjhkjpallbyifn`）已从空库严格重放 00001–00047，并加载 Production 只读脱敏业务快照。Preview 已验证真实页面、Admin/Operator RLS 与原有写入链路；Production 环境变量和业务数据未改动。**
 
 ## Current Task
 
