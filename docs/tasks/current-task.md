@@ -1,20 +1,30 @@
 # Current Task Packet
 
-## 状态概览（2026-07-16）
+## 状态概览（2026-07-17）
 
 | 项目 | 状态 |
 |------|------|
 | Stage 0 治理 | **Stage 0A 审计完成** — 五份定稿方案（P0/P1/P7/首页/总顺序）已通过 Codex 架构终审 |
 | Stage 1 P0 喜运达物流轨迹 API 接入 | **DONE + 绑定闭环 CODE DONE** — 既有生产 API/Cron 冒烟已完成；本分支新增未绑定记录、同仓同国 Shipment 候选与不可逆绑定 UI |
-| Stage 2 P1 预测式补货引擎 | **DB DEPLOYED + READ SMOKE PASS** — 00041–00044 已应用；Admin/Operator 补货与在途 RPC 通过；待 Preview 与 Admin 写入验收 |
-| Stage 3 P7 全球库存作战室 | **DB DEPLOYED + READ SMOKE PASS** — 00045–00046 已应用；列表、详情与 Operator 仓库隔离通过；待 Preview 页面验收 |
-| Stage 4 首页决策看板 | **DB DEPLOYED + READ SMOKE PASS** — 00047 已应用；Admin/Operator 仓库健康 RPC 通过；待 Preview 页面验收 |
-| DIS Staging | **READY + FULL MIGRATION REPLAY PASS** — 新项目 `hyarhvsjhkjpallbyifn` 已从空库严格执行 00001–00047；18/18 public 表启用 RLS，关键 RPC 权限通过；待 Vercel Preview 接线 |
+| Stage 2 P1 预测式补货引擎 | **DB + PREVIEW PASS** — 00041–00044 已应用；Admin 真实快照返回 34 条有效建议，Operator 仓库隔离与原有写入链路通过 |
+| Stage 3 P7 全球库存作战室 | **DB + PREVIEW PASS** — 00045–00046 已应用；Admin 341 SKU，Operator 仅 ID 仓 40 SKU；列表、详情、队列与分页通过 |
+| Stage 4 首页决策看板 | **DB + PREVIEW PASS** — 00047 已应用；真实仓库健康、库存、在途与行动摘要通过 |
+| DIS Staging | **READY + REAL-DATA PREVIEW PASS** — `hyarhvsjhkjpallbyifn` 已重放 00001–00047，并加载 Production 只读脱敏业务快照；Preview 三项 Supabase 变量只指向 Staging |
 | P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
 | P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
 | 全量测试 | **3879/3879**（87 files, 0 failures）；lint 0 errors / 31 warnings；build pass |
 
 ## 本次已完成（2026-07-15）
+
+### PREVIEW-PRODUCTION-SNAPSHOT（2026-07-17）
+
+- Production 全程只读；Vercel Production 环境变量和数据均未修改。
+- Staging 单事务清理 `CODEX-SMOKE` 业务数据并加载脱敏快照：1 Product、341 ProductVariant、341 Inventory、6 Warehouse、2 Shipment、2 ShipmentItem、5 TrackingEvent、1 ShipmentExternalRef、11 TrackingEventExternal。
+- 跨库逐表内容哈希一致：Product、Warehouse（`sync_url` 统一置空）、ProductVariant 公共字段、Inventory、Shipment（排除 `created_by`）、ShipmentItem、TrackingEvent（排除 `created_by`）、外部引用/事件（`raw_payload` 置空）。
+- 不复制 Production Auth、Profiles、UserVariantPreference、SyncRun、SyncLog、ProviderTokenCache；Staging 记录创建者统一映射到临时 Admin。
+- Operator 重新分配 Production 快照中的 ID 仓；RLS 结果为 1 Warehouse / 40 ProductVariant / 40 Inventory / 0 非 ID Inventory。
+- Preview 页面复验：Operator 首页显示印尼仓真实库存；P7 显示 40 SKU、2 页且无 `CODEX-SMOKE`；Admin RPC 显示 341 SKU、5 个海外仓、34 条补货建议。
+- 当前保持在 `codex/sequential-roadmap`，等待用户确认后再合并 `master`。
 
 ### SEQUENTIAL-ROADMAP-IMPLEMENTATION
 
@@ -28,8 +38,8 @@
 - 数据库只读验收：Admin/Operator 的补货、在途、P7 列表/详情和首页健康度 RPC 均返回正确契约；Operator 仅可见 1 个已分配仓库，补货/P7/首页/详情的仓库隔离断言全部为 true（无泄露）。迁移后安全与性能顾问未发现本批新增对象相关项。
 - Staging：Supabase `DIS Staging`（project ref `hyarhvsjhkjpallbyifn`，Singapore）已创建；00001–00047 共 47 条 migration 从空库重放成功，migration 历史连续无缺口。18 个 public 基础表全部启用 RLS；新增六个 P1/P7/首页 RPC 均为 `SECURITY INVOKER`、空 `search_path`、anon 无执行权、authenticated 有执行权。安全/性能顾问均为 0 error，保留的是既有策略/索引类 warning。
 - 数据库漂移：Staging 按仓库 migration 链生成，较 Production 多出 `product_variant.is_archived/archived_at/archived_by`、对应索引/外键，以及 `claim_sync_run_system(...)`。这些对象来自 00010/00011，说明 Production 早期 SQL Editor 执行结果与当前 migration 链存在历史漂移；本任务不直接改 Production，后续须单独做生产基线与补齐评审。
-- 剩余：Vercel Preview 尚未切换到 Staging；Production 环境变量保持不变。仍需在 Preview 页面完成 Admin/Operator 身份、真实页面、仓库参数、计划发货与取消写入验收。
-- 2026-07-16 最新进展：Vercel Preview 的 `NEXT_PUBLIC_SUPABASE_URL` 与 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 已仅对 Preview 指向 Staging，Production 变量未改动；`SUPABASE_SERVICE_ROLE_KEY`、Staging Admin/Operator 和页面/写入验收仍待完成。此项覆盖上方“尚未切换”的旧描述。
+- Preview 接线、Staging Admin/Operator、页面/RLS/写入验收与真实业务快照均已完成；Production 环境变量和数据未改动。
+- 剩余：等待用户确认真实数据 Preview 效果；确认前不得合并 `master`。
 
 
 ## 最近已完成（2026-07-10）
@@ -62,7 +72,7 @@
 
 ## 当前阻塞
 
-- **Vercel Preview 接线与页面/写入验收待执行**：Staging 数据库和全量 migration 重放已完成；仍须将 Vercel Preview 的 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY` 指向 `DIS Staging`，Production target 不得修改。随后用 Staging Admin/Operator 验证真实页面，并由 Admin 验证仓库参数、计划发货与取消写入。通过前不得宣称生产完成。
+- **等待用户确认 Preview 后合并**：真实数据 Preview、Admin/Operator 页面、写入链路和 RLS 已完成验收；当前不再推进代码或主线变更，直到用户明确确认。
 - **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。与 P0 喜运达物流轨迹 API 接入无关，不阻塞 Stage 1。
 - **Production Migration 历史与 Schema 需基线化后再采用 CLI push**：Production 的 00001–00040 早期通过 SQL Editor 执行且未登记在远端 migration 历史；远端历史仅登记 00041–00047。Staging 已证明仓库 00001–00047 可从空库连续重放，并暴露 Production 缺失的 00010/00011 对象。未来启用 `supabase db push` 或补齐 Production 前必须先做 history baseline/repair 与对象级影响评审，禁止直接重跑旧 migration。
 
