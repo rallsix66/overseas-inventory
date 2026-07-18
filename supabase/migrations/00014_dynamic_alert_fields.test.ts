@@ -76,16 +76,16 @@ describe('P5-SY12C — Migration 00014', () => {
 
   // ─── 5. RPC 步骤 5b 校验 daily_sales ─────────────────────────────────
 
-  it('RPC 步骤 5b 校验 daily_sales 非数字类型报错', () => {
-    expect(migrationSrc).toMatch(/daily_sales 必须为数字类型/);
+  it('RPC 步骤 5b 校验 daily_sales 非法类型报错', () => {
+    expect(migrationSrc).toMatch(/daily_sales 类型非法（期望数字\/null\/空字符串\/占位符/);
   });
 
   it('RPC 步骤 5b 拒绝 daily_sales NaN/Infinity 非有限值', () => {
     expect(migrationSrc).toMatch(/daily_sales 不能为非有限值/);
   });
 
-  it('RPC 步骤 5b 校验 estimated_days 非数字类型报错', () => {
-    expect(migrationSrc).toMatch(/estimated_days 必须为数字类型/);
+  it('RPC 步骤 5b 校验 estimated_days 非法类型报错', () => {
+    expect(migrationSrc).toMatch(/estimated_days 类型非法（期望数字\/null\/空字符串\/占位符/);
   });
 
   it('RPC 步骤 5b 拒绝 estimated_days NaN/Infinity 非有限值', () => {
@@ -177,8 +177,8 @@ describe('P5-SY12C — Migration 00014', () => {
 
   // ─── 10. 注释声明 ────────────────────────────────────────────────────
 
-  it('注释声明不修改已执行 Migration 00001~00013', () => {
-    expect(migrationSrc).toMatch(/不修改.*Migration/);
+  it('注释声明不修改已执行 00001~00013', () => {
+    expect(migrationSrc).toMatch(/不修改 00001~00013/);
   });
 
   it('注释声明 P5-SY12C 告警升级', () => {
