@@ -1,7 +1,7 @@
 // SKU (ProductVariant) 模块数据访问层 — 封装 product_variant + user_variant_preference 表查询
 //
 // P5-SY11G: 归档已从全局 product_variant.is_archived 迁移为用户级 user_variant_preference。
-// product_variant.is_archived 列为遗留列，所有业务代码停止读写。
+// Migration 00011 保持不可变；00048 已清理旧全局归档列，业务只使用用户级偏好。
 //
 // 错误传播约定：
 // - 数据库查询/写入失败 → 抛出 VariantError，由 actions 层捕获并返回中文错误

@@ -1,0 +1,14 @@
+-- OPT-4 Production rollback TEMPLATE — DO NOT EXECUTE THIS FILE DIRECTLY.
+--
+-- Once 00048 is recorded as applied, directly dropping the function would make
+-- the live Schema disagree with migration history. A real rollback must be a
+-- new 00049+ forward migration, reviewed and deployed through the same gates.
+--
+-- Candidate body for that future migration (commented out intentionally):
+--
+-- DROP FUNCTION IF EXISTS public.claim_sync_run_system(
+--   uuid, text, uuid, integer, uuid, text, text
+-- );
+--
+-- The future migration must also include post-deploy catalog/history checks.
+-- It must not recreate the obsolete 00011 archive columns in Production.

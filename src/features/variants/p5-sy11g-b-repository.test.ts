@@ -127,7 +127,6 @@ describe('P5-SY11G-B — VariantItem 类型', () => {
     const item: types.VariantItem = {
       id: VALID_UUID, product_id: null, sku: 'SKU-1', country: 'TH', name: 'Test',
       match_status: 'unmatched', last_sync_at: null,
-      is_archived: false, archived_at: null, archived_by: null,
       created_at: '', updated_at: '',
       productName: null, productCode: null,
       isArchivedByUser: false,
@@ -169,8 +168,8 @@ describe('P5-SY11G-B — 文档注释', () => {
     repoSrc = fs.readFileSync(REPO_PATH, 'utf-8');
   });
 
-  it('文件头注释说明 is_archived 列为遗留列', () => {
-    expect(repoSrc).toContain('is_archived 列为遗留列');
+  it('文件头注释说明 00048 已清理全局归档列', () => {
+    expect(repoSrc).toContain('00048 已清理旧全局归档列');
   });
 
   it('文件头注释说明使用 user_variant_preference', () => {

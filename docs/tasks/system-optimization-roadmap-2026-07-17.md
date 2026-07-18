@@ -138,7 +138,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - 禁止为了让 CLI 显示一致而伪造对象状态。
 - 审计阶段只读，不修改 Migration、Production Schema 或历史表。
 
-**2026-07-18 审计结果**：Production 历史仅登记 00041–00047，Staging 登记 00001–00047。相同只读目录查询确认 Policy 42/42、Table/RLS 18/18、Trigger 13/13 完全一致；精确差异只有 00010 的 `claim_sync_run_system(...)` 在 Production 缺失，以及 00011 的三列/FK/索引只存在于 Staging。00010 为 `MISSING_REQUIRED`，须由 00048+ 前向补齐；00011 已被 00012 的用户级偏好语义替代，不得在 Production 复活。00001–00040 汇总为 28 `EXACT_PRESENT`、11 `OBSOLETE_SUPERSEDED`、1 `MISSING_REQUIRED`、0 `PRESENT_DIVERGENT`。三轮独立阶段审查已 PASS。详见 [只读审计报告](../reports/2026-07-18-production-migration-baseline-audit.md)。Production 备份/PITR 是控制面信息，当前仍待用户在 Supabase 控制台确认；该确认完成前不得进入 OPT-4。
+**2026-07-18 审计结果**：Production 历史仅登记 00041–00047，Staging 在 OPT-4 前登记 00001–00047。相同只读目录查询确认 Policy 42/42、Table/RLS 18/18、Trigger 13/13 完全一致；精确差异只有 00010 的 `claim_sync_run_system(...)` 在 Production 缺失，以及 00011 的三列/FK/索引只存在于 Staging。00010 为 `MISSING_REQUIRED`，须由 00048+ 前向补齐；00011 已被 00012 的用户级偏好语义替代，不得在 Production 复活。00001–00040 汇总为 28 `EXACT_PRESENT`、11 `OBSOLETE_SUPERSEDED`、1 `MISSING_REQUIRED`、0 `PRESENT_DIVERGENT`。三轮独立阶段审查已 PASS。详见 [只读审计报告](../reports/2026-07-18-production-migration-baseline-audit.md)。用户随后确认继续，并完成了 Production 逻辑备份、SHA-256 与归档可读性校验，因此 OPT-4 前置恢复点门禁已满足。
 
 ## OPT-4：历史修复与 Schema 前向补齐
 
@@ -153,6 +153,8 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - 先在全新本地/临时数据库重放 00001–最新，再部署 Staging。
 - Staging 完成 Admin/Operator/RLS/关键页面和回滚演练后，才安排 Production 维护窗口。
 - Production 执行后重新核对 Schema、Migration 历史和数据库顾问结果。
+
+**2026-07-18 Staging 结果**：00048 已在 Staging 成功应用并登记。`claim_sync_run_system(...)` 的 owner、`SECURITY DEFINER`、空 `search_path` 与 service-role-only ACL 均通过；00011 遗留的三列/FK/索引已在零有效旧归档数据门禁下移除。事务内合法 Dry Run、Real Write 拒绝和 Operator 拒绝通过且回滚无残留，本机 PostgreSQL 17 契约测试 14/14。三轮独立阶段审查最终 PASS；当前状态为 `STAGING REVIEW PASS / REMOTE CI PENDING`，不得提前标 DONE。Production 00048 与 history repair 必须等待远程 CI 和用户单独维护窗口批准。详见 [OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)。
 
 ## OPT-5：数据库最小权限收口
 

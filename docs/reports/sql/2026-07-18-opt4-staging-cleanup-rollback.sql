@@ -1,0 +1,24 @@
+-- OPT-4 Staging cleanup rollback TEMPLATE — DO NOT EXECUTE THIS FILE DIRECTLY.
+--
+-- Recreating these compatibility objects after 00048 is recorded would create
+-- deliberate Schema/history drift. Prefer rebuilding the disposable Staging
+-- environment. If a rollback is still required, create and independently review
+-- a new 00049+ forward migration, then restore convergence with another forward
+-- migration or a full environment rebuild.
+--
+-- Candidate body for that future migration (commented out intentionally):
+--
+-- ALTER TABLE public.product_variant
+--   ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false,
+--   ADD COLUMN IF NOT EXISTS archived_at timestamptz,
+--   ADD COLUMN IF NOT EXISTS archived_by uuid;
+--
+-- ALTER TABLE public.product_variant
+--   ADD CONSTRAINT product_variant_archived_by_fkey
+--   FOREIGN KEY (archived_by) REFERENCES public.profiles(id);
+--
+-- CREATE INDEX IF NOT EXISTS idx_variant_is_archived
+--   ON public.product_variant (is_archived)
+--   WHERE is_archived = true;
+--
+-- Never restore the obsolete 00011 global-archive RLS semantics.
