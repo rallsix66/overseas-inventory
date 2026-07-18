@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-18 System optimization：`OPT-1-CI-BASELINE` 已完成本地实现、Draft PR #3 和 PR CI；默认质量门与 PostgreSQL 17 并发测试均通过，Vercel Git 集成 Preview 通过。当前状态为 `CODE COMPLETE / PR CI PASS / FINAL REVIEW PENDING`。关闭顺序：阶段终审 PASS → 合并 PR #3 → `master` push CI PASS → OPT-1 DONE → 切换 OPT-2。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
+> 2026-07-18 System optimization：`OPT-1-CI-BASELINE` 已通过阶段终审，PR #3 已合并到 `master`；主线 GitHub Actions run `29626065160` 的默认质量门与 PostgreSQL 17 并发测试均通过，OPT-1 正式 `DONE`。当前任务切换为 `OPT-2-TEST-COVERAGE`：把两个漏跑 Migration 测试纳入默认套件，并为 00041–00047 增加隔离 PostgreSQL replay、RPC 与 RLS 返回行集测试。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
@@ -10,14 +10,11 @@
 
 ## Current Phase
 
-**Stage 1–4 已完成、合并并归档，当前进入系统优化与工程治理。** P0 生产 API 链路、P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）均已完成。当前本地质量门：**3883/3883（88 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。Production `DIS Project` 的 Migration 历史只登记 00041–00047，Staging 已从空库严格重放 00001–00047；因此 Production 在启用 CLI push 前仍需单独完成 Migration 基线审计与历史修复。
+**Stage 1–4 已完成、合并并归档，当前进入系统优化与工程治理。** P0 生产 API 链路、P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）均已完成。OPT-1 主线质量门为 **3883/3883（88 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过；OPT-2 正在扩大可见测试基线。Production `DIS Project` 的 Migration 历史只登记 00041–00047，Staging 已从空库严格重放 00001–00047；因此 Production 在启用 CLI push 前仍需单独完成 Migration 基线审计与历史修复。
 
 ## Current Task
 
-> 2026-07-17 最新进展：顺序路线已合并 `master`。用户已授权 Codex 执行系统优化，但要求先把完整方案写入项目文档树。
-
-
-**OPT-1-CI-BASELINE — CODE COMPLETE / PR CI PASS / FINAL REVIEW PENDING** — 已新增 Node 24 版本约束与 GitHub Actions 自动质量门：默认测试、lint warning budget、build、diff check，以及隔离 PostgreSQL 17 并发测试。本地 3883/3883、lint 0 error / 31 warning、build 和 diff check 通过；PR #3 的 44 项 PostgreSQL 并发测试与质量 job 均通过。本任务未连接 Supabase Production/Staging、未执行手动 Vercel deploy/promote、未修改 Migration/RPC/RLS。PR 尚未合并，`master` push CI 尚未运行，因此不得标记 DONE。详细范围与后续顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) 和 [当前任务包](tasks/current-task.md)。
+**OPT-2-TEST-COVERAGE — IMPLEMENTATION IN PROGRESS / REMOTE DB VERIFY PENDING** — `vitest.config.mts` 已显式纳入 00013/00014 两个历史漏跑测试，并把过期断言校准到真实 00014 契约；新增 PostgreSQL 17 行为套件，直接执行仓库中的 00041–00047 SQL，验证列/函数/ACL、`forecast_stockout` 边界、P1/P7/首页 RPC，以及 Admin、Operator、disabled user、anon、跨仓身份的实际返回行集。该套件只使用 GitHub Actions 隔离数据库，不连接 Supabase Production/Staging，不修改任何已执行 Migration。详细范围见 [当前任务包](tasks/current-task.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 

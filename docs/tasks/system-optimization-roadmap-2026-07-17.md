@@ -18,13 +18,13 @@
 |---|---|
 | 主线 | `master` 已合并 `codex/sequential-roadmap`，HEAD 包含 P0–P7、首页及 Preview 验收归档 |
 | Migration | 仓库包含 00001–00047，共 47 个 SQL Migration |
-| 默认测试 | 88 个文件、3883 个测试，0 failure |
-| 全部测试文件 | 92 个：88 个默认测试、1 个并发测试、1 个 live provider 测试、2 个当前未被 Vitest 扫描的 migration 测试 |
+| 默认测试 | OPT-1 基线为 88 个文件、3883 个测试；OPT-2 已把 2 个漏跑 Migration 测试纳入默认套件 |
+| 全部测试文件 | OPT-2 新增 1 个隔离 PostgreSQL replay/RPC/RLS 行为测试；并发与 live provider 测试继续独立运行 |
 | Lint | 0 error / 31 warning，均为未使用变量 |
 | 构建 | Next.js build / TypeScript 通过 |
 | Staging | 从空库连续重放 00001–00047，真实脱敏快照与 Admin/Operator RLS 验收通过 |
 | Production | 业务 Schema 已包含大量早期对象，但 Migration 历史只登记 00041–00047；与 Staging 存在已确认 Schema 漂移 |
-| 自动化 | OPT-1 已新增 `.github/workflows/ci.yml`；PR #3 的默认质量门与 PostgreSQL 17 并发 job 均通过 |
+| 自动化 | OPT-1 已通过终审并合并 PR #3；`master` run `29626065160` 的默认质量门与 PostgreSQL 17 并发 job 均通过 |
 
 ## 对旧总结的校准
 
@@ -34,7 +34,7 @@
 - Vercel Preview、独立 Supabase Staging 和真实脱敏数据验收。
 - Production 的 00041–00047 部署与只读 RPC/RLS 冒烟。
 - ProductVariant、海外库存、在途、团队账号和同步链路的既定 MVP 范围。
-- 缺少 CI 的历史缺口已由 OPT-1 在 Draft PR #3 中完成实现并通过 PR 质量门；待阶段终审、合并与 `master` push CI 后正式关闭。
+- 缺少 CI 的历史缺口已由 OPT-1 关闭：阶段终审 PASS、PR #3 已合并，`master` 两个 GitHub Actions job 均通过。
 
 ### 仍然成立
 
@@ -44,7 +44,7 @@
 
 ### 本次审计新增或提高优先级
 
-- 两个 `supabase/migrations/*.test.ts` 不在 `vitest.config.mts` 的 `src/**/*.test.ts` 扫描范围内，默认质量门实际漏跑。
+- 两个 `supabase/migrations/*.test.ts` 曾不在 `vitest.config.mts` 的 `src/**/*.test.ts` 扫描范围内；OPT-2 已显式纳入默认套件并发现、修正 00014 的 3 条过期测试断言。
 - Production/Staging 数据库顾问均无 ERROR，但存在需人工分级的既有 WARNING：
   - 5 个函数未固定 `search_path`；
   - `get_user_role()`、`handle_new_user()` 继承了 `PUBLIC/anon EXECUTE`；
@@ -71,7 +71,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 数据库任务必须串行。OPT-3 完成前，不得对 Production 执行 `db push`、旧 Migration 重放或新的 Production Schema 变更。
 
-## OPT-1：CI 基线（CODE COMPLETE / PR CI PASS / FINAL REVIEW PENDING）
+## OPT-1：CI 基线（DONE）
 
 **目标**：让每次 PR 和 `master` push 自动验证当前稳定基线。
 
@@ -93,11 +93,11 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **2026-07-17 本地结果**：已新增 `.nvmrc`（与 Vercel Project Settings 的 Node `24.x` 对齐）和 `.github/workflows/ci.yml`。YAML 结构解析通过；默认测试 3883/3883、lint 0 error / 31 warning budget、占位 Supabase 环境 build 均通过。
 
-**2026-07-18 远程结果**：Draft PR #3（`agent/opt-1-ci-baseline` → `master`）首次运行通过：`PostgreSQL concurrency tests` 44/44（49 秒），`Tests, lint, and build`（1 分 2 秒），Vercel Git 集成 Preview 亦通过。workflow 未连接 Supabase Production/Staging，也未执行手动 Vercel deploy/promote。
+**2026-07-18 远程结果**：PR #3（`agent/opt-1-ci-baseline` → `master`）通过指定独立审查并完成合并，merge commit 为 `222b2f2`。`master` GitHub Actions run `29626065160` 的 `PostgreSQL concurrency tests` 44/44 与 `Tests, lint, and build` 全部通过。workflow 未连接 Supabase Production/Staging，也未执行手动 Vercel deploy/promote。
 
-**关闭顺序**：指定独立审查会话明确 PASS → 将 PR #3 转为 Ready 并合并 → 等待 `master` push 的 `PostgreSQL concurrency tests` 与 `Tests, lint, and build` 均通过 → 标记 OPT-1 DONE → 切换 OPT-2。任何一步未完成都不得提前关闭 OPT-1。
+**关闭结果**：阶段终审 PASS → PR #3 Ready 并合并 → `master` 两个 CI job PASS，全部完成；OPT-1 已关闭并切换 OPT-2。
 
-## OPT-2：测试覆盖加固
+## OPT-2：测试覆盖加固（ACTIVE / REMOTE DB VERIFY PENDING）
 
 **目标**：保留有效架构护栏，同时把关键结论从“源码包含某段文本”升级为“数据库实际行为成立”。
 
@@ -112,6 +112,8 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 5. 保留以下负向架构护栏：页面不直连 Supabase、客户端无 `service_role`、Repository/Server Action 边界、已执行 Migration 不被修改。
 
 **验收**：所有测试进入可见的 CI job；权限测试验证返回行集，而不是只匹配 SQL/TS 源码文本。
+
+**2026-07-18 实施进展**：默认 Vitest 已纳入 00013/00014；新增 `migrations-00041-00047.postgres.test.ts`，在 PostgreSQL 17 中按顺序执行真实 00041–00047 SQL，并验证 Schema/ACL、P1/P7/首页 RPC 边界与 Admin、Operator、disabled、anon、跨仓返回行集。CI 的 PostgreSQL job 已增加独立可见步骤；等待 PR 远程数据库结果与阶段终审，当前不得进入 OPT-3。
 
 ## OPT-3：Production Migration 基线审计
 

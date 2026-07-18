@@ -10,7 +10,11 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: [
+      'src/**/*.test.ts',
+      'supabase/migrations/00013_extend_user_variant_preference_favorited.test.ts',
+      'supabase/migrations/00014_dynamic_alert_fields.test.ts',
+    ],
     alias: {
       'server-only': path.join(__dirname, 'src', 'features', 'sync', '__mocks__', 'server-only.ts'),
     },

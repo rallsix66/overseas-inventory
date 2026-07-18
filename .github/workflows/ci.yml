@@ -102,3 +102,6 @@ jobs:
 
       - name: Run PostgreSQL concurrency suite
         run: npm run test:concurrency
+
+      - name: Replay migrations and verify RPC/RLS behavior
+        run: npm run test:database-contract
