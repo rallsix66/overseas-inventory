@@ -8,7 +8,7 @@
 // - 恢复后库存正确
 // - 不删除 ProductVariant（模型不变）
 // - WEBSYNC_REAL_WRITE_ENABLED 保持 disabled
-// - product_variant.is_archived 列保留但业务代码不读写
+// - Migration 00011 保持不可变，最终全局归档列由 00048 清理
 
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
@@ -17,12 +17,13 @@ import path from 'node:path';
 const SRC_DIR = path.resolve(process.cwd(), 'src');
 const MIGRATION_00011 = path.resolve(process.cwd(), 'supabase/migrations/00011_add_variant_soft_archive.sql');
 const MIGRATION_00012 = path.resolve(process.cwd(), 'supabase/migrations/00012_user_variant_preference.sql');
+const MIGRATION_00048 = path.resolve(process.cwd(), 'supabase/migrations/00048_restore_claim_sync_run_system.sql');
 
 // ─── is_archived 代码路径已全部替换 ──────────────────────────────────
 
 describe('P5-SY11G-F — is_archived 代码路径已全部替换', () => {
-  it('业务代码不再读写 is_archived（除 type 定义外）', () => {
-    // 搜索所有 .ts/.tsx 文件（排除 database.ts 类型定义和测试文件）
+  it('业务代码不再读写 is_archived', () => {
+    // 搜索所有 .ts/.tsx 文件（排除生成类型和测试文件）
     const files = walkDir(SRC_DIR, ['.ts', '.tsx']);
     let businessRefs = 0;
 
@@ -107,7 +108,7 @@ describe('P5-SY11G-F — 模型不变', () => {
     expect(migrationSrc).toMatch(/Product\s*→\s*ProductVariant\s*→\s*Inventory/);
   });
 
-  it('product_variant.is_archived 列保留（不 DROP）', () => {
+  it('Migration 00012 本身不回写历史 00011', () => {
     const migrationSrc = fs.readFileSync(MIGRATION_00012, 'utf-8');
     expect(migrationSrc).not.toMatch(/DROP.*is_archived/i);
   });
@@ -188,14 +189,20 @@ describe('P5-SY11G-F — 不启动自动 Real Write', () => {
   });
 });
 
-// ─── Migration 00011 列保留 ──────────────────────────────────────────
+// ─── Migration 00011 不可变，00048 收敛最终状态 ─────────────────────
 
-describe('P5-SY11G-F — Migration 00011 列保留', () => {
-  it('is_archived 列在 DB 中保留（Migration 00011 不修改）', () => {
+describe('P5-SY11G-F — 历史文件不可变与最终 Schema 收敛', () => {
+  it('Migration 00011 仍保留原始 ADD，文件未被回写', () => {
     const m11Src = fs.readFileSync(MIGRATION_00011, 'utf-8');
     expect(m11Src).toMatch(/ADD COLUMN IF NOT EXISTS is_archived/);
-    // 没有 DROP COLUMN
     expect(m11Src).not.toMatch(/DROP COLUMN.*is_archived/);
+  });
+
+  it('Migration 00048 前向删除三个旧全局归档列', () => {
+    const m48Src = fs.readFileSync(MIGRATION_00048, 'utf-8');
+    expect(m48Src).toMatch(/DROP COLUMN IF EXISTS archived_by/);
+    expect(m48Src).toMatch(/DROP COLUMN IF EXISTS archived_at/);
+    expect(m48Src).toMatch(/DROP COLUMN IF EXISTS is_archived/);
   });
 
   it('Migration 00012 不修改 Migration 00011', () => {

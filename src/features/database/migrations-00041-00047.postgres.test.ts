@@ -42,8 +42,10 @@ CREATE SCHEMA auth AUTHORIZATION postgres;
 
 DO $$ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE service_role NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 GRANT USAGE ON SCHEMA public, auth TO anon, authenticated;
+GRANT USAGE ON SCHEMA public TO service_role;
 
 CREATE TABLE auth.users (id uuid PRIMARY KEY);
 
@@ -80,8 +82,15 @@ CREATE TABLE public.product_variant (
   sku text NOT NULL,
   country text NOT NULL,
   name text NOT NULL,
-  match_status text NOT NULL DEFAULT 'unmatched'
+  match_status text NOT NULL DEFAULT 'unmatched',
+  is_archived boolean NOT NULL DEFAULT false,
+  archived_at timestamptz,
+  archived_by uuid REFERENCES public.profiles(id)
 );
+
+CREATE INDEX idx_variant_is_archived
+  ON public.product_variant (is_archived)
+  WHERE is_archived = true;
 
 CREATE TABLE public.warehouse (
   id uuid PRIMARY KEY,
@@ -90,6 +99,34 @@ CREATE TABLE public.warehouse (
   type text NOT NULL CHECK (type IN ('domestic', 'overseas')),
   is_active boolean NOT NULL DEFAULT true,
   lead_time_days integer
+);
+
+CREATE TABLE public.sync_run (
+  id uuid PRIMARY KEY,
+  warehouse_id uuid NOT NULL REFERENCES public.warehouse(id),
+  mode text NOT NULL,
+  status text NOT NULL,
+  triggered_by uuid REFERENCES public.profiles(id),
+  triggered_from text,
+  started_at timestamptz,
+  heartbeat_at timestamptz,
+  created_at timestamptz,
+  dry_run_run_id uuid,
+  input_artifact_hash text,
+  plan_artifact_hash text,
+  locked_by uuid,
+  lease_expires_at timestamptz,
+  exit_code integer,
+  error_message text,
+  finished_at timestamptz,
+  CONSTRAINT dry_run_requires_input_artifact
+    CHECK (mode <> 'dry_run' OR input_artifact_hash IS NOT NULL)
+);
+
+CREATE TABLE public.sync_warehouse_lock (
+  warehouse_id uuid PRIMARY KEY REFERENCES public.warehouse(id),
+  locked_by uuid,
+  locked_at timestamptz
 );
 
 CREATE TABLE public.inventory (
@@ -254,6 +291,10 @@ INSERT INTO public.warehouse (id, name, country, type, is_active, lead_time_days
   ('${ids.warehouseA}', 'Warehouse A', 'TH', 'overseas', true, 10),
   ('${ids.warehouseB}', 'Warehouse B', 'VN', 'overseas', true, 20);
 
+INSERT INTO public.sync_warehouse_lock (warehouse_id) VALUES
+  ('${ids.warehouseA}'),
+  ('${ids.warehouseB}');
+
 INSERT INTO public.inventory (variant_id, warehouse_id, quantity, daily_sales) VALUES
   ('${ids.sharedVariant}', '${ids.warehouseA}', 10, 2),
   ('${ids.sharedVariant}', '${ids.warehouseB}', 20, 1),
@@ -284,7 +325,7 @@ function migrationSql(number: number, name: string): string {
 }
 
 async function queryAs<T extends QueryResultRow>(
-  role: 'anon' | 'authenticated',
+  role: 'anon' | 'authenticated' | 'service_role',
   userId: string | null,
   sql: string,
   values: readonly unknown[] = [],
@@ -318,7 +359,15 @@ function asArray(value: unknown): unknown[] {
   return value
 }
 
-describe('migrations 00041-00047 PostgreSQL replay and behavior', () => {
+describe('migrations 00041-00048 PostgreSQL replay and behavior', () => {
+  let guardFailureMessage = ''
+  let guardRollbackEvidence: {
+    functionName: string | null
+    legacyColumnCount: number
+    legacyConstraintCount: number
+    legacyIndex: string | null
+  }
+
   beforeAll(async () => {
     await client.connect()
     await client.query(BASE_SCHEMA_SQL)
@@ -338,13 +387,74 @@ describe('migrations 00041-00047 PostgreSQL replay and behavior', () => {
     }
 
     await client.query(SEED_SQL)
+
+    const migration00048 = migrationSql(48, 'restore_claim_sync_run_system')
+    await client.query(
+      'UPDATE public.product_variant SET is_archived = true WHERE id = $1',
+      [ids.archivedVariant],
+    )
+
+    await client.query('BEGIN')
+    let guardRejectedMigration = false
+    try {
+      await client.query(migration00048)
+    } catch (error: unknown) {
+      guardRejectedMigration = true
+      guardFailureMessage = error instanceof Error ? error.message : String(error)
+    } finally {
+      await client.query('ROLLBACK')
+    }
+    if (!guardRejectedMigration) {
+      throw new Error('00048 unexpectedly accepted legacy archive data')
+    }
+
+    const rollbackResult = await client.query<{
+      function_name: string | null
+      legacy_column_count: string
+      legacy_constraint_count: string
+      legacy_index: string | null
+    }>(`
+      SELECT
+        to_regprocedure(
+          'public.claim_sync_run_system(uuid,text,uuid,integer,uuid,text,text)'
+        )::text AS function_name,
+        (
+          SELECT count(*)
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'product_variant'
+            AND column_name IN ('is_archived', 'archived_at', 'archived_by')
+        )::text AS legacy_column_count,
+        (
+          SELECT count(*)
+          FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+          WHERE n.nspname = 'public'
+            AND t.relname = 'product_variant'
+            AND c.conname = 'product_variant_archived_by_fkey'
+        )::text AS legacy_constraint_count,
+        to_regclass('public.idx_variant_is_archived')::text AS legacy_index
+    `)
+    guardRollbackEvidence = {
+      functionName: rollbackResult.rows[0].function_name,
+      legacyColumnCount: Number(rollbackResult.rows[0].legacy_column_count),
+      legacyConstraintCount: Number(rollbackResult.rows[0].legacy_constraint_count),
+      legacyIndex: rollbackResult.rows[0].legacy_index,
+    }
+
+    await client.query(
+      'UPDATE public.product_variant SET is_archived = false WHERE id = $1',
+      [ids.archivedVariant],
+    )
+    await client.query(migration00048)
   }, 30_000)
 
   afterAll(async () => {
     await client.end()
   })
 
-  it('replays all seven migrations and creates their columns and RPCs', async () => {
+  it('replays migrations 00041-00048 and creates their columns and RPCs', async () => {
     const columns = await client.query<{ table_name: string; column_name: string }>(`
       SELECT table_name, column_name
       FROM information_schema.columns
@@ -370,6 +480,122 @@ describe('migrations 00041-00047 PostgreSQL replay and behavior', () => {
       ]) AS function_name
     `)
     expect(functions.rows.map((row) => row.function_name)).not.toContain(null)
+  })
+
+  it('rejects legacy archive data and rolls back the whole 00048 file atomically', () => {
+    expect(guardFailureMessage).toContain(
+      'OPT-4 refused to drop legacy product_variant archive columns because archive data exists',
+    )
+    expect(guardRollbackEvidence).toEqual({
+      functionName: null,
+      legacyColumnCount: 3,
+      legacyConstraintCount: 1,
+      legacyIndex: 'idx_variant_is_archived',
+    })
+  })
+
+  it('converges the 00010/00011 drift without reviving global archive state', async () => {
+    const functionResult = await client.query<{ function_name: string | null }>(`
+      SELECT to_regprocedure(
+        'public.claim_sync_run_system(uuid,text,uuid,integer,uuid,text,text)'
+      )::text AS function_name
+    `)
+    expect(functionResult.rows[0].function_name).not.toBeNull()
+
+    const legacyColumns = await client.query<{ column_name: string }>(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'product_variant'
+        AND column_name IN ('is_archived', 'archived_at', 'archived_by')
+    `)
+    expect(legacyColumns.rows).toEqual([])
+
+    const legacyIndex = await client.query<{ index_name: string | null }>(`
+      SELECT to_regclass('public.idx_variant_is_archived')::text AS index_name
+    `)
+    expect(legacyIndex.rows[0].index_name).toBeNull()
+  })
+
+  it('keeps claim_sync_run_system executable only by service_role', async () => {
+    const privileges = await client.query<{
+      service_role_schema_usage: boolean
+      service_role_execute: boolean
+      authenticated_execute: boolean
+      anon_execute: boolean
+    }>(`
+      SELECT
+        has_schema_privilege('service_role', 'public', 'USAGE') AS service_role_schema_usage,
+        has_function_privilege(
+          'service_role',
+          'public.claim_sync_run_system(uuid,text,uuid,integer,uuid,text,text)',
+          'EXECUTE'
+        ) AS service_role_execute,
+        has_function_privilege(
+          'authenticated',
+          'public.claim_sync_run_system(uuid,text,uuid,integer,uuid,text,text)',
+          'EXECUTE'
+        ) AS authenticated_execute,
+        has_function_privilege(
+          'anon',
+          'public.claim_sync_run_system(uuid,text,uuid,integer,uuid,text,text)',
+          'EXECUTE'
+        ) AS anon_execute
+    `)
+
+    expect(privileges.rows[0]).toEqual({
+      service_role_schema_usage: true,
+      service_role_execute: true,
+      authenticated_execute: false,
+      anon_execute: false,
+    })
+  })
+
+  it('allows service_role dry-run claims but rejects real-write and non-admin triggers', async () => {
+    const runId = '70000000-0000-0000-0000-000000000001'
+    await client.query('BEGIN')
+    try {
+      await client.query('SET LOCAL ROLE service_role')
+      const claim = await client.query<{ run_id: string }>(
+        `SELECT public.claim_sync_run_system(
+          $1, 'dry_run', $2, 300, $3, 'web', 'opt4-postgres-validation'
+        )::text AS run_id`,
+        [ids.warehouseA, runId, ids.admin],
+      )
+      expect(claim.rows).toEqual([{ run_id: runId }])
+
+      // The SECURITY DEFINER function performs the write. service_role does not
+      // need direct table SELECT; reset to the session owner for verification.
+      await client.query('RESET ROLE')
+      const inserted = await client.query<{ status: string; triggered_by: string }>(
+        'SELECT status, triggered_by::text FROM public.sync_run WHERE id = $1',
+        [runId],
+      )
+      expect(inserted.rows).toEqual([{ status: 'in_progress', triggered_by: ids.admin }])
+    } finally {
+      await client.query('ROLLBACK')
+    }
+
+    await expect(queryAs(
+      'service_role',
+      null,
+      "SELECT public.claim_sync_run_system($1, 'real_write', $2, 300, $3, 'web', 'opt4-postgres-validation')",
+      [ids.warehouseA, '70000000-0000-0000-0000-000000000002', ids.admin],
+    )).rejects.toThrow(/dry_run/)
+
+    await expect(queryAs(
+      'service_role',
+      null,
+      "SELECT public.claim_sync_run_system($1, 'dry_run', $2, 300, $3, 'web', 'opt4-postgres-validation')",
+      [ids.warehouseA, '70000000-0000-0000-0000-000000000003', ids.operator],
+    )).rejects.toThrow()
+
+    await expect(queryAs(
+      'authenticated',
+      ids.admin,
+      "SELECT public.claim_sync_run_system($1, 'dry_run', $2, 300, $3, 'web', 'opt4-postgres-validation')",
+      [ids.warehouseA, '70000000-0000-0000-0000-000000000004', ids.admin],
+    )).rejects.toThrow(/permission denied/i)
   })
 
   it('keeps RPCs security-invoker and denies anon execution', async () => {
