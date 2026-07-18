@@ -97,7 +97,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **关闭结果**：阶段终审 PASS → PR #3 Ready 并合并 → `master` 两个 CI job PASS，全部完成；OPT-1 已关闭并切换 OPT-2。
 
-## OPT-2：测试覆盖加固（ACTIVE / REMOTE DB VERIFY PENDING）
+## OPT-2：测试覆盖加固（CODE COMPLETE / PR CI PASS / STAGE REVIEW PENDING）
 
 **目标**：保留有效架构护栏，同时把关键结论从“源码包含某段文本”升级为“数据库实际行为成立”。
 
@@ -113,7 +113,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **验收**：所有测试进入可见的 CI job；权限测试验证返回行集，而不是只匹配 SQL/TS 源码文本。
 
-**2026-07-18 实施进展**：默认 Vitest 已纳入 00013/00014；新增 `migrations-00041-00047.postgres.test.ts`，在 PostgreSQL 17 中按顺序执行真实 00041–00047 SQL，并验证 Schema/ACL、P1/P7/首页 RPC 边界与 Admin、Operator、disabled、anon、跨仓返回行集。CI 的 PostgreSQL job 已增加独立可见步骤；等待 PR 远程数据库结果与阶段终审，当前不得进入 OPT-3。
+**2026-07-18 实施结果**：默认 Vitest 已纳入 00013/00014，90 files / 3926 tests 通过；新增 `migrations-00041-00047.postgres.test.ts`，在 PostgreSQL 17 中按顺序执行真实 00041–00047 SQL，并验证 Schema/ACL、P1/P7/首页 RPC 边界与 Admin、Operator、disabled、anon、跨仓返回行集。Draft PR #4 run `29626976756` 的现有并发测试 44/44、新增行为测试 10/10、默认质量 job 与 Vercel Preview 均通过。当前等待阶段独立审查；审查 PASS、PR 合并和 `master` CI PASS 前不得进入 OPT-3。
 
 ## OPT-3：Production Migration 基线审计
 
