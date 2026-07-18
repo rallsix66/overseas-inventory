@@ -409,7 +409,9 @@ describe('migrations 00041-00047 PostgreSQL replay and behavior', () => {
       lead_incomplete: boolean
     }>(
       'authenticated', ids.admin,
-      `SELECT * FROM public.forecast_stockout(
+      `SELECT est_stockout_date::text AS est_stockout_date,
+        effective_inbound, ds_incomplete, lead_incomplete
+      FROM public.forecast_stockout(
         10, 2, 10,
         jsonb_build_array(jsonb_build_object('eta', CURRENT_DATE + 5, 'remaining', 10))
       )`,
