@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-1-CI-BASELINE — CODE COMPLETE / REMOTE VERIFY PENDING**
+**OPT-1-CI-BASELINE — DONE / FINAL REVIEW PENDING**
 
 路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
 
@@ -103,7 +103,11 @@
 - `npm run lint -- --max-warnings 31`：0 error / 31 warning。
 - 使用 CI 占位 Supabase 环境变量执行 `npm run build`：通过；保留 1 条既有 Turbopack NFT trace warning，已记入 OPT-6。
 - `git diff --check`：通过。
-- 本机未安装 Docker/PostgreSQL，因此 44 个并发测试未在本地重跑；等待该 workflow 在 GitHub PostgreSQL 17 service 中首次验证。此项通过前不把 OPT-1 标记为 DONE。
+- Draft PR #3 已创建：`agent/opt-1-ci-baseline` → `master`。
+- GitHub Actions `PostgreSQL concurrency tests` 已通过 44/44（49 秒）。
+- GitHub Actions `Tests, lint, and build` 已通过（1 分 2 秒）。
+- Vercel 既有 Git 集成自动 Preview 已通过；本 Task 未执行手动 deploy/promote。
+- 当前只等待指定独立审查会话对远程证据和最终 diff 做阶段终审；PASS 前不得进入 OPT-2。
 
 ## 验证命令
 
@@ -120,4 +124,4 @@ git status --short
 
 ## 停止条件
 
-CI 文件已完成并通过本地质量门。下一步只允许发布本 Task 的独立分支/PR并观察两个 GitHub Actions job；两个 job 均通过后把 OPT-1 标记为 DONE。不得自动进入 OPT-2 或数据库任务。
+CI 文件、本地质量门、Draft PR #3 和两个 GitHub Actions job 均已通过。当前停止等待指定审查会话阶段终审；明确 PASS 后才允许将 `current-task.md` 切换为 OPT-2。不得自动进入数据库任务。

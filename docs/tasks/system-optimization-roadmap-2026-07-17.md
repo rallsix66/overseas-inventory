@@ -24,7 +24,7 @@
 | 构建 | Next.js build / TypeScript 通过 |
 | Staging | 从空库连续重放 00001–00047，真实脱敏快照与 Admin/Operator RLS 验收通过 |
 | Production | 业务 Schema 已包含大量早期对象，但 Migration 历史只登记 00041–00047；与 Staging 存在已确认 Schema 漂移 |
-| 自动化 | OPT-1 已新增 `.github/workflows/ci.yml`；本地质量门通过，PostgreSQL 并发 job 等待独立分支/PR首次远程验证 |
+| 自动化 | OPT-1 已新增 `.github/workflows/ci.yml`；PR #3 的默认质量门与 PostgreSQL 17 并发 job 均通过 |
 
 ## 对旧总结的校准
 
@@ -71,7 +71,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 数据库任务必须串行。OPT-3 完成前，不得对 Production 执行 `db push`、旧 Migration 重放或新的 Production Schema 变更。
 
-## OPT-1：CI 基线（CODE COMPLETE / REMOTE VERIFY PENDING）
+## OPT-1：CI 基线（DONE / FINAL REVIEW PENDING）
 
 **目标**：让每次 PR 和 `master` push 自动验证当前稳定基线。
 
@@ -91,7 +91,9 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **验收**：PR 与主线质量任务通过；故意破坏测试时 workflow 明确失败；并发测试在隔离 PostgreSQL 中稳定执行。
 
-**2026-07-17 本地结果**：已新增 `.nvmrc`（与 Vercel Project Settings 的 Node `24.x` 对齐）和 `.github/workflows/ci.yml`。YAML 结构解析通过；默认测试 3883/3883、lint 0 error / 31 warning budget、占位 Supabase 环境 build 均通过。本机无 Docker/PostgreSQL，44 个并发测试等待 workflow 在 GitHub PostgreSQL 17 service 中首次验证。
+**2026-07-17 本地结果**：已新增 `.nvmrc`（与 Vercel Project Settings 的 Node `24.x` 对齐）和 `.github/workflows/ci.yml`。YAML 结构解析通过；默认测试 3883/3883、lint 0 error / 31 warning budget、占位 Supabase 环境 build 均通过。
+
+**2026-07-18 远程结果**：Draft PR #3（`agent/opt-1-ci-baseline` → `master`）首次运行通过：`PostgreSQL concurrency tests` 44/44（49 秒），`Tests, lint, and build`（1 分 2 秒），Vercel Git 集成 Preview 亦通过。workflow 未连接 Supabase Production/Staging，也未执行手动 Vercel deploy/promote。
 
 ## OPT-2：测试覆盖加固
 

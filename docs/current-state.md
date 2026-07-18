@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-17 System optimization kickoff：`codex/sequential-roadmap` 已通过 PR #2 合并到 `master`，真实数据 Preview 和 Staging 验收已归档。旧文档中的“等待 Preview 确认后合并”不再是停止条件。当前进入工程治理阶段，事实基线为 47 个 SQL Migration、88 个默认测试文件 / 3883 个测试。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。当前唯一 Task `OPT-1-CI-BASELINE` 已完成本地实现与质量门，等待独立分支/PR上的 GitHub PostgreSQL job 首次验证。
+> 2026-07-18 System optimization：`OPT-1-CI-BASELINE` 已完成本地实现、Draft PR #3 和首次远程 CI；默认质量门与 PostgreSQL 17 并发测试均通过，Vercel Git 集成 Preview 通过。当前停止等待指定独立审查会话阶段终审；PASS 前不进入 OPT-2。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
@@ -17,7 +17,7 @@
 > 2026-07-17 最新进展：顺序路线已合并 `master`。用户已授权 Codex 执行系统优化，但要求先把完整方案写入项目文档树。
 
 
-**OPT-1-CI-BASELINE — CODE COMPLETE / REMOTE VERIFY PENDING** — 已新增 Node 24 版本约束与 GitHub Actions 自动质量门：默认测试、lint warning budget、build、diff check，以及隔离 PostgreSQL 17 并发测试。本地 3883/3883、lint 0 error / 31 warning、build 和 diff check 通过；本机无 Docker/PostgreSQL，等待 PR job 验证 44 个并发测试。本任务不连接 Supabase Production/Staging、不执行 Vercel deploy、不修改 Migration/RPC/RLS。详细范围与后续顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) 和 [当前任务包](tasks/current-task.md)。
+**OPT-1-CI-BASELINE — DONE / FINAL REVIEW PENDING** — 已新增 Node 24 版本约束与 GitHub Actions 自动质量门：默认测试、lint warning budget、build、diff check，以及隔离 PostgreSQL 17 并发测试。本地 3883/3883、lint 0 error / 31 warning、build 和 diff check 通过；PR #3 的 44 项 PostgreSQL 并发测试与质量 job 均通过。本任务未连接 Supabase Production/Staging、未执行手动 Vercel deploy/promote、未修改 Migration/RPC/RLS。详细范围与后续顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) 和 [当前任务包](tasks/current-task.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 
