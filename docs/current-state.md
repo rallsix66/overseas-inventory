@@ -1,21 +1,23 @@
 # Current Project State
 
+> 2026-07-17 System optimization kickoff：`codex/sequential-roadmap` 已通过 PR #2 合并到 `master`，真实数据 Preview 和 Staging 验收已归档。旧文档中的“等待 Preview 确认后合并”不再是停止条件。当前进入工程治理阶段，事实基线为 47 个 SQL Migration、88 个默认测试文件 / 3883 个测试。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。当前唯一 Task `OPT-1-CI-BASELINE` 已完成本地实现与质量门，等待独立分支/PR上的 GitHub PostgreSQL job 首次验证。
+
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
-> 2026-07-17 Preview data update: Vercel Preview 的三项 Supabase 变量均只指向 `DIS Staging`，Production 变量与数据未改动。Staging 已用 Production 只读脱敏业务快照替换 `CODEX-SMOKE` 数据：1 Product、341 ProductVariant、341 Inventory、6 Warehouse、2 Shipment、5 手工物流事件与 11 外部物流事件；跨库内容哈希逐表一致。未复制 Production Auth、用户偏好、同步历史、Token Cache、Warehouse sync_url 或 Provider raw_payload。Staging Admin 可见全部 341 SKU / 5 个海外仓 / 34 条有效补货建议；Operator 仅分配 ID 仓并通过 RLS 仅可见 40 SKU。Preview 首页、P7 与补货页已用真实快照完成页面复验，等待用户确认后再合并主线。
+> 2026-07-17 Preview data result（历史验收结果）: Vercel Preview 的三项 Supabase 变量均只指向 `DIS Staging`，Production 变量与数据未改动。Staging 已用 Production 只读脱敏业务快照替换 `CODEX-SMOKE` 数据：1 Product、341 ProductVariant、341 Inventory、6 Warehouse、2 Shipment、5 手工物流事件与 11 外部物流事件；跨库内容哈希逐表一致。未复制 Production Auth、用户偏好、同步历史、Token Cache、Warehouse sync_url 或 Provider raw_payload。Staging Admin 可见全部 341 SKU / 5 个海外仓 / 34 条有效补货建议；Operator 仅分配 ID 仓并通过 RLS 仅可见 40 SKU。Preview 首页、P7 与补货页已用真实快照完成页面复验；对应顺序路线随后已通过 PR #2 合并到 `master`。
 
 > 文档导航：[文档树](README.md) · [当前任务包](tasks/current-task.md) · [项目概览](project-overview.md) · [架构](architecture.md) · [数据库设计](database-design.md)
 
 ## Current Phase
 
-**Stage 1–4 顺序实施代码完成，Production 数据库变更已部署，独立 Staging 数据库与真实数据 Preview 验收完成**（2026-07-17，分支 `codex/sequential-roadmap`）。P0 生产 API 链路已完成既有冒烟验证；本分支继续补齐未绑定喜运达记录的同仓同国 Shipment 识别与不可逆绑定 UI。随后按既定顺序完成 P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）。新增链路保持 Server Component / Server Action → Repository → Supabase / PostgreSQL RLS，Product → ProductVariant → Inventory 模型不变。当前本地质量门：**3883/3883（88 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。**Production `DIS Project` 已应用 00041–00047；`DIS Staging`（project ref `hyarhvsjhkjpallbyifn`）已从空库严格重放 00001–00047，并加载 Production 只读脱敏业务快照。Preview 已验证真实页面、Admin/Operator RLS 与原有写入链路；Production 环境变量和业务数据未改动。**
+**Stage 1–4 已完成、合并并归档，当前进入系统优化与工程治理。** P0 生产 API 链路、P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）均已完成。当前本地质量门：**3883/3883（88 files, 0 failures）**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。Production `DIS Project` 的 Migration 历史只登记 00041–00047，Staging 已从空库严格重放 00001–00047；因此 Production 在启用 CLI push 前仍需单独完成 Migration 基线审计与历史修复。
 
 ## Current Task
 
-> 2026-07-17 最新进展：Preview 接线、Staging Admin/Operator、真实业务快照、页面/RLS/写入验收均已完成。当前停止条件是等待用户确认预览效果；确认前不得合并 `master`。
+> 2026-07-17 最新进展：顺序路线已合并 `master`。用户已授权 Codex 执行系统优化，但要求先把完整方案写入项目文档树。
 
 
-**DEPLOY-SEQUENTIAL-ROADMAP** — P0 绑定闭环、P1、P7 与首页代码均已完成并通过本地验收；Production 的 00041→00047、Production 只读 RPC/RLS 冒烟，以及 Staging 从 00001→00047 的全量迁移重放均已完成。Vercel Preview 三项 Supabase 变量已只指向 `DIS Staging`，Staging Admin/Operator、真实业务快照、页面/RLS/写入流程均已验收。下一步仅等待用户确认 Preview；确认前不合并或提升到 Production。百世 API 外部权限与 P8 国内库存仍不属于本批次。
+**OPT-1-CI-BASELINE — CODE COMPLETE / REMOTE VERIFY PENDING** — 已新增 Node 24 版本约束与 GitHub Actions 自动质量门：默认测试、lint warning budget、build、diff check，以及隔离 PostgreSQL 17 并发测试。本地 3883/3883、lint 0 error / 31 warning、build 和 diff check 通过；本机无 Docker/PostgreSQL，等待 PR job 验证 44 个并发测试。本任务不连接 Supabase Production/Staging、不执行 Vercel deploy、不修改 Migration/RPC/RLS。详细范围与后续顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) 和 [当前任务包](tasks/current-task.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 
@@ -25,7 +27,7 @@
 | P7-A | 全球库存基础总览（先上）：Product/Variant 一行、海外库存汇总、海外在途汇总、基础库存告警、国内占位、Admin/Operator warehouse_id 权限隔离 | ✅ DB + Preview PASS；Admin 341 SKU，Operator 仅 ID 仓 40 SKU |
 | P7-B | 作战室增强层（后叠，依赖 P1）：复用 `forecast_stockout(...)` 算 earliest_stockout/urgency/分国 burn-down + 详情弹窗 + 后续 net_demand/suggest_qty/latest_order_date；与 P7-A 共用同一路由/列表 RPC/详情 RPC | ✅ DB + Preview PASS；真实快照列表、队列、分页与详情运行正常 |
 | P7-UX | 运营可用性收口：筛选/排序/分页/详情跳转；PDF/截图导出按定稿为非本期 | ✅ CODE DONE |
-| P7-REVIEW | 独立验收与文档同步 | ✅ LOCAL + DB + PREVIEW REVIEW DONE；等待用户确认合并 |
+| P7-REVIEW | 独立验收与文档同步 | ✅ LOCAL + DB + PREVIEW REVIEW DONE + MERGED |
 | P8 | 国内库存接入（下游独立）：真实国内数据/生产周期/在途接入，建成 `/dashboard/inventory/domestic` | 待立项（原 TECH-DEBT-01） |
 | P7-C | 启用国内补给判断（依赖 P8）：DomesticJudge 由 data_unavailable 占位改为真实计算 | 待 P8 完成 |
 
