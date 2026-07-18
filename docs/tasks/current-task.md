@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-4-MIGRATION-HISTORY-REPAIR — STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING**
+**OPT-4-MIGRATION-HISTORY-REPAIR — CHANGES REQUIRED / STAGING REALIGNMENT APPROVED / EXECUTION DEFERRED FOR ENVIRONMENT HANDOFF**
 
 路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
 
@@ -23,19 +23,31 @@
 - 本地默认测试 3932/3932（91 files）、PostgreSQL 17 契约测试 14/14、lint 0 errors / 31 warnings、Next.js build/TypeScript PASS。
 - 三轮独立阶段审查最终 PASS；00048 与 Staging `schema_migrations.statements[1]` 的 5778 bytes / 5596 chars / SHA-256 `0a833a0f407d4d9cc5be6a702662318c6afa6f382fa1689046d945d2dfefd87a` 逐字一致。
 - Draft PR #6 已创建；GitHub Actions run `29635961807` 的 quality job 与 PostgreSQL concurrency/contract job 全部 PASS，Vercel Preview PASS。
+- 用户已明确批准 2026-07-18 Production 维护窗口。写入前再次确认项目 `hzlhqyditalumhnxbaim` 为 `ACTIVE_HEALTHY`、PostgreSQL 17.6、完整备份 4 个核心文件 SHA-256 全部匹配、运行中同步任务为 0。
+- Production 已应用与 Staging 正文完全一致的 00048，登记版本为 `20260718074910`；语句长度 5596、MD5 `0a4a0cb7b1bcae70346efda90333e2f9`。函数为 `postgres` owner、`SECURITY DEFINER`、空 `search_path`，ACL 仅保留 `postgres` 与 `service_role`。
+- Production 事务验证通过：合法 service-role Dry Run 成功，Real Write 与无效操作者均被拒绝；事务回滚后 run、artifact hash 与 warehouse lock 残留均为 0。
+- 00001–00040 已在单一事务中仅修复 `supabase_migrations.schema_migrations`，未执行任何旧 SQL。事务前要求现有历史严格等于 00041–00048，提交前逐条校验从 Staging 只读取得的版本、名称、语句 MD5 与长度；最终为 48 stages / 48 unique names。
+- Production 与 Staging canonical catalog 的列、约束、索引、触发器、函数、Table/RLS 与 Policy 共 14 组摘要完全一致。00041–00047 历史正文仅有既有尾部换行差异，去除尾部空白后 7 条 MD5 全部一致。
+- Production 顾问复核完成：Security 22（1 INFO / 21 WARN）、Performance 158（37 INFO / 121 WARN），均为 OPT-5/OPT-6 的既有基线；`claim_sync_run_system` 没有新增告警。
+- 指定独立审查结论为 `CHANGES_REQUIRED`：本地 migration version 为 `00001–00048`，Production 与 Staging 远端 48/48 均使用 timestamp version，CLI 以 version 精确比较且不会用 name/正文摘要替代。当前 48 个唯一名称不等于 CLI history 已收敛，禁止执行 `db push` 或 `--include-all`。
+- `package.json` 与 `package-lock.json` 已把 Supabase CLI 精确固定为 `2.109.1`；本次返工的 `migration list`、`db push --dry-run` 与帮助检查必须使用仓库固定版本，禁止临时漂移到其他 CLI 版本。
+- Staging history-only 维护脚本已准备在 `docs/reports/sql/2026-07-18-opt4-staging-history-version-realignment.sql`：仅更新 `schema_migrations.version`，带 48 行/唯一名称/目标版本/旧 timestamp 基线断言、独占锁、单事务和所有非 version 字段逐项不变校验。本机 PostgreSQL 17.10 一次性测试库验证 48/48 成功，重复执行按预期拒绝（exit 3），测试库已删除。
+- Staging 远端只读 preflight 已通过：项目 `ACTIVE_HEALTHY`、PostgreSQL 17.6、运行中同步任务 0；48 条 history 全为 timestamp、0 条已对齐、name 目标集精确等于 `00001–00048`。写入前 name/statements digest 为 `3566222cba075216b6c9a0d3065b7b93`，14 组 canonical catalog 摘要已固化，详见 [Staging History Version 对齐报告](../reports/2026-07-18-opt4-staging-history-version-realignment.md)。
 
-详细证据：[OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)
+详细证据：[OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)；[OPT-4 Production 验证报告](../reports/2026-07-18-opt4-production-verification.md)
 
 ## 当前允许范围
 
-- 完成本地全量 test、lint、build 与 diff 检查。
-- 更新 OPT-4 报告、回滚 SQL、当前状态和路线图。
-- 发布独立 OPT-4 分支/PR，以取得 GitHub PostgreSQL 17 远程 CI 证据。
-- 提交指定独立审查会话复验。
+- 更新 OPT-4 Production 报告、当前状态、路线图与 history-only 返工计划。
+- 固定并验证 Supabase CLI `2.109.1`，不改变应用运行时依赖语义。
+- Staging history-only version 对齐授权已经取得；当前按用户新指令先合并上线，迁移执行环境后再运行已验证脚本，不得执行 Migration SQL 或修改 Schema。
+- Staging 复验 PASS 后，再单独请求 Production history-only 窗口批准。
 
 ## 当前禁止范围
 
-- 未经独立审查 PASS 与用户单独批准，不得写 Production Schema 或 migration history。
+- 禁止对已完成的 Production 00048 与 history repair 做未审查追加写入。
+- 当前进度合并上线完成前，禁止写 Staging migration history；Production history 仍须另行批准。
+- 禁止 `supabase db push`、`--include-all` 或通过重放旧 Migration 规避 version mismatch。
 - 禁止在 Production 重放 `00001–00040`。
 - 禁止修改 `00001–00047`。
 - 禁止通过伪造对象状态换取 migration 列表一致。
@@ -45,9 +57,10 @@
 
 ## 剩余步骤
 
-1. 用户单独批准 Production 维护窗口。
-2. 先应用 00048 并验证，再对 00001–00040 执行受控 history repair。
-3. 复核 Production/Staging history、canonical catalog、Cron Dry Run 与数据库顾问，重新提交最终阶段审查。
+1. 合并并上线当前代码、维护脚本与只读基线证据；明确本次发布不执行 Staging history 写入。
+2. 在新执行环境中使用已获批窗口，把 Staging 48 条 history version 从 timestamp 受控对齐为仓库 `00001–00048`，保持 name/statements 摘要与 canonical catalog 不变；取得 `migration list` 和 `db push --dry-run` 证据。
+3. 提交指定审查会话复验 Staging；PASS 后再单独批准 Production history-only 窗口并执行同样对齐。
+4. 两环境 CLI 与 catalog 复核、PR 文档和最终 head checks 通过后，再提交最终审查；PASS 前禁止进入 OPT-5。
 
 ## 验收标准
 

@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-18 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并，OPT-3 merge commit `e3e4c60`。用户已确认 OPT-3 报告；Production 完整逻辑备份及 SHA-256/归档可读性验证通过。当前 `OPT-4-MIGRATION-HISTORY-REPAIR` 已完成 00048 本地实现和 Staging 部署验证，并通过三轮独立阶段审查；Draft PR #6 的 GitHub Actions run `29635961807` 也已全部通过，状态为 `STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING`。Production Schema 与 migration history 尚未写入，必须取得用户单独维护窗口批准。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
+> 2026-07-18 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并，OPT-3 merge commit `e3e4c60`。用户明确批准 OPT-4 Production 维护窗口后，Production 已按“备份复核 → 00048 → 事务验证 → 00001–00040 history repair → 全量复核”完成写入。Production/Staging canonical catalog 14 组摘要完全一致，00048 行为与权限验证通过；但指定独立审查发现两环境远端 48 条 timestamp `version` 均与仓库 `00001–00048` 文件前缀不匹配，当前不能安全使用 `supabase db push`。用户随后已批准 Staging history-only version 对齐窗口，但在任何远端 history 写入发生前，要求先把当前项目进度合并上线以迁移执行环境。状态为 `CHANGES REQUIRED / STAGING REALIGNMENT APPROVED / EXECUTION DEFERRED FOR ENVIRONMENT HANDOFF`；本次发布只交接代码、脚本与证据，不代表 Staging version 已对齐。实施证据见 [OPT-4 Production 验证报告](reports/2026-07-18-opt4-production-verification.md) 与 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
@@ -10,11 +10,11 @@
 
 ## Current Phase
 
-**Stage 1–4 已完成、合并并归档，当前进入系统优化与工程治理。** P0 生产 API 链路、P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）均已完成。OPT-2 主线质量门为 **3926/3926（90 files, 0 failures）**，PostgreSQL 并发 **44/44**、数据库行为 **10/10**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。Production `DIS Project` 的 Migration 历史仍只登记 00041–00047；Staging 已应用 00048，补齐 `claim_sync_run_system(...)` 并移除 00011 遗留对象。Production 只有在 OPT-4 远程质量门、独立审查和用户维护窗口批准后，才允许按“00048 → 验证 → 受控 history repair”的顺序处理。
+**Stage 1–4 已完成、合并并归档，当前进入系统优化与工程治理。** P0 生产 API 链路、P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）均已完成。OPT-2 主线质量门为 **3926/3926（90 files, 0 failures）**，PostgreSQL 并发 **44/44**、数据库行为 **10/10**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。Production 与 Staging 均已应用 00048，补齐 `claim_sync_run_system(...)` 并移除 00011 遗留对象；两环境也都登记了 48 个唯一 migration name，但 48/48 远端 timestamp `version` 尚未与仓库固定宽度 `00001–00048` 对齐。Staging history-only 窗口已获批但尚未执行；当前先发布交接，继续禁止 `db push` 与 `--include-all`。
 
 ## Current Task
 
-**OPT-4-MIGRATION-HISTORY-REPAIR — STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING** — 新增 00048 前向 Migration，不修改或重放 00001–00047。Staging 清理前 341 个 Variant 的旧归档有效数据均为 0；应用后 `claim_sync_run_system(...)` 为 `postgres` owner、`SECURITY DEFINER`、空 `search_path`，仅 `service_role` 可执行，00011 的 3 个遗留列/FK/索引均已移除。事务内 Dry Run、Real Write 拒绝和 Operator 拒绝通过且已回滚，无测试记录残留；本机 PostgreSQL 17 契约测试 14/14。三轮独立阶段审查最终 PASS，Draft PR #6 run `29635961807` 的 quality 与 PostgreSQL 两个 job 也全部 PASS。Production 备份已验证，但 Production Schema/history 尚未写入。详细证据见 [OPT-4 Staging 验证报告](reports/2026-07-18-opt4-staging-verification.md) 与 [当前任务包](tasks/current-task.md)。
+**OPT-4-MIGRATION-HISTORY-REPAIR — CHANGES REQUIRED / STAGING REALIGNMENT APPROVED / EXECUTION DEFERRED FOR ENVIRONMENT HANDOFF** — 00048 已在 Staging 与 Production 应用且 Schema/权限/事务验证通过，00011 遗留对象均为 0，Production/Staging canonical catalog 完全一致。00001–00040 没有重放旧 SQL；但当前两环境各 48 条远端 `version` 全部是 timestamp，与仓库 `00001–00048` 文件前缀 48/48 不匹配，未来 CLI `db push` 会被阻塞。用户已批准 Staging history-only 对齐，但要求先合并上线再更换执行环境；截至交接点尚未写 Staging history。新环境须先执行 Staging、提交指定会话复验，PASS 后再单独批准 Production；最终审查 PASS 前禁止进入 OPT-5。详细证据见 [Staging History Version 对齐报告](reports/2026-07-18-opt4-staging-history-version-realignment.md)、[OPT-4 Production 验证报告](reports/2026-07-18-opt4-production-verification.md) 与 [当前任务包](tasks/current-task.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 

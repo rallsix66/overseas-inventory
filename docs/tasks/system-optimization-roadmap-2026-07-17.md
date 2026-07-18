@@ -115,7 +115,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **2026-07-18 关闭结果**：默认 Vitest 已纳入 00013/00014，90 files / 3926 tests 通过；新增 `migrations-00041-00047.postgres.test.ts`，在 PostgreSQL 17 中按顺序执行真实 00041–00047 SQL，并验证 Schema/ACL、P1/P7/首页 RPC 边界与 Admin、Operator、disabled、anon、跨仓返回行集。阶段独立终审 PASS；PR #4 已合并，merge commit `7a85ccd`；`master` run `29627444830` 的质量 job、并发 44/44 与数据库行为 10/10 全部通过。
 
-## OPT-3：Production Migration 基线审计（STAGE REVIEW PASS / USER CONFIRMATION PENDING）
+## OPT-3：Production Migration 基线审计（DONE）
 
 **目标**：在不写 Production 的前提下，生成可复核的 00001–00040 历史与对象级差异报告。
 
@@ -140,6 +140,8 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **2026-07-18 审计结果**：Production 历史仅登记 00041–00047，Staging 在 OPT-4 前登记 00001–00047。相同只读目录查询确认 Policy 42/42、Table/RLS 18/18、Trigger 13/13 完全一致；精确差异只有 00010 的 `claim_sync_run_system(...)` 在 Production 缺失，以及 00011 的三列/FK/索引只存在于 Staging。00010 为 `MISSING_REQUIRED`，须由 00048+ 前向补齐；00011 已被 00012 的用户级偏好语义替代，不得在 Production 复活。00001–00040 汇总为 28 `EXACT_PRESENT`、11 `OBSOLETE_SUPERSEDED`、1 `MISSING_REQUIRED`、0 `PRESENT_DIVERGENT`。三轮独立阶段审查已 PASS。详见 [只读审计报告](../reports/2026-07-18-production-migration-baseline-audit.md)。用户随后确认继续，并完成了 Production 逻辑备份、SHA-256 与归档可读性校验，因此 OPT-4 前置恢复点门禁已满足。
 
+**关闭结果**：阶段终审 PASS、用户确认报告与恢复点、PR #5 合并（merge commit `e3e4c60`）；OPT-3 已关闭并进入 OPT-4。
+
 ## OPT-4：历史修复与 Schema 前向补齐
 
 **前置条件**：OPT-3 报告通过人工确认，Production 有可用备份/恢复点。
@@ -155,6 +157,8 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - Production 执行后重新核对 Schema、Migration 历史和数据库顾问结果。
 
 **2026-07-18 Staging 结果**：00048 已在 Staging 成功应用并登记。`claim_sync_run_system(...)` 的 owner、`SECURITY DEFINER`、空 `search_path` 与 service-role-only ACL 均通过；00011 遗留的三列/FK/索引已在零有效旧归档数据门禁下移除。事务内合法 Dry Run、Real Write 拒绝和 Operator 拒绝通过且回滚无残留，本机 PostgreSQL 17 契约测试 14/14。三轮独立阶段审查最终 PASS；Draft PR #6 GitHub Actions run `29635961807` 的 quality 与 PostgreSQL job 全部 PASS。当前状态为 `STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING`，不得提前标 DONE；Production 00048 与 history repair 必须等待用户单独维护窗口批准。详见 [OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)。
+
+**2026-07-18 Production 结果与终审返工**：用户明确批准维护窗口后，先复核 Production 备份与 0 个运行中同步任务，再应用与 Staging 正文一致的 00048。Production version `20260718074910`；函数 owner、ACL、空 `search_path` 与事务内 Dry Run/拒绝路径均通过，回滚后 run/hash/lock 残留为 0。随后在单一受控事务中只修复 00001–00040 的 `schema_migrations` 历史，不执行旧 SQL；40 条 version/name/statements 均来自 Staging 已登记记录，并在提交前逐条校验 MD5 与长度。Schema 最终收敛为 Production/Staging canonical catalog 14 组摘要差异 0，顾问没有新增与 00048 相关的告警。指定独立终审随后发现：两环境远端 48 条 timestamp `version` 均与仓库 `00001–00048` 前缀不匹配，48 个唯一 name 不能证明 CLI history 已收敛，未来 `db push` 会被阻塞。用户已批准 Staging history-only 窗口，但在任何 Staging history 写入发生前要求先合并上线并迁移执行环境；当前状态为 `CHANGES REQUIRED / STAGING REALIGNMENT APPROVED / EXECUTION DEFERRED FOR ENVIRONMENT HANDOFF`。本次发布只交接脚本与证据，仍不得重放 SQL、使用 `--include-all`、标 DONE 或进入 OPT-5。详见 [Staging History Version 对齐报告](../reports/2026-07-18-opt4-staging-history-version-realignment.md) 与 [OPT-4 Production 验证报告](../reports/2026-07-18-opt4-production-verification.md)。
 
 ## OPT-5：数据库最小权限收口
 
