@@ -24,7 +24,7 @@
 | 构建 | Next.js build / TypeScript 通过 |
 | Staging | 从空库连续重放 00001–00047，真实脱敏快照与 Admin/Operator RLS 验收通过 |
 | Production | 业务 Schema 已包含大量早期对象，但 Migration 历史只登记 00041–00047；与 Staging 存在已确认 Schema 漂移 |
-| 自动化 | OPT-1 已通过终审并合并 PR #3；`master` run `29626065160` 的默认质量门与 PostgreSQL 17 并发 job 均通过 |
+| 自动化 | OPT-1/OPT-2 已通过终审并合并；`master` run `29627444830` 的默认质量门、PostgreSQL 17 并发与数据库行为 job 均通过 |
 
 ## 对旧总结的校准
 
@@ -97,7 +97,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **关闭结果**：阶段终审 PASS → PR #3 Ready 并合并 → `master` 两个 CI job PASS，全部完成；OPT-1 已关闭并切换 OPT-2。
 
-## OPT-2：测试覆盖加固（CODE COMPLETE / PR CI PASS / STAGE REVIEW PENDING）
+## OPT-2：测试覆盖加固（DONE）
 
 **目标**：保留有效架构护栏，同时把关键结论从“源码包含某段文本”升级为“数据库实际行为成立”。
 
@@ -113,9 +113,9 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **验收**：所有测试进入可见的 CI job；权限测试验证返回行集，而不是只匹配 SQL/TS 源码文本。
 
-**2026-07-18 实施结果**：默认 Vitest 已纳入 00013/00014，90 files / 3926 tests 通过；新增 `migrations-00041-00047.postgres.test.ts`，在 PostgreSQL 17 中按顺序执行真实 00041–00047 SQL，并验证 Schema/ACL、P1/P7/首页 RPC 边界与 Admin、Operator、disabled、anon、跨仓返回行集。Draft PR #4 run `29626976756` 的现有并发测试 44/44、新增行为测试 10/10、默认质量 job 与 Vercel Preview 均通过。当前等待阶段独立审查；审查 PASS、PR 合并和 `master` CI PASS 前不得进入 OPT-3。
+**2026-07-18 关闭结果**：默认 Vitest 已纳入 00013/00014，90 files / 3926 tests 通过；新增 `migrations-00041-00047.postgres.test.ts`，在 PostgreSQL 17 中按顺序执行真实 00041–00047 SQL，并验证 Schema/ACL、P1/P7/首页 RPC 边界与 Admin、Operator、disabled、anon、跨仓返回行集。阶段独立终审 PASS；PR #4 已合并，merge commit `7a85ccd`；`master` run `29627444830` 的质量 job、并发 44/44 与数据库行为 10/10 全部通过。
 
-## OPT-3：Production Migration 基线审计
+## OPT-3：Production Migration 基线审计（STAGE REVIEW PASS / USER CONFIRMATION PENDING）
 
 **目标**：在不写 Production 的前提下，生成可复核的 00001–00040 历史与对象级差异报告。
 
@@ -128,15 +128,17 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
    - `EXACT_PRESENT`：效果完整且一致，可候选只修历史；
    - `PRESENT_DIVERGENT`：对象存在但定义不同，必须影响评审；
    - `MISSING_REQUIRED`：缺失且当前仍需要，使用 00048+ 前向 Migration 补齐；
-   - `OBSOLETE_SUPERSEDED`：已被后续 Migration 完整替代，记录证据，不重放旧 SQL。
+   - `OBSOLETE_SUPERSEDED`：已被后续 Migration 完整替代，记录证据，不重放旧 SQL；若不登记会导致 CLI 尝试重放，则仅在完整替代与最终状态均已证明后标记 applied。
 5. 输出 SQL、对象证据、风险、回滚和建议动作，等待用户确认。
 
 **硬性边界**：
 
-- `supabase migration repair` 只允许在确认实际 Schema effect 已存在时使用；它只修历史，不执行 SQL。
+- `supabase migration repair` 只允许在以下三类证据成立时标记 applied：实际 Schema effect 已存在；或后续 Migration 已被证明完整替代且最终状态正确；或缺失对象已由 00048+ 前向 Migration 补齐并验证。它只修历史，不执行 SQL。
 - 禁止把 00001–00040 直接重放到 Production。
 - 禁止为了让 CLI 显示一致而伪造对象状态。
 - 审计阶段只读，不修改 Migration、Production Schema 或历史表。
+
+**2026-07-18 审计结果**：Production 历史仅登记 00041–00047，Staging 登记 00001–00047。相同只读目录查询确认 Policy 42/42、Table/RLS 18/18、Trigger 13/13 完全一致；精确差异只有 00010 的 `claim_sync_run_system(...)` 在 Production 缺失，以及 00011 的三列/FK/索引只存在于 Staging。00010 为 `MISSING_REQUIRED`，须由 00048+ 前向补齐；00011 已被 00012 的用户级偏好语义替代，不得在 Production 复活。00001–00040 汇总为 28 `EXACT_PRESENT`、11 `OBSOLETE_SUPERSEDED`、1 `MISSING_REQUIRED`、0 `PRESENT_DIVERGENT`。三轮独立阶段审查已 PASS。详见 [只读审计报告](../reports/2026-07-18-production-migration-baseline-audit.md)。Production 备份/PITR 是控制面信息，当前仍待用户在 Supabase 控制台确认；该确认完成前不得进入 OPT-4。
 
 ## OPT-4：历史修复与 Schema 前向补齐
 
@@ -144,7 +146,9 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **范围**：
 
-- 对 `EXACT_PRESENT` 执行受控 migration history repair。
+- 对 `EXACT_PRESENT` 在对象证据复核后执行受控 migration history repair，标记 applied。
+- 对 `OBSOLETE_SUPERSEDED` 不重放旧 SQL；仅在逐条证明后续 Migration 已完整替代且当前最终状态正确后，通过 history repair 标记 applied，避免 CLI 把旧 SQL 当作待执行。
+- 对 `MISSING_REQUIRED` 先用 00048+ 前向 Migration 补齐并验证，再把对应旧 Migration 标记 applied；00010 严格按此顺序处理。
 - 对缺失或分歧对象创建新的 00048+ 前向 Migration；不修改 00001–00047。
 - 先在全新本地/临时数据库重放 00001–最新，再部署 Staging。
 - Staging 完成 Admin/Operator/RLS/关键页面和回滚演练后，才安排 Production 维护窗口。

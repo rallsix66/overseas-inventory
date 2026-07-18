@@ -2,87 +2,52 @@
 
 ## Task ID
 
-**OPT-2-TEST-COVERAGE — CODE COMPLETE / PR CI PASS / STAGE REVIEW PENDING**
+**OPT-3-PRODUCTION-MIGRATION-BASELINE — STAGE REVIEW PASS / USER CONFIRMATION PENDING**
 
 路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
 
-上一阶段：OPT-1 已通过独立终审，PR #3 已合并；`master` GitHub Actions run `29626065160` 的质量与 PostgreSQL 并发 job 均通过。
+上一阶段：OPT-2 已通过独立终审，PR #4 已合并；`master` GitHub Actions run `29627444830` 的质量、44/44 并发测试和 10/10 数据库行为测试全部通过。
 
 ## 目标
 
-保留现有静态架构护栏，同时把 P1、P7、首页和仓库权限的关键结论升级为隔离 PostgreSQL 中的真实 Migration、RPC 与 RLS 行为验证。
+在不写 Production 的前提下，对 `00001–00040` 的历史与实际对象做可复核基线审计，为后续受控 history repair 和 00048+ 前向 Migration 提供唯一事实源。
 
-## 依赖与事实
+## 允许范围
 
-- 仓库固定包含 00001–00047，共 47 个已执行 SQL Migration；本 Task 不修改任何 Migration SQL。
-- OPT-1 已提供 PostgreSQL 17 GitHub Actions service，现有并发套件为 44/44。
-- 00013/00014 的两个测试此前未被 `vitest.config.mts` 扫描。
-- 本机没有可用 Docker/PostgreSQL；数据库行为结果已由 PR #4 run `29626976756` 的隔离 PostgreSQL job 给出，不允许改连 Production/Staging。
-- Supabase 官方测试建议覆盖不同角色、负向权限和实际返回数据，并在 CI 中运行。
+- 对 Supabase Production/Staging 执行 SELECT-only 目录查询。
+- 新增只读审计 SQL 和审计报告。
+- 更新当前状态、路线图和任务导航。
+- 不修改任何 `supabase/migrations/*.sql`。
 
-## 允许修改范围
+## 已完成事实
 
-- `vitest.config.mts`
-- `package.json`
-- `.github/workflows/ci.yml`
-- `supabase/migrations/00013_extend_user_variant_preference_favorited.test.ts`
-- `supabase/migrations/00014_dynamic_alert_fields.test.ts`
-- `src/features/database/*.postgres.test.ts`
-- 与本 Task 状态直接相关的文档
+- Production 历史仅登记 00041–00047；Staging 登记 00001–00047。
+- public Schema 的 Policy 42/42、Table/RLS 18/18、Trigger 13/13 完全一致。
+- 精确差异只有：
+  - Production 缺少 00010 的 `claim_sync_run_system(...)`，属于 `MISSING_REQUIRED`；
+  - Production 没有 00011 的三列/FK/索引，属于已被 00012 替代的 `OBSOLETE_SUPERSEDED`。
+- 00001–00040 汇总：28 `EXACT_PRESENT`、11 `OBSOLETE_SUPERSEDED`、1 `MISSING_REQUIRED`、0 `PRESENT_DIVERGENT`。
+- Production 备份/PITR 为控制面信息，本次只读接口无法确认；这是进入 OPT-4 前的明确人工门槛。
 
-## 实施要求
+详细证据：[2026-07-18-production-migration-baseline-audit.md](../reports/2026-07-18-production-migration-baseline-audit.md)
 
-1. 把 00013/00014 两个测试显式纳入默认 Vitest；测试必须匹配真实 Migration 契约，禁止为了通过而修改已执行 SQL。
-2. 在隔离 PostgreSQL 17 中按顺序执行仓库原文件 00041–00047，不复制函数正文到测试替身。
-3. 验证 00041/00042 Schema effect、00043–00047 函数存在性、`SECURITY INVOKER` 和 anon/authenticated ACL。
-4. 对 `forecast_stockout`、P1 补货/在途、P7 列表/详情、首页健康度执行真实 RPC 查询。
-5. 身份矩阵至少覆盖活跃 Admin、仅分配单仓的活跃 Operator、disabled user、anon、跨仓访问；权限断言必须检查返回行集或明确拒绝。
-6. PostgreSQL 测试与现有并发测试串行运行，避免共享 `public` schema 竞争。
-7. 保留已有页面不直连 Supabase、客户端无 `service_role`、Repository/Server Action 边界与 Migration 不回改等静态护栏。
+## 硬性边界
 
-## 非目标
-
-- 不修改 00001–00047 的 Migration SQL、RPC 或 RLS。
-- 不连接或写入 Supabase Production/Staging。
-- 不执行 `supabase migration repair`、`supabase db push` 或 Vercel deploy/promote。
-- 不进入 OPT-3 Production Migration 基线审计。
-- 不清理现有 31 个 lint warning。
-- 不提交 `.claude/context-status.json`、同步脚本、运行产物或用户已有未提交文件。
+- 禁止 Production DDL/DML。
+- 禁止 `supabase migration repair`、`supabase db push`。
+- 禁止重放 00001–00040。
+- 禁止修改 00001–00047。
+- 禁止开始 OPT-4，直到独立审查 PASS、用户确认报告并在 Supabase 控制台确认恢复点。
 
 ## 验收标准
 
-- 默认测试包含 00013/00014，且全部通过。
-- PostgreSQL job 明确显示现有 44 项并发测试与新增 Migration/RPC/RLS 行为步骤。
-- 00041–00047 真实 SQL 在 PostgreSQL 17 顺序执行成功。
-- Admin 可见全部测试仓；Operator 只看分配仓；disabled 与 anon 无数据或被拒绝；跨仓详情被拒绝。
-- P1、P7、首页断言检查真实 JSON 返回行集及关键边界，不仅匹配源码文本。
-- lint 为 0 error / 31 warning，build 与 `git diff --check` 通过。
-- 变更集不混入排除文件。
-- 指定独立审查会话给出 PASS；PR 合并且 `master` CI 通过后才可标记 OPT-2 DONE。
-
-## 实施与远程结果（2026-07-18）
-
-- 默认测试：90 files / 3926 tests PASS。
-- lint：0 error / 31 warning；build / TypeScript PASS；`git diff --check` PASS。
-- PostgreSQL job：现有并发测试 44/44 PASS；新增 Migration replay / RPC / RLS 行为测试 10/10 PASS。
-- GitHub Actions run：`29626976756`；质量 job 与 PostgreSQL job 均 PASS。
-- Vercel Git 集成 Preview PASS；未执行手动 deploy/promote。
-- 未连接 Production/Staging，未修改 00001–00047 Migration SQL。
-
-## 验证命令
-
-```bash
-npm run test
-npm run lint -- --max-warnings 31
-npm run build
-npm run test:concurrency
-npm run test:database-contract
-git diff --check
-git status --short
-```
-
-数据库命令只允许指向本地或 GitHub Actions 临时 PostgreSQL。
+- 只读 SQL 不包含 DDL/DML/repair/push。
+- 报告包含 Production/Staging 身份、时间、Migration 历史、对象级证据、排除已知差异后的零差异证明、00001–00040 逐条分类、风险、回滚和后续建议。
+- Trigger canonical digest 包含 `pg_trigger.tgenabled`，不能把 disabled/replica/always 状态误判为一致。
+- 缺失必需对象与废弃对象不混淆：00010 必须前向补齐，00011 不得在 Production 复活。
+- `git diff --check` 通过，变更集不包含用户既有同步脚本、`.claude` 状态或项目总结。
+- 指定独立审查会话给出 PASS。
 
 ## 停止条件
 
-完成代码、本地可运行质量门、PR 隔离 PostgreSQL 验证和阶段独立审查后停止。未取得审查 PASS、PR merge 与 `master` CI PASS 前，不得切换 OPT-3。
+阶段审查 PASS 后停止并等待用户确认报告与 Production 备份/PITR。不得自行提交 Production 变更或进入 OPT-4。
