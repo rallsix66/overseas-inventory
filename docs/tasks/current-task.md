@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-4-MIGRATION-HISTORY-REPAIR — STAGING REVIEW PASS / REMOTE CI PENDING**
+**OPT-4-MIGRATION-HISTORY-REPAIR — STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING**
 
 路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
 
@@ -22,6 +22,7 @@
 - 聚焦静态测试 5/5 PASS；PostgreSQL 契约套件已扩展覆盖 00048 的成功路径、service_role Schema USAGE 与有效旧数据触发整文件原子回滚的失败路径。
 - 本地默认测试 3932/3932（91 files）、PostgreSQL 17 契约测试 14/14、lint 0 errors / 31 warnings、Next.js build/TypeScript PASS。
 - 三轮独立阶段审查最终 PASS；00048 与 Staging `schema_migrations.statements[1]` 的 5778 bytes / 5596 chars / SHA-256 `0a833a0f407d4d9cc5be6a702662318c6afa6f382fa1689046d945d2dfefd87a` 逐字一致。
+- Draft PR #6 已创建；GitHub Actions run `29635961807` 的 quality job 与 PostgreSQL concurrency/contract job 全部 PASS，Vercel Preview PASS。
 
 详细证据：[OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)
 
@@ -44,10 +45,9 @@
 
 ## 剩余步骤
 
-1. 独立分支/PR 的 GitHub quality 与 PostgreSQL 17 套件通过。
-2. 用户单独批准 Production 维护窗口。
-3. 先应用 00048 并验证，再对 00001–00040 执行受控 history repair。
-4. 复核 Production/Staging history、canonical catalog、Cron Dry Run 与数据库顾问，重新提交最终阶段审查。
+1. 用户单独批准 Production 维护窗口。
+2. 先应用 00048 并验证，再对 00001–00040 执行受控 history repair。
+3. 复核 Production/Staging history、canonical catalog、Cron Dry Run 与数据库顾问，重新提交最终阶段审查。
 
 ## 验收标准
 

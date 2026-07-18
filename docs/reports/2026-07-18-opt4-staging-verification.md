@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-截至 2026-07-18，OPT-4 的本地代码与 Staging 数据库变更已完成，Production 尚未写入。三轮独立阶段审查最终 PASS；当前状态为 `STAGING REVIEW PASS / REMOTE CI PENDING`。
+截至 2026-07-18，OPT-4 的本地代码与 Staging 数据库变更已完成，Production 尚未写入。三轮独立阶段审查最终 PASS；Draft PR #6 GitHub Actions run `29635961807` 的 quality 与 PostgreSQL job 全部 PASS，Vercel Preview PASS。当前状态为 `STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING`。
 
 本阶段新增 `00048_restore_claim_sync_run_system.sql`，没有修改或重放 `00001–00047`。该前向 Migration 同时完成两件事：
 
@@ -70,7 +70,7 @@
 - 本地默认测试：91 files / 3932 tests PASS。
 - lint：0 errors / 31 warnings，符合既有 warning budget。
 - Next.js 16.2.9 build 与 TypeScript：PASS；仅保留已记录的 Turbopack NFT trace warning。
-- PostgreSQL 17 契约套件本地 14/14 PASS：除旧对象收敛、ACL、合法 Dry Run、Real Write/Operator/authenticated 拒绝外，还会先写入有效旧归档状态，验证真实 00048 抛错，并断言前置函数 DDL 与三列/FK/索引整笔回滚；清理测试数据后才再次执行同一 00048。远程 GitHub CI 运行证据仍待 PR。
+- PostgreSQL 17 契约套件本地 14/14 PASS：除旧对象收敛、ACL、合法 Dry Run、Real Write/Operator/authenticated 拒绝外，还会先写入有效旧归档状态，验证真实 00048 抛错，并断言前置函数 DDL 与三列/FK/索引整笔回滚；清理测试数据后才再次执行同一 00048。相同套件已在 Draft PR #6 run `29635961807` 的 PostgreSQL job 通过。
 - Staging Security Advisor 未对 `claim_sync_run_system` 产生新告警；现有告警均属于 OPT-5 已规划基线。
 - Staging Performance Advisor 可读取，未出现指向 00048 新函数或已删除索引的新问题；现有 RLS/initplan、多 permissive policy、旧索引等属于 OPT-6/后续治理基线。
 

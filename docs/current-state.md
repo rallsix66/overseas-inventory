@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-18 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并，OPT-3 merge commit `e3e4c60`。用户已确认 OPT-3 报告；Production 完整逻辑备份及 SHA-256/归档可读性验证通过。当前 `OPT-4-MIGRATION-HISTORY-REPAIR` 已完成 00048 本地实现和 Staging 部署验证，并通过三轮独立阶段审查，状态为 `STAGING REVIEW PASS / REMOTE CI PENDING`。Production Schema 与 migration history 尚未写入；必须先取得远程 CI 与用户单独维护窗口批准。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
+> 2026-07-18 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并，OPT-3 merge commit `e3e4c60`。用户已确认 OPT-3 报告；Production 完整逻辑备份及 SHA-256/归档可读性验证通过。当前 `OPT-4-MIGRATION-HISTORY-REPAIR` 已完成 00048 本地实现和 Staging 部署验证，并通过三轮独立阶段审查；Draft PR #6 的 GitHub Actions run `29635961807` 也已全部通过，状态为 `STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING`。Production Schema 与 migration history 尚未写入，必须取得用户单独维护窗口批准。实施顺序见 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
@@ -14,7 +14,7 @@
 
 ## Current Task
 
-**OPT-4-MIGRATION-HISTORY-REPAIR — STAGING REVIEW PASS / REMOTE CI PENDING** — 新增 00048 前向 Migration，不修改或重放 00001–00047。Staging 清理前 341 个 Variant 的旧归档有效数据均为 0；应用后 `claim_sync_run_system(...)` 为 `postgres` owner、`SECURITY DEFINER`、空 `search_path`，仅 `service_role` 可执行，00011 的 3 个遗留列/FK/索引均已移除。事务内 Dry Run、Real Write 拒绝和 Operator 拒绝通过且已回滚，无测试记录残留；本机 PostgreSQL 17 契约测试 14/14。三轮独立阶段审查最终 PASS。Production 备份已验证，但 Production Schema/history 尚未写入。详细证据见 [OPT-4 Staging 验证报告](reports/2026-07-18-opt4-staging-verification.md) 与 [当前任务包](tasks/current-task.md)。
+**OPT-4-MIGRATION-HISTORY-REPAIR — STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING** — 新增 00048 前向 Migration，不修改或重放 00001–00047。Staging 清理前 341 个 Variant 的旧归档有效数据均为 0；应用后 `claim_sync_run_system(...)` 为 `postgres` owner、`SECURITY DEFINER`、空 `search_path`，仅 `service_role` 可执行，00011 的 3 个遗留列/FK/索引均已移除。事务内 Dry Run、Real Write 拒绝和 Operator 拒绝通过且已回滚，无测试记录残留；本机 PostgreSQL 17 契约测试 14/14。三轮独立阶段审查最终 PASS，Draft PR #6 run `29635961807` 的 quality 与 PostgreSQL 两个 job 也全部 PASS。Production 备份已验证，但 Production Schema/history 尚未写入。详细证据见 [OPT-4 Staging 验证报告](reports/2026-07-18-opt4-staging-verification.md) 与 [当前任务包](tasks/current-task.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 

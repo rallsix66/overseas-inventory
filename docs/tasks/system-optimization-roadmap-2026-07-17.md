@@ -154,7 +154,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - Staging 完成 Admin/Operator/RLS/关键页面和回滚演练后，才安排 Production 维护窗口。
 - Production 执行后重新核对 Schema、Migration 历史和数据库顾问结果。
 
-**2026-07-18 Staging 结果**：00048 已在 Staging 成功应用并登记。`claim_sync_run_system(...)` 的 owner、`SECURITY DEFINER`、空 `search_path` 与 service-role-only ACL 均通过；00011 遗留的三列/FK/索引已在零有效旧归档数据门禁下移除。事务内合法 Dry Run、Real Write 拒绝和 Operator 拒绝通过且回滚无残留，本机 PostgreSQL 17 契约测试 14/14。三轮独立阶段审查最终 PASS；当前状态为 `STAGING REVIEW PASS / REMOTE CI PENDING`，不得提前标 DONE。Production 00048 与 history repair 必须等待远程 CI 和用户单独维护窗口批准。详见 [OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)。
+**2026-07-18 Staging 结果**：00048 已在 Staging 成功应用并登记。`claim_sync_run_system(...)` 的 owner、`SECURITY DEFINER`、空 `search_path` 与 service-role-only ACL 均通过；00011 遗留的三列/FK/索引已在零有效旧归档数据门禁下移除。事务内合法 Dry Run、Real Write 拒绝和 Operator 拒绝通过且回滚无残留，本机 PostgreSQL 17 契约测试 14/14。三轮独立阶段审查最终 PASS；Draft PR #6 GitHub Actions run `29635961807` 的 quality 与 PostgreSQL job 全部 PASS。当前状态为 `STAGING REVIEW PASS / PRODUCTION APPROVAL PENDING`，不得提前标 DONE；Production 00048 与 history repair 必须等待用户单独维护窗口批准。详见 [OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)。
 
 ## OPT-5：数据库最小权限收口
 
