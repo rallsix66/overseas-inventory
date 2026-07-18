@@ -9,7 +9,7 @@ project-overview.md
   ├── architecture.md ── database-design.md ── deployment.md
   ├── page-specification.md ── implementation-plan.md
   ├── mvp-roadmap.md
-  └── tasks/ ── current-task.md
+  └── tasks/ ── current-task.md ── system-optimization-roadmap-2026-07-17.md
 
 current-state.md
   ├── 记录上述文档对应内容的当前真实状态
@@ -30,6 +30,7 @@ docs/README.md
 ├── implementation-plan.md    Phase 0–1 历史详细规格与验收参考
 ├── mvp-roadmap.md            Phase 0–5 长期路线与依赖
 ├── tasks/                     AI 单次会话任务包、模块任务顺序与停止条件
+│   └── system-optimization-roadmap-2026-07-17.md  当前工程治理与优化顺序
 └── deployment.md             环境、发布、Migration 与回滚流程
 ```
 
@@ -45,6 +46,7 @@ docs/README.md
 | 表结构、关系、RLS 如何设计 | `database-design.md` |
 | 某个页面应该显示和操作什么 | `page-specification.md` |
 | 当前 Task 如何实施和验收 | `tasks/current-task.md`；必要时按引用读取详细规格 |
+| 当前系统优化按什么顺序实施 | `tasks/system-optimization-roadmap-2026-07-17.md` |
 | 后续 Phase 如何安排 | `mvp-roadmap.md` |
 | 如何部署、迁移和回滚 | `deployment.md` |
 
@@ -70,6 +72,7 @@ docs/README.md
 | 页面需求 | `page-specification.md` | 实施计划引用其验收目标 |
 | 历史详细实施规格 | `implementation-plan.md` | 不作为每次会话默认执行清单 |
 | AI 单次执行范围 | `tasks/current-task.md` | 每次只维护一个 ACTIVE Task Packet |
+| 系统优化审计基线与阶段顺序 | `tasks/system-optimization-roadmap-2026-07-17.md` | `current-task.md` 只引用当前优化子任务 |
 | 模块任务顺序 | `tasks/phase-*.md` | 只维护模块内任务依赖和状态 |
 | 长期 Phase 范围 | `mvp-roadmap.md` | 实施计划不重定义长期范围 |
 | 发布流程 | `deployment.md` | 其他文档只引用 |
@@ -82,6 +85,7 @@ docs/README.md
 - `page-specification.md`：页面需求确认变化时更新
 - `implementation-plan.md`：历史详细规格确需修订时更新，不维护实时任务状态
 - `tasks/current-task.md`：独立验收通过后切换下一 Task Packet
+- `tasks/system-optimization-roadmap-2026-07-17.md`：事实基线、优先级或安全边界变化时更新
 - `tasks/phase-*.md`：模块任务状态或顺序变化时更新
 - `mvp-roadmap.md`：Phase 范围或优先级变化时更新
 - `deployment.md`：环境和发布流程变化时更新

@@ -8,6 +8,7 @@
 mvp-roadmap.md          长期 Phase 与依赖
 tasks/phase-*.md        每个业务模块的任务顺序
 tasks/current-task.md   当前唯一允许执行的 Task Packet
+tasks/system-optimization-roadmap-2026-07-17.md  当前工程治理路线与安全边界
 current-state.md        当前真实状态与当前 Task ID
 ```
 
@@ -52,6 +53,7 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 | Phase 4 团队账号 | `phase-4-users.md` | 待开始 |
 | Phase 5 数据同步 | `phase-5-sync.md` | 待开始 |
 | 发布与部署 | `deployment.md` | 平台待定 |
+| 系统优化与工程治理 | `system-optimization-roadmap-2026-07-17.md` | ACTIVE；OPT-1 PR CI PASS / FINAL REVIEW PENDING |
 
 ## 状态标记
 
@@ -70,4 +72,3 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 2. 将下一任务内容写入 `current-task.md`。
 3. 在 `current-state.md` 更新 Current Task 与引用。
 4. 新 Claude 会话只执行新的 `current-task.md`。
-

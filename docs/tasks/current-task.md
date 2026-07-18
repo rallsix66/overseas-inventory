@@ -1,120 +1,127 @@
 # Current Task Packet
 
-## 状态概览（2026-07-17）
+## Task ID
 
-| 项目 | 状态 |
-|------|------|
-| Stage 0 治理 | **Stage 0A 审计完成** — 五份定稿方案（P0/P1/P7/首页/总顺序）已通过 Codex 架构终审 |
-| Stage 1 P0 喜运达物流轨迹 API 接入 | **DONE + 绑定闭环 CODE DONE** — 既有生产 API/Cron 冒烟已完成；本分支新增未绑定记录、同仓同国 Shipment 候选与不可逆绑定 UI |
-| Stage 2 P1 预测式补货引擎 | **DB + PREVIEW PASS** — 00041–00044 已应用；Admin 真实快照返回 34 条有效建议，Operator 仓库隔离与原有写入链路通过 |
-| Stage 3 P7 全球库存作战室 | **DB + PREVIEW PASS** — 00045–00046 已应用；Admin 341 SKU，Operator 仅 ID 仓 40 SKU；列表、详情、队列与分页通过 |
-| Stage 4 首页决策看板 | **DB + PREVIEW PASS** — 00047 已应用；真实仓库健康、库存、在途与行动摘要通过 |
-| DIS Staging | **READY + REAL-DATA PREVIEW PASS** — `hyarhvsjhkjpallbyifn` 已重放 00001–00047，并加载 Production 只读脱敏业务快照；Preview 三项 Supabase 变量只指向 Staging |
-| P8-DOMESTIC-INVENTORY | 暂不启动 — 国内库存接入方案待用户确认后启动 |
-| P6-OVERSEAS-INVENTORY-UX-V2 | **FINAL CLOSED**（2026-07-09） |
-| 全量测试 | **3883/3883**（88 files, 0 failures）；lint 0 errors / 31 warnings；build pass |
+**OPT-1-CI-BASELINE — CODE COMPLETE / PR CI PASS / FINAL REVIEW PENDING**
 
-## 本次已完成（2026-07-15）
+路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
 
-### PREVIEW-SESSION-ESTABLISHMENT-GUARD（CODE COMPLETE / DEPLOY PENDING，2026-07-17）
+上一阶段归档：[2026-07-17 sequential roadmap and Staging smoke](../reports/2026-07-17-sequential-roadmap-and-staging-smoke.md)
 
-- 修复 `/dashboard/sync` 点击「重新建立登录会话」后 `spawn python ENOENT` 冒泡为生产版 Server Components 错误。
-- Vercel 环境在文件系统/子进程操作前返回明确的不可用提示；交互式 BigSeller 登录仍只能在安装 Python、Playwright 和桌面 Chrome 的同步主机执行。
-- 本地启动改为等待 child process `spawn` 成功事件，支持 `PYTHON_EXECUTABLE`，失败时清理锁与日志句柄；新增 Vercel、ENOENT、Admin 权限和成功启动 4 项回归测试。
-- 独立 worktree 未保存 Vercel 项目链接；未擅自重新绑定项目、未提交/推送、未部署 Preview。
+## 目标
 
-### PREVIEW-PRODUCTION-SNAPSHOT（2026-07-17）
+为 GitHub Pull Request 和 `master` push 建立不接触云数据库的自动质量门，覆盖当前 3883 个默认测试、lint、Next.js build、diff check，以及在隔离 PostgreSQL service 中运行的 44 个并发测试。
 
-- Production 全程只读；Vercel Production 环境变量和数据均未修改。
-- Staging 单事务清理 `CODEX-SMOKE` 业务数据并加载脱敏快照：1 Product、341 ProductVariant、341 Inventory、6 Warehouse、2 Shipment、2 ShipmentItem、5 TrackingEvent、1 ShipmentExternalRef、11 TrackingEventExternal。
-- 跨库逐表内容哈希一致：Product、Warehouse（`sync_url` 统一置空）、ProductVariant 公共字段、Inventory、Shipment（排除 `created_by`）、ShipmentItem、TrackingEvent（排除 `created_by`）、外部引用/事件（`raw_payload` 置空）。
-- 不复制 Production Auth、Profiles、UserVariantPreference、SyncRun、SyncLog、ProviderTokenCache；Staging 记录创建者统一映射到临时 Admin。
-- Operator 重新分配 Production 快照中的 ID 仓；RLS 结果为 1 Warehouse / 40 ProductVariant / 40 Inventory / 0 非 ID Inventory。
-- Preview 页面复验：Operator 首页显示印尼仓真实库存；P7 显示 40 SKU、2 页且无 `CODEX-SMOKE`；Admin RPC 显示 341 SKU、5 个海外仓、34 条补货建议。
-- 当前保持在 `codex/sequential-roadmap`，等待用户确认后再合并 `master`。
+## 开始前事实
 
-### SEQUENTIAL-ROADMAP-IMPLEMENTATION
+- `master` 已包含 PR #2 的顺序路线实现与文档归档。
+- 仓库共有 47 个 SQL Migration（00001–00047）。
+- `npm run test`：88 files / 3883 tests / 0 failure。
+- `npm run lint`：0 error / 31 warning。
+- `npm run build`：通过。
+- `.github/workflows/` 尚不存在。
+- `npm run test:concurrency` 需要 PostgreSQL 连接参数，当前不属于默认测试。
+- 两个 `supabase/migrations/*.test.ts` 不在默认 Vitest include 中；它们属于下一任务 OPT-2，本任务不顺带移动。
 
-- 独立 worktree：`.vercel/worktrees/codex-sequential`；独立分支：`codex/sequential-roadmap`。
-- P0：补齐未绑定喜运达记录列表、同仓同国候选查询、Server Action 绑定和绑定后列表刷新。
-- P1：新增 00041–00044、共享断货预测函数、补货建议页、仓库补货参数、计划发货与软取消。
-- P7：新增 00045–00046、全球库存 JSONB 列表/详情 RPC、权限内聚合、决策队列、详情弹窗和仓库级行动。
-- 首页：新增 00047，改为库存健康、有效计划及在途、未来 7 日到港、低库存、关注与同步异常的单屏决策看板。
-- 本地验收：两轮全量测试最终均为 3879/3879；lint 0 errors；build/TypeScript 通过；登录页及三条受保护路由浏览器冒烟通过，最终控制台 0 error/warn。
-- 数据库部署：00041–00047 已于 2026-07-16 严格按序应用到目标 Supabase `DIS Project`。远端记录 7 条 migration；4 个新列、2 个约束、2 个索引、1 个触发器和 6 个 RPC 均核对通过。
-- 数据库只读验收：Admin/Operator 的补货、在途、P7 列表/详情和首页健康度 RPC 均返回正确契约；Operator 仅可见 1 个已分配仓库，补货/P7/首页/详情的仓库隔离断言全部为 true（无泄露）。迁移后安全与性能顾问未发现本批新增对象相关项。
-- Staging：Supabase `DIS Staging`（project ref `hyarhvsjhkjpallbyifn`，Singapore）已创建；00001–00047 共 47 条 migration 从空库重放成功，migration 历史连续无缺口。18 个 public 基础表全部启用 RLS；新增六个 P1/P7/首页 RPC 均为 `SECURITY INVOKER`、空 `search_path`、anon 无执行权、authenticated 有执行权。安全/性能顾问均为 0 error，保留的是既有策略/索引类 warning。
-- 数据库漂移：Staging 按仓库 migration 链生成，较 Production 多出 `product_variant.is_archived/archived_at/archived_by`、对应索引/外键，以及 `claim_sync_run_system(...)`。这些对象来自 00010/00011，说明 Production 早期 SQL Editor 执行结果与当前 migration 链存在历史漂移；本任务不直接改 Production，后续须单独做生产基线与补齐评审。
-- Preview 接线、Staging Admin/Operator、页面/RLS/写入验收与真实业务快照均已完成；Production 环境变量和数据未改动。
-- 剩余：等待用户确认真实数据 Preview 效果；确认前不得合并 `master`。
+## 依赖
 
+- 确认 GitHub 仓库 Actions 可用。
+- 从 Vercel/项目配置核对生产兼容的 Node 主版本；不得凭本机版本猜测。
+- 使用现有 `package-lock.json`，不升级依赖。
 
-## 最近已完成（2026-07-10）
+## 允许修改范围
 
-### QUALITY-GATE-FIX-P6-ASSERTIONS
+- `.github/workflows/ci.yml`
+- `package.json`（仅在需要增加无副作用的 CI script 或 Node 版本约束时）
+- `.nvmrc`（仅在确认 Node 主版本后）
+- 与 CI 配置直接相关的最小文档和测试辅助配置
+- `docs/current-state.md`
+- `docs/tasks/current-task.md`
+- `docs/tasks/system-optimization-roadmap-2026-07-17.md`
 
-全量测试从 3454/3460 恢复至 3460/3460。6 个旧断言全部为 P6-UX-IN-TRANSIT-OPTIMIZATION 后 UI 结构调整导致测试过时（span className 匹配 + unmatched 分支布局 + badge shrink-0 上下文窗口）。不改业务逻辑/Repository/Server Action/Migration/RPC/RLS。
+## 实施要求
 
-### TEAM-ACCOUNTS-SELECT-CONTROLLED
+### Quality Job
 
-修复 `/dashboard/users` 页面 `UserRoleChangeDialog` 中 Base UI Select controlled/uncontrolled console warning。根因：`useState<string | undefined>()` 初始值为 `undefined`，选择角色后变为 role id 字符串，导致 Base UI 认为 Select 从 uncontrolled 切换到 controlled。修复：`useState('')` 空字符串 sentinel 保持全生命周期 controlled，`setSelectedRoleId(undefined)` → `setSelectedRoleId('')`，`onValueChange` 不再写 `v ?? undefined`。不改业务逻辑/权限/RPC/Migration/RLS。
+触发条件：
 
-### TEAM-ACCOUNTS-SIDEBAR
+- Pull Request
+- push 到 `master`
+- `workflow_dispatch`
 
-团队账号侧边栏入口已开放。Admin 可点击进入 `/dashboard/users`，Operator 侧边栏不显示团队账号。
+步骤：
 
-### SKU-MANAGEMENT-UNMATCHED-MERGE
+1. checkout
+2. setup-node，启用 npm cache
+3. `npm ci`
+4. `npm run test`
+5. lint，初始 warning budget 固定为 31，任何新增 warning 使 CI 失败
+6. `npm run build`
+7. `git diff --check`
 
-将「待处理 SKU」并入「SKU 管理」作为页内子视图。侧边栏产品管理组仅保留一个「SKU 管理」入口；进入后通过标签切换「全部 SKU」和「待处理 SKU」。这是导航与信息架构收口，不涉及数据库和业务逻辑变更。
+### PostgreSQL Concurrency Job
 
-- 侧边栏：移除独立「待处理 SKU」入口 + `AlertTriangle` import
-- 新增 `variants/layout.tsx`：统一标题 + 两个视图标签
-- 两个页面移除独立 `<h1>` 和 `px-6` 外层包装
-- 不改 ProductVariant 数据模型/查询口径/权限规则/匹配业务逻辑
-- 新增 27 项测试
+- 使用 GitHub Actions PostgreSQL service，不连接 Production/Staging。
+- 创建专用测试数据库和最低必要连接变量。
+- 等待健康检查通过后执行 `npm ci` 与 `npm run test:concurrency`。
+- 不使用 Supabase URL、anon key、service role key 或 Production secrets。
 
-### P6-OVERSEAS-PRODUCT-NAME-SIMPLIFY
+### Live Provider Test
 
-海外库存表格产品名称列展示简化：移除 matched 分支中标准产品辅助信息（"标准品：xxx"/"已匹配标准品缺失"），已匹配行直接显示单个 BigSeller 原始品名 span。标准产品字段、绑定关系、Repository 映射及权限均保持不变。
+- `npm run test:best-live` 不进入普通 PR/push workflow。
+- 若后续需要自动运行，必须另建手动/计划任务并使用受保护 secrets；不属于当前 Task。
 
-## 当前阻塞
+## 非目标
 
-- **等待用户确认 Preview 后合并**：真实数据 Preview、Admin/Operator 页面、写入链路和 RLS 已完成验收；当前不再推进代码或主线变更，直到用户明确确认。
-- **P3-S1B**（百世 API 恢复）→ BLOCKED_EXTERNAL，百世 partnerId API 权限未开通。与 P0 喜运达物流轨迹 API 接入无关，不阻塞 Stage 1。
-- **Production Migration 历史与 Schema 需基线化后再采用 CLI push**：Production 的 00001–00040 早期通过 SQL Editor 执行且未登记在远端 migration 历史；远端历史仅登记 00041–00047。Staging 已证明仓库 00001–00047 可从空库连续重放，并暴露 Production 缺失的 00010/00011 对象。未来启用 `supabase db push` 或补齐 Production 前必须先做 history baseline/repair 与对象级影响评审，禁止直接重跑旧 migration。
+- 不修改业务源码、页面、Repository、Server Action 或同步脚本。
+- 不移动两个漏跑的 migration 测试；留给 OPT-2。
+- 不新增或修改 Migration、RPC、RLS、函数权限或 Supabase 设置。
+- 不执行 `supabase migration repair` / `supabase db push`。
+- 不连接或写入 Production/Staging。
+- 不部署 Vercel。
+- 不清理 31 个 lint warning，只建立不允许增长的预算。
+- 不提交 `.claude/context-status.json`、`.env.local`、运行产物或用户现有未提交修改。
 
-## 质量门（全阶段通用）
+## 验收标准
+
+- workflow YAML 可被 GitHub Actions 解析。
+- 本地 `npm run test` 仍为 3883/3883。
+- lint 为 0 error，warning 不超过 31。
+- build / TypeScript 通过。
+- PostgreSQL 并发测试使用隔离数据库并通过 44/44。
+- workflow 中不存在 Production/Staging Supabase 项目标识和密钥引用。
+- `git diff --check` 通过。
+- 变更集只包含本 Task 允许文件，不混入用户现有同步脚本修改。
+
+## 实施结果（2026-07-17）
+
+- 新增 `.nvmrc`，Node 主版本固定为 24；已通过 Vercel 项目只读配置确认 Production 使用 `24.x`。
+- 新增 `.github/workflows/ci.yml`：Quality Job + PostgreSQL 17 Concurrency Job。
+- workflow 不包含 Supabase/Vercel 项目标识或真实密钥，不执行 Vercel deploy。
+- YAML 结构解析通过。
+- `npm run test`：88 files / 3883 tests / 0 failure。
+- `npm run lint -- --max-warnings 31`：0 error / 31 warning。
+- 使用 CI 占位 Supabase 环境变量执行 `npm run build`：通过；保留 1 条既有 Turbopack NFT trace warning，已记入 OPT-6。
+- `git diff --check`：通过。
+- Draft PR #3 已创建：`agent/opt-1-ci-baseline` → `master`。
+- GitHub Actions `PostgreSQL concurrency tests` 已通过 44/44（49 秒）。
+- GitHub Actions `Tests, lint, and build` 已通过（1 分 2 秒）。
+- Vercel 既有 Git 集成自动 Preview 已通过；本 Task 未执行手动 deploy/promote。
+- 当前只等待指定独立审查会话对远程证据和最终 diff 做阶段终审；PASS 前不得进入 OPT-2。
+
+## 验证命令
 
 ```bash
-npm run test          # 3883/3883（88 files, 0 failures）
-npm run build         # Turbopack 构建成功
-npm run lint          # 0 errors / 31 warnings（无本批次新增 error）
-git diff --check      # 无 trailing whitespace / 冲突标记
+npm run test
+npm run lint -- --max-warnings 31
+npm run build
+npm run test:concurrency
+git diff --check
+git status --short
 ```
 
-## 实施顺序与 Migration 依赖（定稿）
+并发测试必须指向本地或临时 PostgreSQL；缺少隔离数据库时不得改为连接 Supabase Production/Staging。
 
-固定串行顺序：**Stage 1 P0 → Stage 2 P1 → Stage 3 P7 → Stage 4 首页**
+## 停止条件
 
-| Stage | 方案 | Migration | 依赖 |
-|-------|------|-----------|------|
-| 1 | P0 喜运达物流轨迹 API 接入 | 00038 A / 00039 B / 00040 C | 无（仅依赖现有 00037） |
-| 2 | P1 预测式补货引擎 | 00041 A / 00042 B / 00043 C / 00044 D | P0 完成 |
-| 3 | P7 全球库存作战室 | 00045 E / 00046 F | P1 C/00043 + P1 D/00044 |
-| 4 | 首页决策看板 | 00047 | P1 + P7 完成 |
-
-关键规则：
-- P7 的 00045/00046 必须作为新 Migration 创建，不能修改已执行的 00001–00037
-- P7 不能先于 P1 开工（P7 E 依赖 P1 C 的共用预测函数，P7 F 依赖 P1 C+D 的 `get_replenishment_suggestions`）
-- P0 优先实施仅为降低后续并行变更冲突，不是 P1/P7 的计算依赖
-- 首页必须在 P1 与 P7 完成后实施，首页不是并行快赢
-
-## 禁止事项（全阶段）
-
-- 不新增 Migration / RPC / RLS（除非当前 Stage 明确需要）
-- 不修改 Product → ProductVariant → Inventory 核心模型
-- 不绕过 Repository Pattern / Server Actions / RLS
-- 不提交 `.claude/context-status.json`
-- 不提交 `.env.local`
-- 不使用 `any`
-- 不使用 `service_role` 在客户端或业务页面
+CI 文件、本地质量门、Draft PR #3 和两个 PR GitHub Actions job 均已通过。当前停止顺序为：指定审查会话阶段终审 PASS → 合并 PR #3 → `master` push 的两个 CI job 均通过 → 标记 OPT-1 DONE → 才允许将 `current-task.md` 切换为 OPT-2。不得跳过主线验证或自动进入数据库任务。
