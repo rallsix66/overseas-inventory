@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-1-CI-BASELINE — DONE / FINAL REVIEW PENDING**
+**OPT-1-CI-BASELINE — CODE COMPLETE / PR CI PASS / FINAL REVIEW PENDING**
 
 路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
 
@@ -124,4 +124,4 @@ git status --short
 
 ## 停止条件
 
-CI 文件、本地质量门、Draft PR #3 和两个 GitHub Actions job 均已通过。当前停止等待指定审查会话阶段终审；明确 PASS 后才允许将 `current-task.md` 切换为 OPT-2。不得自动进入数据库任务。
+CI 文件、本地质量门、Draft PR #3 和两个 PR GitHub Actions job 均已通过。当前停止顺序为：指定审查会话阶段终审 PASS → 合并 PR #3 → `master` push 的两个 CI job 均通过 → 标记 OPT-1 DONE → 才允许将 `current-task.md` 切换为 OPT-2。不得跳过主线验证或自动进入数据库任务。

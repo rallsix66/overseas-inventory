@@ -34,10 +34,10 @@
 - Vercel Preview、独立 Supabase Staging 和真实脱敏数据验收。
 - Production 的 00041–00047 部署与只读 RPC/RLS 冒烟。
 - ProductVariant、海外库存、在途、团队账号和同步链路的既定 MVP 范围。
+- 缺少 CI 的历史缺口已由 OPT-1 在 Draft PR #3 中完成实现并通过 PR 质量门；待阶段终审、合并与 `master` push CI 后正式关闭。
 
 ### 仍然成立
 
-- 缺少持续集成和自动质量门。
 - 测试中过度依赖源码文本契约，真实 PostgreSQL/RLS/RPC 行为覆盖不足。
 - Production 的迁移历史尚未基线化，不能安全启用 `supabase db push`。
 - 国内库存、动态运输周期、库存历史快照、自动匹配、逐 SKU 同步审计仍属于产品路线技术债务。
@@ -71,7 +71,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 数据库任务必须串行。OPT-3 完成前，不得对 Production 执行 `db push`、旧 Migration 重放或新的 Production Schema 变更。
 
-## OPT-1：CI 基线（DONE / FINAL REVIEW PENDING）
+## OPT-1：CI 基线（CODE COMPLETE / PR CI PASS / FINAL REVIEW PENDING）
 
 **目标**：让每次 PR 和 `master` push 自动验证当前稳定基线。
 
@@ -94,6 +94,8 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 **2026-07-17 本地结果**：已新增 `.nvmrc`（与 Vercel Project Settings 的 Node `24.x` 对齐）和 `.github/workflows/ci.yml`。YAML 结构解析通过；默认测试 3883/3883、lint 0 error / 31 warning budget、占位 Supabase 环境 build 均通过。
 
 **2026-07-18 远程结果**：Draft PR #3（`agent/opt-1-ci-baseline` → `master`）首次运行通过：`PostgreSQL concurrency tests` 44/44（49 秒），`Tests, lint, and build`（1 分 2 秒），Vercel Git 集成 Preview 亦通过。workflow 未连接 Supabase Production/Staging，也未执行手动 Vercel deploy/promote。
+
+**关闭顺序**：指定独立审查会话明确 PASS → 将 PR #3 转为 Ready 并合并 → 等待 `master` push 的 `PostgreSQL concurrency tests` 与 `Tests, lint, and build` 均通过 → 标记 OPT-1 DONE → 切换 OPT-2。任何一步未完成都不得提前关闭 OPT-1。
 
 ## OPT-2：测试覆盖加固
 
