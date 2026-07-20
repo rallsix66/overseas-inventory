@@ -2,9 +2,9 @@
 
 ## 当前结论
 
-状态：`CODE COMPLETE / LOCAL QUALITY GATES PASS / STAGING PENDING`。
+状态：`STAGING POSTCHECK PASS / PRODUCTION PENDING`。
 
-2026-07-20 已完成两环境只读权限基线、调用点审计、00049 前向 Migration、静态契约和 PostgreSQL 17 行为测试。当前尚未写入 Staging 或 Production；只有 Staging 应用、postcheck 与完整质量门通过后，才能继续 Production。
+2026-07-20 已完成两环境只读权限基线、调用点审计、00049 前向 Migration、静态契约和 PostgreSQL 17 行为测试。Draft PR #8 的 exact-head CI 已全绿，Staging 随后完成 00049、canonical history、ACL/RLS、rollback-only 行为探针和 Advisor postcheck；当前只剩以同一文件执行 Production 及最终独立审查。
 
 ## 范围
 
@@ -14,8 +14,20 @@
 - 00001–00049 连续重放：`src/features/database/migrations-00001-00049-replay.postgres.test.ts`
 - Production：`hzlhqyditalumhnxbaim`
 - Staging：`hyarhvsjhkjpallbyifn`
+- Staging 证据：[2026-07-20-opt5-staging-postcheck.md](evidence/2026-07-20-opt5-staging-postcheck.md)
+- history-only 规范化脚本：[2026-07-20-opt5-00049-history-normalization.sql](sql/2026-07-20-opt5-00049-history-normalization.sql)
 
-不在本阶段处理：`pg_trgm` extension 迁移、intentional authenticated `SECURITY DEFINER` RPC 批量改写、OPT-6 policy/performance/lint、旧 Migration 修改或 history repair。
+不在本阶段处理：`pg_trgm` extension 迁移、intentional authenticated `SECURITY DEFINER` RPC 批量改写、OPT-6 policy/performance/lint、旧 Migration 修改或重放。Supabase 接口生成的单条 00049 时间戳 history 已用单事务规范为仓库的固定宽度 version/name；这一步只改新行元数据并有独立证据，不构成旧 history repair。
+
+## Staging 结果
+
+- 项目 `ACTIVE_HEALTHY`、PostgreSQL 17.6；即时 preflight 为精确 `00001–00048`、0 个运行中同步任务、18/18 RLS、42 policy、13 trigger。
+- Migration 成功执行一次；接口生成的 timestamp history 随后由严格门禁脚本只改为 `00049 / 00049_database_least_privilege_hardening`。最终为 49 rows / 49 unique version/name，statement payload 未变。
+- 目标 ACL/search path 全部命中；service_role 无 token-cache 直接表权限但 lease RPC 实际可用。Admin、Operator、Auth trigger、timestamp trigger 与 token lease 的事务回滚探针 PASS，残留 0。
+- 除十个预期目标函数外，Staging 与尚未写入的 Production 在 column、constraint、function、index、policy、table/RLS、trigger 七类 canonical count/digest 全部相同。
+- Security Advisor 从 22 降至 14（1 INFO / 13 WARN）；Performance WARN 保持 121，新增十项仅为动态 unused-index INFO。
+
+完整数值、摘要和停止门见 [Staging postcheck evidence](evidence/2026-07-20-opt5-staging-postcheck.md)。
 
 ## 2026-07-20 只读基线
 
@@ -68,6 +80,6 @@
 
 1. 完成默认测试、build、并发与全部 PostgreSQL contract。
 2. 提交独立 OPT-5 PR，确认最新 head CI/Vercel Preview 全绿。
-3. Staging 应用 00049，保存 migration、函数/ACL、trigger、RLS/policy、身份矩阵、token lease 与 Advisor postcheck。
-4. Staging 全绿后才可在 Production 应用同一 Migration；任何摘要或行为漂移立即停止。
+3. ✅ Staging 应用 00049，保存 migration、函数/ACL、trigger、RLS/policy、身份矩阵、token lease 与 Advisor postcheck。
+4. 在 Production 应用同一 Migration 与 history 规范化门禁；任何摘要或行为漂移立即停止。
 5. 两环境证据、项目树索引、secret/orphan 检查与最终 PR/CI 完成后移交指定审查会话。明确 `OPT-5 PASS` 前禁止进入 OPT-6。

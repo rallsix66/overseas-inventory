@@ -53,7 +53,7 @@ docs/README.md
 | 当前系统优化按什么顺序实施 | `tasks/system-optimization-roadmap-2026-07-17.md` |
 | OPT-4 已完成的远端执行、Migration history 与终审证据 | [Production 主报告](reports/2026-07-18-opt4-production-verification.md) → [Production postcheck evidence](reports/evidence/2026-07-20-opt4-production-history-postcheck.md) |
 | OPT-5 当前权限审计、实施边界与停止门 | [当前任务包](tasks/current-task.md) → [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) |
-| OPT-5 实际权限基线、00049 与验证证据 | [OPT-5 数据库最小权限收口报告](reports/2026-07-20-opt5-database-least-privilege.md) |
+| OPT-5 实际权限基线、00049 与验证证据 | [OPT-5 主报告](reports/2026-07-20-opt5-database-least-privilege.md) → [Staging postcheck](reports/evidence/2026-07-20-opt5-staging-postcheck.md) |
 | 后续 Phase 如何安排 | `mvp-roadmap.md` |
 | 如何部署、迁移和回滚 | `deployment.md` |
 

@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — CODE COMPLETE / LOCAL QUALITY GATES PASS / STAGING PENDING**
+**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — STAGING POSTCHECK PASS / PRODUCTION PENDING**
 
 ## 依赖与历史检查点
 
@@ -50,13 +50,13 @@ OPT-4 详细证据：[Production 主报告](../reports/2026-07-18-opt4-productio
 1. ✅ 完成 Production/Staging 只读权限矩阵、调用点、Advisor 与对象摘要基线。
 2. ✅ 编写 00049 Migration 与静态/PostgreSQL 契约测试；一次性 PostgreSQL 17 连续重放 00001–00049，合并 contract 27/27 PASS。
 3. ✅ 默认测试 3939/3939、lint 0/31、TypeScript/build、PostgreSQL concurrency 44/44、contract 27/27 已通过；提交前继续复核 `git diff --check`、链接/索引/secret/orphan。
-4. 提交并推送独立 OPT-5 分支，等待 PR/CI/Vercel Preview 全绿。
-5. 在 Staging 应用相同 Migration，保存 before/after ACL、function、RLS、身份矩阵、Advisor 与 history evidence。
+4. ✅ 提交并推送独立 OPT-5 分支；Draft PR #8 exact-head CI/Vercel Preview 全绿。
+5. ✅ 在 Staging 应用相同 Migration，保存 before/after ACL、function、RLS、身份矩阵、Advisor 与 history evidence。
 6. Staging 全绿后在 Production 应用同一 Migration并保存等价 postcheck；若出现行为或摘要漂移立即停止，不进入下一环境/阶段。
 7. 把实际变更、时间/环境、命令类别、PR/commit/CI/deployment/远端证据、停止门与残余风险写入项目树并建立索引。
 8. 正式移交指定审查会话；CHANGES_REQUIRED 时只在 OPT-5 范围返工，明确 PASS 前不进入 OPT-6。
 
-实施记录：[OPT-5 数据库最小权限收口报告](../reports/2026-07-20-opt5-database-least-privilege.md)
+实施记录：[OPT-5 数据库最小权限收口报告](../reports/2026-07-20-opt5-database-least-privilege.md)；[Staging postcheck evidence](../reports/evidence/2026-07-20-opt5-staging-postcheck.md)
 
 ## 验收标准
 
