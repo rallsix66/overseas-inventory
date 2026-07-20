@@ -86,6 +86,10 @@ Migration, business data, ACL, function, trigger, index, synchronization script
 or Auth setting was changed. The remote evidence is complete but remains under
 independent review; Batch 2 is still blocked.
 
+The documentation-only evidence checkpoint is PR #10 head
+`5c80755f25a48496427e59aaa9635027dd989768`; exact-head CI run `29739465796`
+passed both jobs and Vercel Preview `sBfgQG7cstb2n5YZkv1w2mvQgEGM` passed.
+
 ## Verification
 
 - `npm.cmd run lint -- --max-warnings 0`: PASS, 0 errors / 0 warnings.

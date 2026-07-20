@@ -40,7 +40,11 @@ CHANGES_REQUIRED means stop and fix only the requested scope. This route does no
   `BKDzcK4k9noxQgzAboJB6h2XjmeF` passed. The controlled remote stage then
   applied 00050 to Staging and Production. Both are now exact `00001`–`00050`,
   with the canonical one-statement 00050 body and six reviewed optimized
-  policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md).
+policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md).
+- The documentation-only evidence checkpoint was PR #10 head
+  `5c80755f25a48496427e59aaa9635027dd989768`; exact-head CI `29739465796` and
+  Vercel Preview `sBfgQG7cstb2n5YZkv1w2mvQgEGM` passed. Any later
+  documentation head must bind its own exact CI/Vercel result before review.
 - OPT-6 policy targets from the reviewed roadmap: 6 `auth_rls_initplan`, 115 `multiple_permissive_policies`, and unused-index findings that must not be bulk-deleted from one Advisor snapshot.
 - Turbopack workspace-root misdetection is fixed by `turbopack.root = __dirname`; one NFT trace warning remains because the sync route intentionally uses the project-root runtime path. No further path rewrite is allowed without proving runtime equivalence.
 - `npm audit --omit=dev` has 2 moderate PostCSS advisories with no available fix; do not claim audit zero or force an unsafe override.

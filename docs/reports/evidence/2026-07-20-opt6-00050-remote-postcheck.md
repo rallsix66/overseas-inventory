@@ -18,6 +18,9 @@ explicit `PASS`.
 - Environment order: Staging `hyarhvsjhkjpallbyifn`, then Production
   `hzlhqyditalumhnxbaim`
 - Completed: 2026-07-20 19:33 +08:00 (Asia/Shanghai)
+- Documentation checkpoint: PR #10 head `5c80755f25a48496427e59aaa9635027dd989768`,
+  CI run `29739465796` (both jobs passed), Vercel Preview
+  `sBfgQG7cstb2n5YZkv1w2mvQgEGM` (passed).
 - Execution surface: authenticated Supabase SQL Editor. The current task had no
   Supabase connector and the fixed CLI was not safely linked; no database
   password, access token, service-role key, or connection string was requested
