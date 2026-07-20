@@ -190,7 +190,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 ## OPT-6：渐进式质量治理
 
-**当前状态**：`BATCH 1 REMOTE APPLY PASS / REMOTE REVIEW PENDING`。OPT-6 Batch 1 head `d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51` 已获指定会话 FINAL PASS；PR #9 合并为 `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`，master CI `29733960202` 与 Vercel production deployment `BKDzcK4k9noxQgzAboJB6h2XjmeF` 全绿。00050 已按 Staging → Production 顺序受控执行；两环境均为 50/50 的 `00001`–`00050` 精确集合，00050 正文长度/MD5 与六条完整优化 policy catalog 均命中审定基线，未重放旧 Migration 或写业务数据。当前只允许整理并终审[远端 postcheck 证据](../reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md)；指定会话 PASS 前不得进入 Batch 2。115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [Batch 1 报告](../reports/2026-07-20-opt6-quality-governance-batch-1.md)。
+**当前状态**：`BATCH 1 REMOTE FINAL PASS / PR #10 MERGE PENDING`。OPT-6 Batch 1 head `d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51` 已获代码终审 PASS；PR #9 合并为 `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`，master CI `29733960202` 与 Vercel production deployment `BKDzcK4k9noxQgzAboJB6h2XjmeF` 全绿。00050 已按 Staging → Production 顺序受控执行，两环境均为 50/50 的精确 `00001`–`00050` 集合；远端证据 head `1fbc6b042caf289698d60d2697a909787002968d`、CI `29739720283`、Vercel Preview `obXa1wmkxzMorYz9k8AmpkhBSZmG` 经指定会话复核并获得 `OPT-6 BATCH 1 REMOTE FINAL PASS`。当前只待合并文档 PR #10；合并后方可进入 Batch 2。115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [Batch 1 报告](../reports/2026-07-20-opt6-quality-governance-batch-1.md) 与[远端 postcheck 证据](../reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md)。
 
 - 清理 31 个 unused-vars warning；CI warning budget 从 31 逐步降至 0。
 - 对 6 个 auth init-plan policy 使用 `(select auth.uid())` 等等价形式优化，并验证权限矩阵不变。

@@ -2,7 +2,7 @@
 
 ## Status
 
-`STAGING PASS / PRODUCTION PASS / INDEPENDENT REVIEW PENDING`
+`STAGING PASS / PRODUCTION PASS / INDEPENDENT REVIEW PASS`
 
 This report records the controlled remote application of
 `00050_optimize_auth_rls_initplan.sql`. It does not mark OPT-6 complete and it
@@ -95,6 +95,18 @@ Auth setting, or old Migration was changed in this remote stage.
   Vercel evidence must remain green on the final documentation head.
 - The designated independent review task must return explicit `PASS` before
   current-task may move to OPT-6 Batch 2.
+
+## Independent review result
+
+The designated review task returned `OPT-6 BATCH 1 REMOTE FINAL PASS` for base
+`d9acf51e0cfbfd2e21f243f41273de7278f4e80a`, final evidence head
+`1fbc6b042caf289698d60d2697a909787002968d`, and PR #10. It independently
+confirmed the Staging 50/50/50 history result, Production six-row complete
+policy catalog, both projects' Healthy/last-migration state, the canonical
+00050 hashes, seven-file documentation-only diff, zero missing links/high-
+confidence secrets, clean worktree, exact-head CI `29739720283`, and Vercel
+Preview `obXa1wmkxzMorYz9k8AmpkhBSZmG`. The review made no remote writes, did
+not merge PR #10, and did not start Batch 2.
 
 ## Navigation
 

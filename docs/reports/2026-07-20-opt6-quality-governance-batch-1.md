@@ -2,7 +2,7 @@
 
 ## Status
 
-`CODE COMPLETE / LOCAL VERIFY PASS / CI + VERCEL PASS / BATCH REVIEW PASS / REMOTE APPLY PASS / REMOTE REVIEW PENDING`
+`CODE COMPLETE / LOCAL VERIFY PASS / CI + VERCEL PASS / BATCH REVIEW PASS / REMOTE APPLY PASS / REMOTE REVIEW PASS`
 
 This is the first independently reviewable OPT-6 batch. It does not mark OPT-6
 complete and does not authorize the next batch until the designated review task
@@ -90,6 +90,13 @@ The documentation-only evidence checkpoint is PR #10 head
 `5c80755f25a48496427e59aaa9635027dd989768`; exact-head CI run `29739465796`
 passed both jobs and Vercel Preview `sBfgQG7cstb2n5YZkv1w2mvQgEGM` passed.
 
+The final remote evidence head `1fbc6b042caf289698d60d2697a909787002968d`
+then passed exact-head CI `29739720283` and Vercel Preview
+`obXa1wmkxzMorYz9k8AmpkhBSZmG`. The designated review task independently
+checked both remote projects and returned `OPT-6 BATCH 1 REMOTE FINAL PASS`.
+Batch 1 is now closed; PR #10 merge is the remaining repository handoff before
+Batch 2 begins.
+
 ## Verification
 
 - `npm.cmd run lint -- --max-warnings 0`: PASS, 0 errors / 0 warnings.
@@ -132,8 +139,8 @@ locale-only mismatch is not a 00050 failure and remains a CI verification item.
   `BqS7bgtX77Y9wD9t8LUkvgtf9M9W`; independent Batch review is PASS.
 - PR #9 merge `d9acf51`, master CI `29733960202`, production deployment
   `BKDzcK4k9noxQgzAboJB6h2XjmeF`, and the two-environment remote postcheck are
-  now complete. Remote-stage independent review remains pending. Do not enter
-  OPT-6 Batch 2 before the designated review task returns `PASS`.
+  now complete. Remote-stage independent review returned FINAL PASS for head
+  `1fbc6b0`; merge PR #10 before starting OPT-6 Batch 2.
 
 ## Navigation
 
