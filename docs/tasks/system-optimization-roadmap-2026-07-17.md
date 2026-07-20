@@ -186,9 +186,11 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **验收身份矩阵**：anon、未登录、活跃 Admin、活跃 Operator、disabled user、跨仓 Operator、service role/系统同步调用。
 
-**2026-07-20 当前实施状态**：两环境只读函数定义、ACL、RLS 与 `provider_token_cache` grants 基线逐项一致。00049 已用最小 ALTER/REVOKE 实现：固定 5 个 mutable search path、移除 `get_user_role()`/`handle_new_user()` 的不必要直接调用面、保持两个用户管理 RPC 为 authenticated-only invoker，并把 token cache 强制收敛到 service-role-only definer lease RPC。默认测试 3939/3939、lint 0 errors / 31 warnings、Next.js build/TypeScript、PostgreSQL concurrency 44/44、一次性 PostgreSQL 17 上 00001–00049 连续重放与三套合并 contract 27/27 均通过。PR #8 checkpoint `350b1b5` 的 CI run `29717356909` 与 Vercel 全绿；Staging/Production 均已应用 00049，接口生成的新单行时间戳 history 用严格门禁事务规范为 `00049`，最终 49/49。两环境全部 75 个函数与另外六类 catalog、ACL/search path、回滚行为探针、18/18 RLS、42 policy、13 trigger 和 Advisor 全绿，Production token 数据摘要不变。当前为 `IMPLEMENTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING`；详见 [OPT-5 主报告](../reports/2026-07-20-opt5-database-least-privilege.md)、[Staging evidence](../reports/evidence/2026-07-20-opt5-staging-postcheck.md) 与 [Production evidence](../reports/evidence/2026-07-20-opt5-production-postcheck.md)。
+**2026-07-20 最终结果**：两环境只读函数定义、ACL、RLS 与 `provider_token_cache` grants 基线逐项一致。00049 以最小 ALTER/REVOKE 固定 5 个 mutable search path、移除不必要直接调用面、保持用户管理 RPC 为 authenticated-only invoker，并把 token cache 收敛到 service-role-only definer lease RPC。默认测试 3939/3939、lint 0/31、build/TypeScript、并发 44/44、00001–00049 空库重放与 contract 27/27 均通过；两环境最终 49/49、全部七类 catalog、ACL/RLS、回滚探针、token 数据保持与 Advisor 全绿。首轮终审只要求修正文档/PR 过期状态；返工 head `9d52ad5`、CI `29718642505`、Vercel `dpl_EhLhGoqpysRmRj49BNgDASrnWsGJ` 全绿后，指定会话给出 `OPT-5 FINAL PASS`。当前仅待主会话合并 PR #8；详见 [OPT-5 主报告](../reports/2026-07-20-opt5-database-least-privilege.md)、[Staging evidence](../reports/evidence/2026-07-20-opt5-staging-postcheck.md) 与 [Production evidence](../reports/evidence/2026-07-20-opt5-production-postcheck.md)。
 
 ## OPT-6：渐进式质量治理
+
+**当前状态**：`NEXT / OPT-5 PR #8 MERGE PENDING`。PR #8 合并后从最新 master 建独立分支，先重算 lint/policy/advisor/build/audit 基线，再按可证明等价的小批次实施；本节不得被解读为允许在 OPT-5 分支混入 OPT-6 变更。
 
 - 清理 31 个 unused-vars warning；CI warning budget 从 31 逐步降至 0。
 - 对 6 个 auth init-plan policy 使用 `(select auth.uid())` 等等价形式优化，并验证权限矩阵不变。

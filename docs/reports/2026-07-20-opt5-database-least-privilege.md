@@ -2,9 +2,9 @@
 
 ## 当前结论
 
-状态：`IMPLEMENTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING`。
+状态：`FINAL PASS / PR #8 MERGE PENDING`。
 
-2026-07-20 已完成两环境只读权限基线、调用点审计、00049 前向 Migration、静态契约和 PostgreSQL 17 行为测试。Draft PR #8 的 exact-head CI 已全绿；Staging 与 Production 均已完成 00049、canonical history、ACL/RLS、rollback-only 行为探针和 Advisor postcheck。当前只剩项目树/远程门最终复核与指定会话独立审查。
+2026-07-20 已完成两环境只读权限基线、调用点审计、00049 前向 Migration、静态契约和 PostgreSQL 17 行为测试。Draft PR #8 的 exact-head CI 已全绿；Staging 与 Production 均已完成 00049、canonical history、ACL/RLS、rollback-only 行为探针和 Advisor postcheck。指定会话已完成独立终审并给出 `OPT-5 FINAL PASS`；当前只剩主会话合并 PR #8，随后可从最新 master 开始 OPT-6。
 
 ## 范围
 
@@ -89,8 +89,17 @@
 
 ## 下一停止门
 
-1. 完成默认测试、build、并发与全部 PostgreSQL contract。
-2. 提交独立 OPT-5 PR，确认最新 head CI/Vercel Preview 全绿。
+1. ✅ 完成默认测试、build、并发与全部 PostgreSQL contract。
+2. ✅ 提交独立 OPT-5 PR，确认最新 head CI/Vercel Preview 全绿。
 3. ✅ Staging 应用 00049，保存 migration、函数/ACL、trigger、RLS/policy、身份矩阵、token lease 与 Advisor postcheck。
 4. ✅ 在 Production 应用同一 Migration 与 history 规范化门禁；等价 postcheck 全绿。
-5. 两环境证据、项目树索引、secret/orphan 检查与最终 PR/CI 完成后移交指定审查会话。明确 `OPT-5 PASS` 前禁止进入 OPT-6。
+5. ✅ 两环境证据、项目树索引、secret/orphan 检查与最终 PR/CI 完成，指定会话已给出 `OPT-5 FINAL PASS`。
+6. 主会话合并 PR #8；合并前保持 Draft/不进入 OPT-6 实施，合并后从最新 master 建独立 OPT-6 分支。
+
+## 独立终审关闭
+
+- 首轮终审确认数据库、Migration、history、ACL/RLS、Advisor、CI 与 Vercel 技术门全部通过，仅要求修正 PR 描述和一条过期 Auth residual 口径。
+- 返工 head `9d52ad5fa976b7005a5c985a3616ec48b6b1b9aa` 只修改主报告 1 行；PR #8 描述同步真实两环境完成态。
+- exact-head CI run `29718642505` 两个 job success；Vercel deployment `dpl_EhLhGoqpysRmRj49BNgDASrnWsGJ` 为 READY；PR Draft/Open/MERGEABLE/CLEAN。
+- 快速复验结论：`OPT-5 FINAL PASS`，允许记录 PASS 并进入 OPT-6；PR #8 合并/部署仍由主会话处理。
+- 非阻塞维护注意：当前应用没有 service_role 直接更新 `profiles` 的调用路径；若未来新增，必须显式设计 invoker trigger → `get_user_role()` 权限链并补行为测试。
