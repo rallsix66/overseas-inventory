@@ -84,7 +84,7 @@
 - authenticated 直接调用 `get_user_role()` 仍会被 Advisor 标记为 signed-in `SECURITY DEFINER`，但这是 RLS policy 的必要执行权，不应为了消除警告撤销。
 - 其他 authenticated definer RPC（同步查询、仓库绑定、喜运达操作）有独立身份/RLS 语义。本次记录定义与 ACL 摘要但不批量改写；必须逐函数另行证明才能收紧。
 - `provider_token_cache` 的 0 policy Advisor 是刻意设计：普通用户无表权限，service_role 只能经 definer lease RPC；不应新增 anon/authenticated policy。
-- leaked-password protection 仍为平台配置告警。当前连接器没有 Auth 配置写接口；待在 Staging 验证 00049 后评估 Dashboard 配置与登录回归，任何凭据都不得写入仓库。
+- leaked-password protection 是本阶段未处理的 Auth 平台配置 residual。Staging 与 Production 的 00049 已完成，但受控连接器没有 Auth 配置写接口，因此本阶段未改该设置；后续平台配置/OPT-6 需单独评估启用影响并完成登录回归。本阶段未索取或保存任何凭据。
 - `update_user_role_protected()` 的历史 `JOIN ... FOR UPDATE` 会同时要求/锁定 role 行；远端 grants 与 RLS 当前支持该行为。本阶段不改变业务函数，后续如优化必须单独证明并发和最后管理员语义。
 
 ## 下一停止门
