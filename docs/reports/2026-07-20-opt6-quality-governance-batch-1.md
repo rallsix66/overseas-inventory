@@ -55,6 +55,12 @@ both were fixed before any remote apply:
    and after 00050, asserts the four seed rows remain, and has three guard-failure
    cases proving role, full predicate, and permissiveness drift is rejected
    without dropping any target policy.
+3. Review-remediation code head `1106edc` passed exact-head workflow run
+   `29732371606` (quality and PostgreSQL jobs) and its Vercel Preview is READY at
+   `https://vercel.com/rallsix66s-projects/overseas-inventory/CYdqHVXh7BQiszVQnJLrnLctU8sg`.
+   This is a code checkpoint; a later documentation-only sync commit does not
+   change the tested Migration or contracts and must receive its own remote
+   checks before the second independent review.
 
 ## Verification
 
@@ -91,6 +97,9 @@ locale-only mismatch is not a 00050 failure and remains a CI verification item.
   final documentation-synced head is `4110a65`; its exact-head workflow run
   `29730301451` quality and PostgreSQL jobs passed, and Vercel Preview is READY
   at `https://vercel.com/rallsix66s-projects/overseas-inventory/ChDcSUo2Hd6GgxW3GyoBw39JyfRg`.
+- The independent review then required the exact catalog gate and write matrix
+  remediation recorded above. Code head `1106edc` passed exact-head CI run
+  `29732371606` and Vercel Preview `CYdqHVXh7BQiszVQnJLrnLctU8sg`.
 - Supabase Staging/Production apply/postchecks and independent review remain
   pending. Do not apply 00050 remotely or enter OPT-6 Batch 2 before the
   designated review task returns `PASS`.

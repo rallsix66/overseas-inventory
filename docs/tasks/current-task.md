@@ -29,6 +29,11 @@ CHANGES_REQUIRED means stop and fix only the requested scope. This route does no
   INSERT and DELETE behavior and reject role/predicate/PERMISSIVE drift.
 - `next.config.ts` pins Turbopack root to `__dirname`; the workspace-root warning is gone. The remaining sync NFT trace is a documented residual.
 - Draft PR #9 final documentation-synced head `4110a65`: CI run `29730301451` quality/PostgreSQL jobs and Vercel Preview are green; remote database apply and independent review remain pending.
+- Independent review returned `CHANGES_REQUIRED`; remediation code head
+  `1106edc` adds exact pre/post catalog drift gates plus INSERT/DELETE and
+  guard-failure tests. Exact-head CI run `29732371606` and Vercel Preview
+  `CYdqHVXh7BQiszVQnJLrnLctU8sg` are green. A documentation-only sync and second
+  independent review remain pending; remote database apply is still prohibited.
 - OPT-6 policy targets from the reviewed roadmap: 6 `auth_rls_initplan`, 115 `multiple_permissive_policies`, and unused-index findings that must not be bulk-deleted from one Advisor snapshot.
 - Turbopack workspace-root misdetection is fixed by `turbopack.root = __dirname`; one NFT trace warning remains because the sync route intentionally uses the project-root runtime path. No further path rewrite is allowed without proving runtime equivalence.
 - `npm audit --omit=dev` has 2 moderate PostCSS advisories with no available fix; do not claim audit zero or force an unsafe override.
