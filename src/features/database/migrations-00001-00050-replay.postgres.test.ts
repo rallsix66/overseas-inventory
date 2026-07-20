@@ -63,7 +63,7 @@ function migrationFiles(): string[] {
     .map((name) => resolve(directory, name))
 }
 
-describe('migrations 00001-00049 continuous PostgreSQL replay', () => {
+describe('fixed-width migrations 00001-00050 continuous PostgreSQL replay', () => {
   let files: string[] = []
 
   beforeAll(async () => {
@@ -79,10 +79,10 @@ describe('migrations 00001-00049 continuous PostgreSQL replay', () => {
     await client.end()
   })
 
-  it('replays exactly the fixed-width 00001-00049 migration set', () => {
-    expect(files).toHaveLength(49)
+  it('replays exactly the fixed-width 00001-00050 migration set', () => {
+    expect(files).toHaveLength(50)
     expect(files[0]).toMatch(/00001_initial_schema\.sql$/)
-    expect(files.at(-1)).toMatch(/00049_database_least_privilege_hardening\.sql$/)
+    expect(files.at(-1)).toMatch(/00050_optimize_auth_rls_initplan\.sql$/)
   })
 
   it('keeps all public business tables protected by RLS', async () => {
@@ -163,5 +163,32 @@ describe('migrations 00001-00049 continuous PostgreSQL replay', () => {
       service_token_table_select: false,
       service_acquire_rpc: true,
     }])
+  })
+
+  it('ends with exactly six scalar-subquery auth.uid policy targets', async () => {
+    const result = await client.query<{ targets: string; optimized: string }>(`
+      SELECT
+        count(*)::text AS targets,
+        count(*) FILTER (
+          WHERE concat(
+            pg_get_expr(policy.polqual, policy.polrelid),
+            ' ',
+            pg_get_expr(policy.polwithcheck, policy.polrelid)
+          ) ~* 'SELECT auth\\.uid\\(\\)'
+        )::text AS optimized
+      FROM pg_policy policy
+      JOIN pg_class relation ON relation.oid = policy.polrelid
+      JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'public'
+        AND (relation.relname, policy.polname) IN (
+          ('profiles', 'operator_update_own_profile'),
+          ('profiles', 'user_read_own_profile'),
+          ('user_variant_preference', 'user_select_own_preferences'),
+          ('user_variant_preference', 'user_insert_own_preferences'),
+          ('user_variant_preference', 'user_delete_own_preferences'),
+          ('user_warehouses', 'operator_select_own_user_warehouses')
+        )
+    `)
+    expect(result.rows).toEqual([{ targets: '6', optimized: '6' }])
   })
 })

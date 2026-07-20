@@ -62,6 +62,12 @@ describe('PERF-F-TURBOPACK — package.json 已移除 --webpack', () => {
     const exists = fs.existsSync(NEXT_CONFIG_PATH);
     expect(exists).toBe(true);
   });
+
+  it('pins the Turbopack root to the application directory', () => {
+    const config = fs.readFileSync(NEXT_CONFIG_PATH, 'utf-8');
+    expect(config).toMatch(/turbopack:\s*\{[\s\S]*?root:\s*__dirname/);
+    expect(config).not.toMatch(/root:\s*process\.cwd\(\)/);
+  });
 });
 
 describe('PERF-F-TURBOPACK — 源码中无残留 --webpack 引用', () => {

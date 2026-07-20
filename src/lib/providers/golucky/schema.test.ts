@@ -387,6 +387,7 @@ describe('GoluckyClient — number code 端到端兼容', () => {
     const { GoluckyClient, InMemoryTokenCache } = await import('./client');
 
     const mockFetch = async (_url: string): Promise<Response> => {
+      void _url;
       return new Response(
         JSON.stringify({
           code: 400001,
@@ -509,6 +510,7 @@ describe('GoluckyClient — number code 端到端兼容', () => {
     const { GoluckyClient, InMemoryTokenCache } = await import('./client');
 
     const mockFetch = async (_url: string): Promise<Response> => {
+      void _url;
       return new Response(
         JSON.stringify({
           code: 400001,

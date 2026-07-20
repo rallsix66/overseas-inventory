@@ -116,7 +116,7 @@ export async function updateInventoryQuantity(
     revalidatePath('/dashboard/inventory/domestic');
     revalidatePath('/dashboard/inventory/overseas');
     return { success: true };
-  } catch (error) {
+  } catch {
     return { success: false, error: '更新库存失败，请稍后重试' };
   }
 }

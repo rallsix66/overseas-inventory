@@ -44,7 +44,7 @@ jobs:
         run: npm run test
 
       - name: Enforce lint warning budget
-        run: npm run lint -- --max-warnings 31
+        run: npm run lint -- --max-warnings 0
 
       - name: Build application
         run: npm run build

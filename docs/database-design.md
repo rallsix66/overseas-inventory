@@ -12,6 +12,7 @@
 - `00002_create_shipment_transaction.sql`：事务化创建 Shipment、明细与初始轨迹
 - `00003_tighten_variant_rls.sql`：收紧 ProductVariant RLS，移除 operator UPDATE 权限
 - `00049_database_least_privilege_hardening.sql`：固定目标函数 search_path、收紧 trigger/RPC EXECUTE，并把 provider token cache 限制为 lease RPC 访问
+- `00050_optimize_auth_rls_initplan.sql`：将六条已审 `auth.uid()` RLS 策略改为等价 scalar-subquery init-plan 形式；不改表、函数、ACL、业务数据或历史 Migration
 
 ## 核心关系
 

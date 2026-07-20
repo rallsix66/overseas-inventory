@@ -190,7 +190,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 ## OPT-6：渐进式质量治理
 
-**当前状态**：`NEXT / OPT-5 PR #8 MERGE PENDING`。PR #8 合并后从最新 master 建独立分支，先重算 lint/policy/advisor/build/audit 基线，再按可证明等价的小批次实施；本节不得被解读为允许在 OPT-5 分支混入 OPT-6 变更。
+**当前状态**：`BATCH 1 FINAL PASS / REMOTE APPLY PENDING`。OPT-5 PR #8 已合并为 `6c71c3f95bd75389b586c0389e01664a8936d053`，master CI `29719290873` 全绿；OPT-6 Batch 1 最终 head `d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51` 已获指定会话 FINAL PASS，CI `29732535403`、Vercel Preview `BqS7bgtX77Y9wD9t8LUkvgtf9M9W`、lint、本地测试、精确 00050 catalog gate 与身份/写矩阵均绿。下一步仅为受控 00050 远端 apply/postcheck；尚未写 Staging/Production，不得进入 Batch 2。115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [Batch 1 报告](../reports/2026-07-20-opt6-quality-governance-batch-1.md)。
 
 - 清理 31 个 unused-vars warning；CI warning budget 从 31 逐步降至 0。
 - 对 6 个 auth init-plan policy 使用 `(select auth.uid())` 等等价形式优化，并验证权限矩阵不变。
