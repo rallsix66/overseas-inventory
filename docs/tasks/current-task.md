@@ -23,7 +23,10 @@ CHANGES_REQUIRED means stop and fix only the requested scope. This route does no
 ## Batch 1 result (2026-07-20)
 
 - `npm run lint -- --max-warnings 0`: 0 warnings / 0 errors after removing the 31 unused symbols; CI budget is now `--max-warnings 0`.
-- 00050 rewrites exactly six reviewed auth init-plan policies and its isolated PostgreSQL identity matrix is unchanged before/after.
+- 00050 rewrites exactly six reviewed auth init-plan policies. Its pre/post
+  catalog gate is exact for command, roles, PERMISSIVE state, and complete
+  `USING`/`WITH CHECK`; isolated PostgreSQL tests cover identity plus own/cross
+  INSERT and DELETE behavior and reject role/predicate/PERMISSIVE drift.
 - `next.config.ts` pins Turbopack root to `__dirname`; the workspace-root warning is gone. The remaining sync NFT trace is a documented residual.
 - Draft PR #9 final documentation-synced head `4110a65`: CI run `29730301451` quality/PostgreSQL jobs and Vercel Preview are green; remote database apply and independent review remain pending.
 - OPT-6 policy targets from the reviewed roadmap: 6 `auth_rls_initplan`, 115 `multiple_permissive_policies`, and unused-index findings that must not be bulk-deleted from one Advisor snapshot.

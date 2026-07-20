@@ -44,8 +44,16 @@ describe('OPT-6 Migration 00050 static contract', () => {
   it('contains bounded execution and exact pre/postcondition gates', () => {
     expect(migration).toContain("SET lock_timeout = '5s'")
     expect(migration).toContain("SET statement_timeout = '30s'")
-    expect(migration).toContain('expected six direct auth.uid() policy targets')
-    expect(migration).toContain('auth init-plan policy optimization did not converge')
+    expect(migration).toContain('opt6_expected_policy_baseline')
+    expect(migration).toContain('OPT-6 baseline policy catalog drift')
+    expect(migration).toContain('OPT-6 optimized policy catalog mismatch')
+    expect(migration).toContain('pg_get_expr(policy.polqual, policy.polrelid)')
+    expect(migration).toContain('pg_get_expr(policy.polwithcheck, policy.polrelid)')
+    expect(migration).toContain('actual.permissive IS DISTINCT FROM expected.permissive')
+    expect(migration).toContain('polroles::text')
+    expect(migration).toContain('policy.polcmd AS command')
+    expect(migration.match(/IS DISTINCT FROM expected\.(direct_qual|direct_with_check)/g)).toHaveLength(2)
+    expect(migration.match(/IS DISTINCT FROM expected\.(optimized_qual|optimized_with_check)/g)).toHaveLength(2)
   })
 
   it('does not change tables, functions, grants, indexes, or business data', () => {

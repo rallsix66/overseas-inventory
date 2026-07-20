@@ -37,12 +37,33 @@ returns an explicit `PASS`.
    starts Python from the project root and accesses its runtime artifact tree;
    changing that path would alter production behavior and is out of this batch.
 
+## Review remediation (2026-07-20)
+
+The first independent review returned `CHANGES_REQUIRED` for two safety gaps;
+both were fixed before any remote apply:
+
+1. Migration `00050` now materializes the reviewed 00001-00049 catalog baseline
+   for all six policies and compares schema/table/name, PERMISSIVE state, role
+   OIDs, command, and normalized complete `USING`/`WITH CHECK` expressions
+   before `DROP POLICY`. A second exact comparison after `CREATE POLICY` accepts
+   only the reviewed scalar-subquery form of `auth.uid()`. Any mismatch raises
+   before a policy is changed; the migration remains forward-only and has no
+   public DDL/DML or ACL operation.
+2. The PostgreSQL contract now runs transaction-rolled-back own/cross-user
+   INSERT and DELETE attempts for anonymous, Admin, active Operators, and the
+   disabled user. It compares the complete result/error/row-count matrix before
+   and after 00050, asserts the four seed rows remain, and has three guard-failure
+   cases proving role, full predicate, and permissiveness drift is rejected
+   without dropping any target policy.
+
 ## Verification
 
 - `npm.cmd run lint -- --max-warnings 0`: PASS, 0 errors / 0 warnings.
 - `npm.cmd test -- --run`: PASS, 93 files / 3945 tests.
 - 00050 static contract: PASS, 5 tests.
-- 00050 isolated PostgreSQL identity matrix: PASS, 1 test.
+- 00050 isolated PostgreSQL identity/write matrix and guard-failure cases: PASS,
+  4 tests (own/cross INSERT and DELETE for anonymous, Admin, active Operators,
+  disabled user; role/predicate/PERMISSIVE drift rejection).
 - Continuous 00001–00050 replay: PASS in the isolated PostgreSQL catalog run; the dedicated 00050 identity test also passes independently.
 - `npm.cmd run build`: PASS, TypeScript and Next production build pass. One
   known NFT trace warning remains; workspace-root warning is gone.
