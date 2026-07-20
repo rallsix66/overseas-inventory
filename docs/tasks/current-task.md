@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-4-MIGRATION-HISTORY-REPAIR — STAGING INDEPENDENT REVIEW PASS / PRODUCTION APPROVAL PENDING**
+**OPT-4-MIGRATION-HISTORY-REPAIR — PRODUCTION EXECUTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING**
 
 路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
 
@@ -36,21 +36,27 @@
 - 2026-07-20 在已获批窗口执行 Staging history-only 维护脚本：48/48 version 从 timestamp 对齐为 `00001–00048`，事务内仅更新 `schema_migrations.version`，所有非 version payload 逐行不变断言通过。写入后 name/statements digest 仍为 `3566222cba075216b6c9a0d3065b7b93`，14 组 canonical catalog 摘要逐项不变，运行中同步任务仍为 0。
 - Supabase 官方连接器直接返回真实 Staging 48 条 migration version 精确为 `00001–00048`。仓库固定 CLI `2.109.1` 因新环境缺少 platform access token 未直接连接远端；它在由该真实远端 version 集合构造的一次性 PostgreSQL 17.10 history 镜像上输出 48/48 local=remote，`db push --dry-run` 返回 `Remote database is up to date.`，临时数据库已停止并删除。该证据边界已明确提交独立审查。
 - 指定审查会话已独立复算真实 Staging 48 行、两套 history digest、逐行 statement 证据、0 个运行中任务、14 组 catalog 摘要与脚本 CRLF/LF 哈希，并于 2026-07-20 给出 Staging 子阶段 PASS。该 PASS 不覆盖 Production。
+- 用户随后给出 OPT-4 剩余 Production history-only 对齐及 OPT-5/OPT-6 既定路线的持续授权，不再逐阶段重复口令；每阶段仍必须完整验证并由指定审查会话明确 PASS 后才能进入下一阶段。意外删除、直接回滚、重放旧 Migration、绕过 RLS、密钥暴露或 materially different 的范围外操作不在持续授权内。
+- Production 专用 history-only 脚本位于 [2026-07-20-opt4-production-history-version-realignment.sql](../reports/sql/2026-07-20-opt4-production-history-version-realignment.sql)，LF SHA-256 `eb3dfb3e7117504be3249294bb73c53af4c4e78072ecbed853e4e5e78631f420`。脚本带 Production 专属旧 version/name digest、0 运行任务、完整目标集、独占锁、单事务和非 version payload 不变门禁。
+- 一次性 PostgreSQL 17 测试库验证脚本首次 48/48 成功、重复执行原子拒绝；临时实例和 fixture 已删除。Production 即时 preflight 为 48 timestamp / 0 aligned、version+name digest `06c450dcf0e265c7d20f3cf7b8ed71e1`、name/statements digest `8f08a8dee32cbca3aebe5f5861206699`、0 个运行中任务。
+- 2026-07-20 Production 已在单事务中只把 48 条 `schema_migrations.version` 对齐为 `00001–00048`。首次连接器传输错误后先只读确认未写入，随后精确事务正文执行一次成功；没有重放 Migration SQL、修改 public Schema 或写业务数据。
+- Production postcheck 为 48 rows / 48 unique versions / 48 unique names / 0 timestamp / 48 aligned；name/statements digest 仍为 `8f08a8dee32cbca3aebe5f5861206699`，ordered history digest `8a9ff2ad685dc8ca0c2633afc293175e`，运行中任务 0。Production/Staging 14 组 catalog 摘要写后逐项一致。
+- 固定 CLI 2.109.1 在真实远端 version 集合的同构 PostgreSQL 17 history 上得到 48/48 local=remote，`db push --dry-run` 为 up to date；临时实例已删除。完整证据见 [Production history postcheck evidence](../reports/evidence/2026-07-20-opt4-production-history-postcheck.md)。
 
-详细证据：[OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)；[OPT-4 Production 验证报告](../reports/2026-07-18-opt4-production-verification.md)
+详细证据：[OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)；[Staging history 对齐报告](../reports/2026-07-18-opt4-staging-history-version-realignment.md)；[OPT-4 Production 验证报告](../reports/2026-07-18-opt4-production-verification.md)；[Production postcheck evidence](../reports/evidence/2026-07-20-opt4-production-history-postcheck.md)
 
 ## 当前允许范围
 
-- 更新 OPT-4 Production 报告、当前状态、路线图与 history-only 返工计划。
+- 更新 OPT-4 Production 报告、当前状态、路线图、项目树索引与完整 evidence。
 - 固定并验证 Supabase CLI `2.109.1`，不改变应用运行时依赖语义。
-- Staging history-only version 对齐已经执行并通过本地 postcheck；当前只允许整理证据、修复审查意见并等待指定会话结论。
-- Staging 独立复验 PASS 后，只可整理并申请 Production history-only 维护窗口；必须取得用户对 Production 的单独明确批准后才可写入。
+- 完成全量测试、lint、TypeScript/build、PostgreSQL contract/concurrency、git、PR/CI 与远端 postcheck。
+- 修复指定审查会话提出的 OPT-4 范围内问题并重新提交，直至明确 PASS。
 
 ## 当前禁止范围
 
 - 禁止对已完成的 Production 00048 与 history repair 做未审查追加写入。
-- 在取得用户对 Production history-only 维护窗口的单独明确批准前，禁止写 Production migration history；Staging 复验 PASS 本身不构成 Production 写入授权。
-- 禁止 `supabase db push`、`--include-all` 或通过重放旧 Migration 规避 version mismatch。
+- 禁止对已完成的 Production history-only 对齐做追加写入。
+- 禁止实际执行 `supabase db push`、`--include-all` 或通过重放旧 Migration 规避 history；只允许无写入 `--dry-run` 验证。
 - 禁止在 Production 重放 `00001–00040`。
 - 禁止修改 `00001–00047`。
 - 禁止通过伪造对象状态换取 migration 列表一致。
@@ -63,7 +69,9 @@
 1. ✅ 合并并上线代码、维护脚本与只读基线证据。
 2. ✅ 在已获批窗口把 Staging 48 条 history version 受控对齐为仓库 `00001–00048`，保持 name/statements 摘要与 canonical catalog 不变，并保存 48 行 postcheck。
 3. ✅ 指定审查会话已完成 Staging 独立复验并给出 PASS。
-4. ⏳ 整理并申请 Production history-only 维护窗口；取得用户对 Production 的单独明确批准后才执行对齐，再完成两环境 CLI/catalog 复核和 OPT-4 最终审查。OPT-4 最终 PASS 前禁止进入 OPT-5。
+4. ✅ Production history-only 对齐已执行，48/48 postcheck、两环境 CLI/catalog 与 Advisor 基线复核通过。
+5. ✅ 项目树索引、相对链接、secret scan、默认测试 3932/3932、lint 0/31、build/应用 TypeScript、PostgreSQL concurrency 44/44、migration contract 14/14 均已完成。
+6. ⏳ 提交并推送 Production 证据，取得 PR #7 最新 head CI 与最终远端复核，再提交指定会话终审。OPT-4 最终 PASS 前禁止进入 OPT-5。
 
 ## 验收标准
 

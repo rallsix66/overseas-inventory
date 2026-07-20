@@ -2,7 +2,19 @@
 
 ## 结论
 
-2026-07-18，用户明确批准 OPT-4 Production 维护窗口。Production 已严格按“备份复核 → 00048 → 函数验证 → 00001–00040 history repair → 全量复核”的顺序完成写入，Schema 与函数验证通过。指定独立审查随后给出 `CHANGES_REQUIRED`：两环境远端 history 的 timestamp `version` 与仓库固定宽度 `00001–00048` 前缀 48/48 不匹配，当前不能安全使用 `supabase db push`。用户随后已批准 Staging history-only 返工窗口，但在执行前要求先合并上线并迁移执行环境；当前状态为 `CHANGES REQUIRED / STAGING REALIGNMENT APPROVED / EXECUTION DEFERRED FOR ENVIRONMENT HANDOFF`，00048 无需撤销，本次发布不代表 Staging version 已对齐。
+2026-07-18，Production 已严格按“备份复核 → 00048 → 函数验证 → 00001–00040 history repair → 全量复核”的顺序完成写入，Schema 与函数验证通过。指定独立审查随后发现两环境远端 timestamp `version` 与仓库固定宽度 `00001–00048` 前缀不匹配。Staging 已于 2026-07-20 完成 history-only 对齐并通过独立复验；同日 Production 也在完整 preflight 后完成 48/48 history-only 对齐。两环境真实远端 version 现均为 `00001–00048`，非 version payload 与 14 组 canonical catalog 摘要均不变。当前状态为 `PRODUCTION EXECUTED / FULL POSTCHECK PASS / OPT-4 FINAL REVIEW PENDING`；OPT-4 尚未 DONE，禁止进入 OPT-5。
+
+## 2026-07-20 Production History Version 对齐
+
+- 用户已把 OPT-4 剩余 Production history-only 对齐及后续既定路线改为持续授权，但仍要求每阶段完整验证并取得指定审查会话明确 PASS 后才能进入下一阶段。
+- 即时 preflight：项目 `hzlhqyditalumhnxbaim` 为 `ACTIVE_HEALTHY`，PostgreSQL 17.6；48 rows / 48 unique versions / 48 unique names；48 timestamp / 0 aligned；version+name digest `06c450dcf0e265c7d20f3cf7b8ed71e1`；name/statements digest `8f08a8dee32cbca3aebe5f5861206699`；运行中同步任务 0。
+- Production 专用脚本：[2026-07-20-opt4-production-history-version-realignment.sql](sql/2026-07-20-opt4-production-history-version-realignment.sql)，LF SHA-256 `eb3dfb3e7117504be3249294bb73c53af4c4e78072ecbed853e4e5e78631f420`。
+- 一次性 PostgreSQL 17 测试库验证首次 48/48 成功、重复执行按 timestamp 前置门禁原子拒绝；测试实例和 fixture 已删除。
+- 首次连接器提交遇到 HTTP transport error。只读歧义核对证明 Production 仍为 48 timestamp，因此未发生写入；随后只提交脚本从开头至 `COMMIT;` 的精确事务正文一次，返回成功。
+- 事务只更新 `supabase_migrations.schema_migrations.version`，在独占锁内校验 48 行、唯一名称、完整目标集、Production 专属旧 version/name 摘要、0 运行任务和所有非 version payload 不变；没有执行 Migration SQL，也没有修改 public Schema 或业务数据。
+- Postcheck：48 rows / 48 unique versions / 48 unique names / 0 timestamp / 48 aligned；name/statements digest 仍为 `8f08a8dee32cbca3aebe5f5861206699`；ordered history digest `8a9ff2ad685dc8ca0c2633afc293175e`；运行中同步任务 0。
+- Production 与 Staging 的 14 组 canonical catalog count/digest 写后再次逐项一致。固定 CLI 2.109.1 在真实远端 version 集合的同构 PostgreSQL history 上得到 48/48 local=remote，`db push --dry-run` 返回 `Remote database is up to date.`；CLI 未直接 link 远端的凭据边界已明确保留。
+- 完整 48 行、catalog、CLI、Advisor 与异常处理证据见 [Production history postcheck evidence](evidence/2026-07-20-opt4-production-history-postcheck.md)。
 
 ## 恢复点与写入前门禁
 
@@ -44,15 +56,15 @@
 - 提交前逐条校验 name、version、statement count、MD5 与 length；
 - 提交结果：48 stages、48 unique names、00001–00040 repaired = 40。
 
-## 独立终审发现的 CLI version 阻塞
+## 2026-07-18 独立终审发现的 CLI version 阻塞（历史检查点，已于 2026-07-20 修复）
 
 - 仓库 48 个 Migration 文件的 version 是 `00001–00048`。
 - Production 48/48、Staging 48/48 的远端 `schema_migrations.version` 均为 timestamp，全部不等于对应文件前缀。
 - 典型映射：00001 为本地 `00001` / 两环境 `20260716021528`；00041 为本地 `00041` / Staging `20260716024654` / Production `20260716013023`；00048 为本地 `00048` / Staging `20260718062455` / Production `20260718074910`。
 - Supabase CLI 2.109.1 从文件名数字前缀读取 local version，并以 remote/local version 精确比较；migration name 与正文摘要不能替代 version。返工已在 `package.json` / `package-lock.json` 中把 CLI 精确固定为 `2.109.1`，后续所有 CLI 证据必须使用该仓库版本。
-- 因此“48 stages / 48 unique names”只证明显示名称齐全，不证明 `db push` 可用。当前禁止 `db push` 和 `--include-all`，避免 CLI 把旧 Migration 判为待执行。
-- 修复必须是 history-only：保持 Production Schema、00048、name 与 statements 不变；先把 Staging version 对齐为 `00001–00048` 并独立复验，再单独批准 Production 对齐。
-- Staging 专用维护脚本位于 `docs/reports/sql/2026-07-18-opt4-staging-history-version-realignment.sql`。它只执行受控 `UPDATE schema_migrations SET version = ...`，并在同一事务内断言 48 条 timestamp 基线、00001–00048 完整目标集、48 行更新和所有非 version payload 不变。本机 PostgreSQL 17.10 一次性测试库已验证首次执行成功、第二次执行被前置门禁拒绝；远端尚未执行。
+- 因此当时“48 stages / 48 unique names”只证明显示名称齐全，不证明 `db push` 可用；当时禁止 `db push` 和 `--include-all`，避免 CLI 把旧 Migration 判为待执行。
+- 修复路线为 history-only：保持 Production Schema、00048、name 与 statements 不变；先把 Staging version 对齐为 `00001–00048` 并独立复验，再处理 Production。该路线已于 2026-07-20 执行完成。
+- Staging 与 Production 分别使用项目专用维护脚本，只执行受控 `UPDATE schema_migrations SET version = ...`，并在同一事务内断言 48 条基线、00001–00048 完整目标集、48 行更新和所有非 version 字段逐项不变。两环境远端现均已对齐。
 
 ## Production / Staging 最终复核
 
@@ -66,9 +78,12 @@
 
 `docs/reports/sql/2026-07-18-opt4-production-rollback.sql` 仍是不可执行的注释模板。00048 与 history 已登记后，禁止直接删除函数或回删历史行。若最终审查发现必须撤销 Schema，必须创建新的 00049+ 前向 Migration，先在 Staging 验证并单独取得 Production 批准。
 
-## 返工与最终审查门禁
+## 最终审查门禁
 
-- Staging history-only version 对齐窗口已获用户批准，但按用户新指令推迟到当前进度合并上线及执行环境迁移后；执行后必须取得 `migration list` 48 条逐项一致、`db push --dry-run` 为 up to date、name/statements 摘要不变、canonical catalog 不变。
-- Staging 独立复验 PASS 后，才可单独请求 Production history-only 窗口并执行同样对齐。
-- 两环境完成后更新 Draft PR #6 正文并重新跑最终 head checks，再交指定会话终审。
-- 最终 PASS 前保持 `CHANGES REQUIRED`；交接时子状态为 `STAGING REALIGNMENT APPROVED / EXECUTION DEFERRED FOR ENVIRONMENT HANDOFF`，禁止标记 OPT-4 DONE 或进入 OPT-5。
+- Staging history-only 对齐已通过指定审查会话独立复验；Production history-only 对齐已完成本地与远端 postcheck。
+- 项目树与本地质量门已完成：相对链接 PASS、无孤儿 evidence/SQL、敏感信息扫描无命中；默认测试 3932/3932，lint 0 errors / 31 warnings，Next.js build 与应用 TypeScript PASS，PostgreSQL concurrency 44/44，migration contract 14/14，`git diff --check` PASS。
+- migration contract 在 Windows 临时 PostgreSQL 的中文 `lc_messages` 下首次为 12/14，两个失败均为正确权限拒绝但错误文本不是英文；切换为与 CI 同构的 `lc_messages=C` 并重建测试库后原命令 14/14 PASS。临时实例已删除。
+- `npm audit --omit=dev` 报告 Next.js 内嵌 PostCSS 的 2 个 moderate advisory，npm 明确显示当前依赖树无可用修复；本轮 history-only 范围不改依赖，作为 OPT-6/依赖治理残余风险提交终审。
+- 当前仍须提交/推送 Production 证据、取得 PR #7 最新 head 的 GitHub Actions 结果与最终远端复核，再正式移交指定审查会话。
+- 指定审查会话明确 PASS 前，状态保持 `OPT-4 FINAL REVIEW PENDING`，不得标记 OPT-4 DONE 或进入 OPT-5。
+- 若终审要求回退 Schema 或 materially different 的远端操作，必须停止；禁止删除历史、直接回滚、重放旧 Migration 或用 `--include-all` 绕过 history。
