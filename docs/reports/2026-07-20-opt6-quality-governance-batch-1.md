@@ -66,9 +66,10 @@ locale-only mismatch is not a 00050 failure and remains a CI verification item.
   merge. No policy merge was included here.
 - Unused-index findings remain deferred until a production statistics window;
   no index was deleted.
-- Exact-head PR #9 checks for commit `99fae34` are green: workflow run
-  `29730076706` quality and PostgreSQL jobs passed; Vercel Preview is green at
-  `https://vercel.com/rallsix66s-projects/overseas-inventory/AQGwQhJWYgCKbFyoDnRZYpC7LcMY`.
+- Code head `99fae34` checks were green in workflow run `29730076706`. The
+  final documentation-synced head is `4110a65`; its exact-head workflow run
+  `29730301451` quality and PostgreSQL jobs passed, and Vercel Preview is READY
+  at `https://vercel.com/rallsix66s-projects/overseas-inventory/ChDcSUo2Hd6GgxW3GyoBw39JyfRg`.
 - Supabase Staging/Production apply/postchecks and independent review remain
   pending. Do not apply 00050 remotely or enter OPT-6 Batch 2 before the
   designated review task returns `PASS`.
