@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 1 CODE COMPLETE / REVIEW PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 1 FINAL PASS / REMOTE APPLY PENDING**
 
 ## Handoff from OPT-5
 
@@ -28,12 +28,13 @@ CHANGES_REQUIRED means stop and fix only the requested scope. This route does no
   `USING`/`WITH CHECK`; isolated PostgreSQL tests cover identity plus own/cross
   INSERT and DELETE behavior and reject role/predicate/PERMISSIVE drift.
 - `next.config.ts` pins Turbopack root to `__dirname`; the workspace-root warning is gone. The remaining sync NFT trace is a documented residual.
-- Draft PR #9 final documentation-synced head `4110a65`: CI run `29730301451` quality/PostgreSQL jobs and Vercel Preview are green; remote database apply and independent review remain pending.
-- Independent review returned `CHANGES_REQUIRED`; remediation code head
-  `1106edc` adds exact pre/post catalog drift gates plus INSERT/DELETE and
-  guard-failure tests. Exact-head CI run `29732371606` and Vercel Preview
-  `CYdqHVXh7BQiszVQnJLrnLctU8sg` are green. A documentation-only sync and second
-  independent review remain pending; remote database apply is still prohibited.
+- Historical checkpoints: Draft PR #9 head `4110a65` / CI `29730301451`, then
+  remediation code head `1106edc` / CI `29732371606`; both were green.
+- Designated independent review returned `OPT-6 BATCH 1 FINAL PASS` for final
+  head `d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51`; CI `29732535403` and Vercel
+  Preview `BqS7bgtX77Y9wD9t8LUkvgtf9M9W` are green. The next controlled stage is
+  remote 00050 apply/postcheck; Batch 2 remains prohibited until that stage is
+  separately evidenced and reviewed.
 - OPT-6 policy targets from the reviewed roadmap: 6 `auth_rls_initplan`, 115 `multiple_permissive_policies`, and unused-index findings that must not be bulk-deleted from one Advisor snapshot.
 - Turbopack workspace-root misdetection is fixed by `turbopack.root = __dirname`; one NFT trace warning remains because the sync route intentionally uses the project-root runtime path. No further path rewrite is allowed without proving runtime equivalence.
 - `npm audit --omit=dev` has 2 moderate PostCSS advisories with no available fix; do not claim audit zero or force an unsafe override.
@@ -46,7 +47,7 @@ CHANGES_REQUIRED means stop and fix only the requested scope. This route does no
 4. Inventory multiple-permissive policies by table/command/role. Merge only groups whose OR semantics and `WITH CHECK` behavior can be proven; use forward-only Migration(s), never edit 00001–00049.
 5. Investigate the Turbopack trace warning and dependency residuals without changing runtime artifact paths, cron schedules, secrets, or provider behavior.
 6. Run full local tests, lint budget 0, TypeScript/build, PostgreSQL concurrency/contracts, migration replay, `git diff --check`, links, secret/orphan checks, and available Staging/Production postchecks.
-7. Record every batch in `docs/reports/` and indexes, then send Batch 1 to the designated review task. Do not mark OPT-6 DONE, apply 00050 remotely, or start Batch 2 before explicit PASS.
+7. Record every batch in `docs/reports/` and indexes, then send Batch 1 to the designated review task. Batch 1 now has explicit PASS; apply 00050 only through the controlled remote apply/postcheck stage, and do not start Batch 2 before that stage is separately evidenced and reviewed.
 
 ## Current prohibitions
 

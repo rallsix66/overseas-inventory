@@ -2,7 +2,7 @@
 
 ## Status
 
-`CODE COMPLETE / LOCAL VERIFY PASS / CI + VERCEL PASS / REMOTE APPLY AND INDEPENDENT REVIEW PENDING`
+`CODE COMPLETE / LOCAL VERIFY PASS / CI + VERCEL PASS / INDEPENDENT REVIEW PASS / REMOTE APPLY PENDING`
 
 This is the first independently reviewable OPT-6 batch. It does not mark OPT-6
 complete and does not authorize the next batch until the designated review task
@@ -58,9 +58,19 @@ both were fixed before any remote apply:
 3. Review-remediation code head `1106edc` passed exact-head workflow run
    `29732371606` (quality and PostgreSQL jobs) and its Vercel Preview is READY at
    `https://vercel.com/rallsix66s-projects/overseas-inventory/CYdqHVXh7BQiszVQnJLrnLctU8sg`.
-   This is a code checkpoint; a later documentation-only sync commit does not
-   change the tested Migration or contracts and must receive its own remote
-   checks before the second independent review.
+   This is the code-remediation checkpoint; the final documentation-synced head
+   below carries the same tested Migration and contracts.
+
+## Final independent review (2026-07-20)
+
+The designated review task returned `OPT-6 BATCH 1 FINAL PASS` for final head
+`d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51`. Exact-head CI run `29732535403`
+passed both jobs; Vercel Preview `BqS7bgtX77Y9wD9t8LUkvgtf9M9W` and Preview
+Comments passed. The review confirmed the exact catalog gates, write matrix,
+drift-failure cases, clean worktree, five-file remediation scope, and project
+tree/index integrity. This PASS authorizes the next controlled 00050 remote
+apply/postcheck stage only; it does not mean 00050 has been applied and does
+not authorize OPT-6 Batch 2.
 
 ## Verification
 
@@ -93,13 +103,16 @@ locale-only mismatch is not a 00050 failure and remains a CI verification item.
   merge. No policy merge was included here.
 - Unused-index findings remain deferred until a production statistics window;
   no index was deleted.
-- Code head `99fae34` checks were green in workflow run `29730076706`. The
-  final documentation-synced head is `4110a65`; its exact-head workflow run
-  `29730301451` quality and PostgreSQL jobs passed, and Vercel Preview is READY
-  at `https://vercel.com/rallsix66s-projects/overseas-inventory/ChDcSUo2Hd6GgxW3GyoBw39JyfRg`.
+- Historical checkpoints: code head `99fae34` / workflow `29730076706`, then
+  documentation checkpoint `4110a65` / workflow `29730301451`; both were green
+  and are retained only for audit history.
 - The independent review then required the exact catalog gate and write matrix
   remediation recorded above. Code head `1106edc` passed exact-head CI run
   `29732371606` and Vercel Preview `CYdqHVXh7BQiszVQnJLrnLctU8sg`.
+- Current final review checkpoint is documentation-synced head `d2eef9c` /
+  `d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51`, CI `29732535403`, Vercel
+  `BqS7bgtX77Y9wD9t8LUkvgtf9M9W`; independent review is PASS. Remote 00050
+  apply/postcheck is the only next controlled stage; Batch 2 remains blocked.
 - Supabase Staging/Production apply/postchecks and independent review remain
   pending. Do not apply 00050 remotely or enter OPT-6 Batch 2 before the
   designated review task returns `PASS`.
