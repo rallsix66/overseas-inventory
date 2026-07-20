@@ -31,6 +31,10 @@ docs/README.md
 ├── mvp-roadmap.md            Phase 0–5 长期路线与依赖
 ├── tasks/                     AI 单次会话任务包、模块任务顺序与停止条件
 │   └── system-optimization-roadmap-2026-07-17.md  当前工程治理与优化顺序
+├── reports/                   阶段执行报告、维护 SQL 与可复核 evidence
+│   ├── 2026-07-18-opt4-production-verification.md  当前 OPT-4 Production 主报告
+│   ├── sql/                   非 Migration 的审计/维护/回滚脚本
+│   └── evidence/              逐行 postcheck 与摘要证据
 └── deployment.md             环境、发布、Migration 与回滚流程
 ```
 
@@ -47,6 +51,8 @@ docs/README.md
 | 某个页面应该显示和操作什么 | `page-specification.md` |
 | 当前 Task 如何实施和验收 | `tasks/current-task.md`；必要时按引用读取详细规格 |
 | 当前系统优化按什么顺序实施 | `tasks/system-optimization-roadmap-2026-07-17.md` |
+| OPT-4 已完成的远端执行、Migration history 与终审证据 | [Production 主报告](reports/2026-07-18-opt4-production-verification.md) → [Production postcheck evidence](reports/evidence/2026-07-20-opt4-production-history-postcheck.md) |
+| OPT-5 当前权限审计、实施边界与停止门 | [当前任务包](tasks/current-task.md) → [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) |
 | 后续 Phase 如何安排 | `mvp-roadmap.md` |
 | 如何部署、迁移和回滚 | `deployment.md` |
 
@@ -86,6 +92,7 @@ docs/README.md
 - `implementation-plan.md`：历史详细规格确需修订时更新，不维护实时任务状态
 - `tasks/current-task.md`：独立验收通过后切换下一 Task Packet
 - `tasks/system-optimization-roadmap-2026-07-17.md`：事实基线、优先级或安全边界变化时更新
+- `reports/`：每个远端阶段记录实际环境、范围、脚本、验证、PR/CI/部署、停止门和残余风险；新增 SQL/evidence 必须由主报告或本索引可达
 - `tasks/phase-*.md`：模块任务状态或顺序变化时更新
 - `mvp-roadmap.md`：Phase 范围或优先级变化时更新
 - `deployment.md`：环境和发布流程变化时更新
