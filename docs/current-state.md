@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-20 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并。OPT-4 的 00048、Production 00001–00040 history repair、两环境 48/48 history-only version 对齐以及 Schema/权限/事务验证均已完成。指定审查会话对 base `ed203f1` 至 head `1a914bd`、Draft PR #7、CI run `29714460569`、Vercel Preview `dpl_FfeeXgiXMkE2eVYUjyjseQkhZHjK`、两套真实远端 history、14 组 catalog、ACL/RLS、Advisor、项目树与质量门完成独立复算并给出 `OPT-4 FINAL PASS`。两环境真实远端 version 均为 `00001–00048`，非 version payload 与各自 history 摘要保持不变。OPT-4 现为 `DONE`；当前切换到 `OPT-5 DATABASE LEAST-PRIVILEGE HARDENING — AUDIT IN PROGRESS`。完整结论见 [OPT-4 Production 验证报告](reports/2026-07-18-opt4-production-verification.md) 与两套 postcheck evidence。
+> 2026-07-20 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并。OPT-4 已获指定会话 `FINAL PASS`，PR #7 随后在最终状态同步 head `4ea50b4`、CI run `29715559484` 与 Vercel Preview 全绿后合并，merge commit `2251c6b`。当前为 `OPT-5 CODE COMPLETE / LOCAL QUALITY GATES PASS / STAGING PENDING`：两环境只读权限基线一致，00049 已实现 search-path 与 EXECUTE/table-grant 最小权限收口；默认测试 3939/3939、lint 0/31、build/TypeScript、并发 44/44、00001–00049 连续重放与 PostgreSQL contract 27/27 均通过，尚未写入 Staging/Production。实施证据见 [OPT-5 数据库最小权限收口报告](reports/2026-07-20-opt5-database-least-privilege.md)。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
@@ -14,7 +14,7 @@
 
 ## Current Task
 
-**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — AUDIT IN PROGRESS** — 依赖 OPT-4 FINAL PASS 已满足。当前只读审计已确认两环境的高信号基线：`get_user_role()` 与 `handle_new_user()` 存在不必要的匿名/直接 EXECUTE；5 个函数缺少固定 `search_path`；`provider_token_cache` 无普通用户策略是刻意的服务端隔离，但仍需核对并收紧直接表权限；其余 `SECURITY DEFINER` 警告须逐函数证明调用者身份、RLS 与实际调用点后才能决定是否变更。只允许通过新的 00049+ 前向 Migration 实施，先 Staging、后 Production，完成身份矩阵、完整质量门、远端 postcheck、项目树记录与指定会话 PASS 后才可标记 DONE 或进入 OPT-6。详见 [当前任务包](tasks/current-task.md) 与 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
+**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — CODE COMPLETE / LOCAL QUALITY GATES PASS / STAGING PENDING** — 两环境现场基线逐项一致；00049 只固定 5 个 search_path、收紧函数 EXECUTE 与 `provider_token_cache` 直接表权限，不改变 RLS policy、业务数据或函数 SECURITY 模式。默认测试 3939/3939、lint 0 errors/31 warnings、Next.js build/TypeScript、并发 44/44、00001–00049 连续重放与合并 PostgreSQL contract 27/27 已通过。下一步提交独立 PR 并确认 CI/Vercel，再先 Staging、后 Production 应用同一 Migration 并保存身份矩阵/Advisor/postcheck。指定会话明确 PASS 前不得标记 DONE 或进入 OPT-6。详见 [当前任务包](tasks/current-task.md) 与 [OPT-5 报告](reports/2026-07-20-opt5-database-least-privilege.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 

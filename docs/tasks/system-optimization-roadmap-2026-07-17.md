@@ -186,6 +186,8 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 **验收身份矩阵**：anon、未登录、活跃 Admin、活跃 Operator、disabled user、跨仓 Operator、service role/系统同步调用。
 
+**2026-07-20 当前实施状态**：两环境只读函数定义、ACL、RLS 与 `provider_token_cache` grants 基线逐项一致。00049 已用最小 ALTER/REVOKE 实现：固定 5 个 mutable search path、移除 `get_user_role()`/`handle_new_user()` 的不必要直接调用面、保持两个用户管理 RPC 为 authenticated-only invoker，并把 token cache 强制收敛到 service-role-only definer lease RPC。默认测试 3939/3939、lint 0 errors / 31 warnings、Next.js build/TypeScript、PostgreSQL concurrency 44/44、一次性 PostgreSQL 17 上 00001–00049 连续重放与三套合并 contract 27/27 均通过。当前为 `CODE COMPLETE / LOCAL QUALITY GATES PASS / STAGING PENDING`，尚未写入远端；详见 [OPT-5 数据库最小权限收口报告](../reports/2026-07-20-opt5-database-least-privilege.md)。
+
 ## OPT-6：渐进式质量治理
 
 - 清理 31 个 unused-vars warning；CI warning budget 从 31 逐步降至 0。
