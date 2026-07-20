@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — STAGING POSTCHECK PASS / PRODUCTION PENDING**
+**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — IMPLEMENTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING**
 
 ## 依赖与历史检查点
 
@@ -38,7 +38,7 @@ OPT-4 详细证据：[Production 主报告](../reports/2026-07-18-opt4-productio
 
 ## 当前禁止范围
 
-- 禁止修改、删除或重放 00001–00048；禁止 history repair、`--include-all` 或伪造对象状态。
+- 禁止修改、删除或重放 00001–00048；禁止旧 history repair、`--include-all` 或伪造对象状态。Supabase 接口生成的新 00049 单行元数据只允许用已索引、带 immutable-payload 断言的脚本规范为仓库 version/name。
 - 禁止关闭 RLS、扩大 anon/authenticated/service_role 权限或把现有 invoker RPC 批量切为 definer。
 - 禁止为消除 Advisor 警告而破坏经验证的 authenticated RPC、仓库隔离、Auth trigger、同步原子性或 Token lease 模型。
 - 禁止移动 `pg_trgm`、批量重构全部 `SECURITY DEFINER` 函数或处理 OPT-6 的 policy/performance/lint 范围。
@@ -52,11 +52,11 @@ OPT-4 详细证据：[Production 主报告](../reports/2026-07-18-opt4-productio
 3. ✅ 默认测试 3939/3939、lint 0/31、TypeScript/build、PostgreSQL concurrency 44/44、contract 27/27 已通过；提交前继续复核 `git diff --check`、链接/索引/secret/orphan。
 4. ✅ 提交并推送独立 OPT-5 分支；Draft PR #8 exact-head CI/Vercel Preview 全绿。
 5. ✅ 在 Staging 应用相同 Migration，保存 before/after ACL、function、RLS、身份矩阵、Advisor 与 history evidence。
-6. Staging 全绿后在 Production 应用同一 Migration并保存等价 postcheck；若出现行为或摘要漂移立即停止，不进入下一环境/阶段。
-7. 把实际变更、时间/环境、命令类别、PR/commit/CI/deployment/远端证据、停止门与残余风险写入项目树并建立索引。
+6. ✅ Staging 全绿后在 Production 应用同一 Migration 并保存等价 postcheck；两环境全部 catalog、ACL、行为和 Advisor 门通过。
+7. ✅ 把实际变更、时间/环境、命令类别、PR/commit/CI/deployment/远端证据、停止门与残余风险写入项目树并建立索引。
 8. 正式移交指定审查会话；CHANGES_REQUIRED 时只在 OPT-5 范围返工，明确 PASS 前不进入 OPT-6。
 
-实施记录：[OPT-5 数据库最小权限收口报告](../reports/2026-07-20-opt5-database-least-privilege.md)；[Staging postcheck evidence](../reports/evidence/2026-07-20-opt5-staging-postcheck.md)
+实施记录：[OPT-5 数据库最小权限收口报告](../reports/2026-07-20-opt5-database-least-privilege.md)；[Staging postcheck evidence](../reports/evidence/2026-07-20-opt5-staging-postcheck.md)；[Production postcheck evidence](../reports/evidence/2026-07-20-opt5-production-postcheck.md)
 
 ## 验收标准
 

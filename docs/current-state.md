@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-20 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并。OPT-4 已获指定会话 `FINAL PASS`，PR #7 随后在最终状态同步 head `4ea50b4`、CI run `29715559484` 与 Vercel Preview 全绿后合并，merge commit `2251c6b`。当前为 `OPT-5 STAGING POSTCHECK PASS / PRODUCTION PENDING`：PR #8 exact-head CI 全绿；Staging 已应用 00049 并收敛为精确 `00001–00049`，目标权限矩阵、rollback-only 行为、18/18 RLS、42 policy、13 trigger、非目标 catalog 摘要和 Advisor postcheck 全部通过。Production 尚未写入。实施证据见 [OPT-5 数据库最小权限收口报告](reports/2026-07-20-opt5-database-least-privilege.md)。
+> 2026-07-20 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并。OPT-4 已获指定会话 `FINAL PASS` 并通过 PR #7 合并。当前为 `OPT-5 IMPLEMENTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING`：PR #8 checkpoint `350b1b5`、CI run `29717356909` 与 Vercel Preview 全绿；Staging/Production 均已应用 00049 并收敛为精确 `00001–00049`，全部 catalog、权限矩阵、rollback-only 行为、18/18 RLS、42 policy、13 trigger、token 数据保持与 Advisors 均通过。指定会话 PASS 前不得进入 OPT-6。实施证据见 [OPT-5 数据库最小权限收口报告](reports/2026-07-20-opt5-database-least-privilege.md)。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
@@ -14,7 +14,7 @@
 
 ## Current Task
 
-**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — STAGING POSTCHECK PASS / PRODUCTION PENDING** — 两环境现场基线逐项一致；00049 只固定 5 个 search_path、收紧函数 EXECUTE 与 `provider_token_cache` 直接表权限，不改变 RLS policy、业务数据或函数 SECURITY 模式。默认测试 3939/3939、lint 0 errors/31 warnings、Next.js build/TypeScript、并发 44/44、00001–00049 连续重放与合并 PostgreSQL contract 27/27 已通过。Staging 的 Migration/history、ACL、Admin/Operator/trigger/token lease 回滚探针、非目标 catalog 和 Advisor 已全绿。下一步仅在 Production 执行同一 Migration并保存等价 postcheck；指定会话明确 PASS 前不得标记 DONE 或进入 OPT-6。详见 [当前任务包](tasks/current-task.md)、[OPT-5 报告](reports/2026-07-20-opt5-database-least-privilege.md) 与 [Staging evidence](reports/evidence/2026-07-20-opt5-staging-postcheck.md)。
+**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — IMPLEMENTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING** — 00049 只固定 5 个 search_path、收紧函数 EXECUTE 与 `provider_token_cache` 直接表权限，不改变 RLS policy、业务数据或函数 SECURITY 模式。本地与远程质量门全绿；两环境现均为 `00001–00049`，全部七类 catalog、目标 ACL、Admin/Operator/trigger/token lease 回滚探针和 Advisor 后检通过，Production token 数据摘要保持不变。下一步只做最终项目树/PR 门复核并移交指定审查；明确 PASS 前不得标记 DONE 或进入 OPT-6。详见 [当前任务包](tasks/current-task.md)、[OPT-5 报告](reports/2026-07-20-opt5-database-least-privilege.md)、[Staging evidence](reports/evidence/2026-07-20-opt5-staging-postcheck.md) 与 [Production evidence](reports/evidence/2026-07-20-opt5-production-postcheck.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 
