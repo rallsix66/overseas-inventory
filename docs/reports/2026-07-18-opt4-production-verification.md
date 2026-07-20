@@ -15,6 +15,7 @@
 - Postcheck：48 rows / 48 unique versions / 48 unique names / 0 timestamp / 48 aligned；name/statements digest 仍为 `8f08a8dee32cbca3aebe5f5861206699`；ordered history digest `8a9ff2ad685dc8ca0c2633afc293175e`；运行中同步任务 0。
 - Production 与 Staging 的 14 组 canonical catalog count/digest 写后再次逐项一致。固定 CLI 2.109.1 在真实远端 version 集合的同构 PostgreSQL history 上得到 48/48 local=remote，`db push --dry-run` 返回 `Remote database is up to date.`；CLI 未直接 link 远端的凭据边界已明确保留。
 - 完整 48 行、catalog、CLI、Advisor 与异常处理证据见 [Production history postcheck evidence](evidence/2026-07-20-opt4-production-history-postcheck.md)。
+- GitHub 记录：Staging 证据 commit `811327c`，Production 脚本与证据 commit `3582c2d`，统一收敛在 Draft PR #7；最新 head CI 结果将在终审前回填。
 
 ## 恢复点与写入前门禁
 
