@@ -15,7 +15,7 @@
 - Postcheck：48 rows / 48 unique versions / 48 unique names / 0 timestamp / 48 aligned；name/statements digest 仍为 `8f08a8dee32cbca3aebe5f5861206699`；ordered history digest `8a9ff2ad685dc8ca0c2633afc293175e`；运行中同步任务 0。
 - Production 与 Staging 的 14 组 canonical catalog count/digest 写后再次逐项一致。固定 CLI 2.109.1 在真实远端 version 集合的同构 PostgreSQL history 上得到 48/48 local=remote，`db push --dry-run` 返回 `Remote database is up to date.`；CLI 未直接 link 远端的凭据边界已明确保留。
 - 完整 48 行、catalog、CLI、Advisor 与异常处理证据见 [Production history postcheck evidence](evidence/2026-07-20-opt4-production-history-postcheck.md)。
-- GitHub 记录：Staging 证据 commit `811327c`，Production 脚本与证据 commit `3582c2d`，统一收敛在 Draft PR #7；最新 head CI 结果将在终审前回填。
+- GitHub 记录：Staging 证据 commit `811327c`，Production 脚本与证据 commit `3582c2d`，统一收敛在 Draft PR #7。head `34f5c27` 的 GitHub Actions run `29713652260` 已 PASS：quality（tests/lint/build/diff）与 PostgreSQL concurrency/contract 两个 job 均成功；Vercel Preview deployment `9BbHcVa3eXZixvksgQ5RwbdvDrEz` 成功。
 
 ## 恢复点与写入前门禁
 
@@ -85,6 +85,7 @@
 - 项目树与本地质量门已完成：相对链接 PASS、无孤儿 evidence/SQL、敏感信息扫描无命中；默认测试 3932/3932，lint 0 errors / 31 warnings，Next.js build 与应用 TypeScript PASS，PostgreSQL concurrency 44/44，migration contract 14/14，`git diff --check` PASS。
 - migration contract 在 Windows 临时 PostgreSQL 的中文 `lc_messages` 下首次为 12/14，两个失败均为正确权限拒绝但错误文本不是英文；切换为与 CI 同构的 `lc_messages=C` 并重建测试库后原命令 14/14 PASS。临时实例已删除。
 - `npm audit --omit=dev` 报告 Next.js 内嵌 PostCSS 的 2 个 moderate advisory，npm 明确显示当前依赖树无可用修复；本轮 history-only 范围不改依赖，作为 OPT-6/依赖治理残余风险提交终审。
-- 当前仍须提交/推送 Production 证据、取得 PR #7 最新 head 的 GitHub Actions 结果与最终远端复核，再正式移交指定审查会话。
+- Production 证据已提交并推送；PR #7 head `34f5c27` 的 GitHub Actions 与 Vercel Preview 已全绿，两环境最终远端复核仍为 48/48 aligned、0 个运行中任务。
+- 当前只剩本次 CI 记录的 docs-only 回填、最终 head 状态确认和指定审查会话终审。
 - 指定审查会话明确 PASS 前，状态保持 `OPT-4 FINAL REVIEW PENDING`，不得标记 OPT-4 DONE 或进入 OPT-5。
 - 若终审要求回退 Schema 或 materially different 的远端操作，必须停止；禁止删除历史、直接回滚、重放旧 Migration 或用 `--include-all` 绕过 history。

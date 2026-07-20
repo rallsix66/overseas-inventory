@@ -71,7 +71,8 @@
 3. ✅ 指定审查会话已完成 Staging 独立复验并给出 PASS。
 4. ✅ Production history-only 对齐已执行，48/48 postcheck、两环境 CLI/catalog 与 Advisor 基线复核通过。
 5. ✅ 项目树索引、相对链接、secret scan、默认测试 3932/3932、lint 0/31、build/应用 TypeScript、PostgreSQL concurrency 44/44、migration contract 14/14 均已完成。
-6. ⏳ 提交并推送 Production 证据，取得 PR #7 最新 head CI 与最终远端复核，再提交指定会话终审。OPT-4 最终 PASS 前禁止进入 OPT-5。
+6. ✅ Production 证据已提交并推送；PR #7 head `34f5c27` 的 GitHub Actions run `29713652260` 两个 job 与 Vercel Preview 均 PASS；最终远端复核两环境仍为 48/48 aligned、0 个运行中任务。
+7. ⏳ 提交本次 docs-only CI 回填，确认最终 head 状态后移交指定会话终审。OPT-4 最终 PASS 前禁止进入 OPT-5。
 
 ## 验收标准
 

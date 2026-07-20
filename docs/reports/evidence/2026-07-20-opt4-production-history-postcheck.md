@@ -78,6 +78,7 @@ Production and Staging were recomputed after the write and matched on all 14 gro
 - Relative documentation links: PASS. New report, maintenance SQL, and evidence are indexed from `docs/README.md`, `current-state.md`, the current task, roadmap, and Production report.
 - Secret scan: no access token, database password, service-role key, or credential-bearing connection string.
 - `npm audit --omit=dev`: 2 moderate findings from the Next.js-bundled PostCSS advisory, with no fix available in the current dependency tree. This is recorded as OPT-6/dependency-governance residual risk rather than changed in the OPT-4 history-only scope.
+- Draft PR #7 head `34f5c27`: GitHub Actions run `29713652260` PASS for both `Tests, lint, and build` and `PostgreSQL concurrency tests`; Vercel Preview `9BbHcVa3eXZixvksgQ5RwbdvDrEz` PASS.
 
 ## Rows
 
