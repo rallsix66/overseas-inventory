@@ -11,6 +11,7 @@
 - `00001_initial_schema.sql`：初始 10 表、函数、触发器、Seed 与 RLS
 - `00002_create_shipment_transaction.sql`：事务化创建 Shipment、明细与初始轨迹
 - `00003_tighten_variant_rls.sql`：收紧 ProductVariant RLS，移除 operator UPDATE 权限
+- `00049_database_least_privilege_hardening.sql`：固定目标函数 search_path、收紧 trigger/RPC EXECUTE，并把 provider token cache 限制为 lease RPC 访问
 
 ## 核心关系
 
@@ -62,6 +63,8 @@ warehouse
 - `handle_new_user()`：Auth 用户创建后生成 Profile
 - `update_updated_at_column()`：维护更新时间
 - `create_shipment_transactional()`：原子创建 Shipment、ShipmentItem 和初始 TrackingEvent
+
+OPT-5 权限约束：trigger-only 函数不作为 PostgREST RPC 暴露；`get_user_role()` 仅供 authenticated/RLS 调用；用户管理 RPC 保持 `SECURITY INVOKER` 与 authenticated-only；`provider_token_cache` 不提供 anon/authenticated policy，service_role 也不直接访问表，只能调用三个经审计的 `SECURITY DEFINER` lease RPC。实现与验证见 [OPT-5 数据库最小权限收口报告](reports/2026-07-20-opt5-database-least-privilege.md)。
 
 业务逻辑不应继续写入普通数据库触发器；复杂写入优先使用经过审计的事务函数或应用服务。
 

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run --exclude='**/concurrency.test.ts' --exclude='**/*.postgres.test.ts' --exclude='**/*.live.test.ts'",
     "test:concurrency": "vitest run src/features/sync/concurrency.test.ts",
-    "test:database-contract": "vitest run src/features/database/migrations-00041-00047.postgres.test.ts",
+    "test:database-contract": "vitest run --no-file-parallelism src/features/database/migrations-00001-00049-replay.postgres.test.ts src/features/database/migrations-00041-00047.postgres.test.ts src/features/database/opt5-least-privilege.postgres.test.ts",
     "test:best-live": "node --env-file=.env.local ./node_modules/vitest/vitest.mjs run src/lib/providers/best/__tests__/dry-run.live.test.ts"
   },
   "dependencies": {
