@@ -2,7 +2,7 @@
 
 ## Status
 
-`CODE COMPLETE / LOCAL VERIFY PASS / CI + VERCEL PASS / INDEPENDENT REVIEW PASS / REMOTE APPLY PENDING`
+`CODE COMPLETE / LOCAL VERIFY PASS / CI + VERCEL PASS / BATCH REVIEW PASS / REMOTE APPLY PASS / REMOTE REVIEW PENDING`
 
 This is the first independently reviewable OPT-6 batch. It does not mark OPT-6
 complete and does not authorize the next batch until the designated review task
@@ -14,9 +14,9 @@ returns an explicit `PASS`.
 - Base: OPT-5 merge commit `6c71c3f95bd75389b586c0389e01664a8936d053`
 - Worktree: `opt4-realignment-worktree`
 - Execution date: 2026-07-20 (Asia/Shanghai)
-- Database scope: one new forward-only Migration `00050`; no remote database write
-  was attempted in this batch because the current tool context has no Supabase
-  connector and no safe direct database link.
+- Database scope: one new forward-only Migration `00050`. After Batch 1 review
+  PASS and PR #9 merge, the controlled remote stage applied it to Staging and
+  then Production; see the indexed remote postcheck evidence below.
 
 ## Changes
 
@@ -72,6 +72,20 @@ tree/index integrity. This PASS authorizes the next controlled 00050 remote
 apply/postcheck stage only; it does not mean 00050 has been applied and does
 not authorize OPT-6 Batch 2.
 
+## Merge and remote apply checkpoint (2026-07-20)
+
+PR #9 was merged as `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`.
+Master CI run `29733960202` passed both jobs and Vercel production deployment
+`BKDzcK4k9noxQgzAboJB6h2XjmeF` passed. The controlled remote stage then ran
+Staging before Production. Both environments now have the exact ordered
+`00001`–`00050` history set, 50 unique versions and names, zero timestamp
+versions, and a single canonical `00050` payload (6519 characters, MD5
+`f5758671947c61dc1fb3bf3e94d8e8d0`). All six policies match the reviewed
+optimized command/roles/permissiveness/full-predicate catalog. No old
+Migration, business data, ACL, function, trigger, index, synchronization script
+or Auth setting was changed. The remote evidence is complete but remains under
+independent review; Batch 2 is still blocked.
+
 ## Verification
 
 - `npm.cmd run lint -- --max-warnings 0`: PASS, 0 errors / 0 warnings.
@@ -109,13 +123,13 @@ locale-only mismatch is not a 00050 failure and remains a CI verification item.
 - The independent review then required the exact catalog gate and write matrix
   remediation recorded above. Code head `1106edc` passed exact-head CI run
   `29732371606` and Vercel Preview `CYdqHVXh7BQiszVQnJLrnLctU8sg`.
-- Current final review checkpoint is documentation-synced head `d2eef9c` /
+- Historical Batch 1 review checkpoint is documentation-synced head `d2eef9c` /
   `d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51`, CI `29732535403`, Vercel
-  `BqS7bgtX77Y9wD9t8LUkvgtf9M9W`; independent review is PASS. Remote 00050
-  apply/postcheck is the only next controlled stage; Batch 2 remains blocked.
-- Supabase Staging/Production apply/postchecks and independent review remain
-  pending. Do not apply 00050 remotely or enter OPT-6 Batch 2 before the
-  designated review task returns `PASS`.
+  `BqS7bgtX77Y9wD9t8LUkvgtf9M9W`; independent Batch review is PASS.
+- PR #9 merge `d9acf51`, master CI `29733960202`, production deployment
+  `BKDzcK4k9noxQgzAboJB6h2XjmeF`, and the two-environment remote postcheck are
+  now complete. Remote-stage independent review remains pending. Do not enter
+  OPT-6 Batch 2 before the designated review task returns `PASS`.
 
 ## Navigation
 
@@ -124,3 +138,4 @@ locale-only mismatch is not a 00050 failure and remains a CI verification item.
 - Migration: [00050](../../supabase/migrations/00050_optimize_auth_rls_initplan.sql)
 - Static contract: [00050 static test](../../src/features/database/opt6-auth-rls-initplan-migration.test.ts)
 - PostgreSQL contract: [00050 behavior test](../../src/features/database/opt6-auth-rls-initplan.postgres.test.ts)
+- Remote apply/postcheck evidence: [Staging and Production](evidence/2026-07-20-opt6-00050-remote-postcheck.md)

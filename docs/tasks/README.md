@@ -53,7 +53,7 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 | Phase 4 团队账号 | `phase-4-users.md` | 待开始 |
 | Phase 5 数据同步 | `phase-5-sync.md` | 待开始 |
 | 发布与部署 | `deployment.md` | 平台待定 |
-| 系统优化与工程治理 | `system-optimization-roadmap-2026-07-17.md` | ACTIVE；OPT-1–OPT-5 MERGED/FINAL PASS；OPT-6 Batch 1 CODE COMPLETE / REVIEW PENDING |
+| 系统优化与工程治理 | `system-optimization-roadmap-2026-07-17.md` | ACTIVE；OPT-1–OPT-5 MERGED/FINAL PASS；OPT-6 Batch 1 REMOTE APPLY PASS / REMOTE REVIEW PENDING |
 
 ## 状态标记
 
