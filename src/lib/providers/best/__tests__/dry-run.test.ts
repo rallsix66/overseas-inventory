@@ -29,7 +29,7 @@ function makeSuccessFetch(
   orderData: Record<string, unknown>,
   logisticsData: Record<string, unknown>,
 ): Mock {
-  return vi.fn(async (url: string, _init?: RequestInit) => {
+  return vi.fn(async (url: string) => {
     const u = String(url);
 
     if (u.includes('trackingQuery')) {

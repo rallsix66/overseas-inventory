@@ -22,21 +22,13 @@ vi.mock('@/lib/auth', () => ({
   requireActiveAuth: vi.fn(),
 }));
 
-import { requireActiveAdmin, requireActiveAuth } from '@/lib/auth';
+import { requireActiveAdmin } from '@/lib/auth';
 
 const mockAdminUser = {
   id: 'admin-user-id',
   email: 'admin@example.com',
   displayName: 'Admin',
   roleName: 'admin',
-  isActive: true as const,
-};
-
-const mockOperatorUser = {
-  id: 'operator-user-id',
-  email: 'op@example.com',
-  displayName: 'Operator',
-  roleName: 'operator',
   isActive: true as const,
 };
 

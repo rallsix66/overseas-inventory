@@ -70,6 +70,7 @@ export function parseTrackingResponse(
   nodes: GoluckyTrackingNode[],
   _waybillNo: string,
 ): ParsedGoluckyEvent[] {
+  void _waybillNo;
   // 过滤：仅含 title/enTitle 的标题节点
   const validNodes = nodes.filter((node) => node.code);
 

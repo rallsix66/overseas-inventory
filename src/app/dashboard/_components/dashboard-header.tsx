@@ -1,6 +1,4 @@
 // Dashboard 顶栏 — 用户信息 + 登出按钮
-import { Button } from '@/components/ui/button';
-import { LogOut } from 'lucide-react';
 import { LogoutButton } from './logout-button';
 
 interface DashboardHeaderProps {

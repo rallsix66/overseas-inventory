@@ -12,7 +12,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createShipmentSchema, searchVariantsSchema } from '@/features/shipments/schema';
 import { createShipment, searchVariants } from '@/features/shipments/actions';
-import { shipmentRepository } from '@/features/shipments/repository';
 import fs from 'fs';
 import path from 'path';
 

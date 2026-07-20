@@ -7,7 +7,6 @@ import type { SyncRunner } from './sync-runner';
 import type {
   SyncRunnerCapabilities,
   SyncExecuteParams,
-  SyncExecuteParamsDryRun,
   SyncExecuteParamsRealWrite,
   SyncExecuteResult,
   JsonValue,

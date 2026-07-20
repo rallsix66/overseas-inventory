@@ -12,9 +12,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { VariantFilters, VariantItem } from './types';
 
 const REPO_PATH = path.resolve(process.cwd(), 'src/features/variants/repository.ts');
-const TYPES_PATH = path.resolve(process.cwd(), 'src/features/variants/types.ts');
 
 // ─── 源码静态检查 ────────────────────────────────────────────────────
 
@@ -28,7 +28,8 @@ describe('P5-SY11G-B — 源码不再读写 is_archived', () => {
   it('archive() 不含 is_archived 引用', () => {
     expect(repoSrc).toMatch(/async archive\(/);
     const archiveBlock = repoSrc.match(/async archive\([\s\S]*?^\s{2}\},?\s*$/m);
-    // 简单检查：整个 archive 方法区域不出现 is_archived
+    expect(archiveBlock).not.toBeNull();
+    expect(archiveBlock?.[0]).not.toMatch(/is_archived|archived_at|archived_by/);
   });
 
   it('restore() 不含 is_archived/archived_at/archived_by 引用', () => {
@@ -122,9 +123,8 @@ describe('P5-SY11G-B — getUserArchivedVariantIds()', () => {
 
 describe('P5-SY11G-B — VariantItem 类型', () => {
   it('VariantItem 包含 isArchivedByUser（用户级归档标记）', async () => {
-    const types = await import('./types');
     const VALID_UUID = '11111111-1111-4111-1111-111111111111';
-    const item: types.VariantItem = {
+    const item: VariantItem = {
       id: VALID_UUID, product_id: null, sku: 'SKU-1', country: 'TH', name: 'Test',
       match_status: 'unmatched', last_sync_at: null,
       created_at: '', updated_at: '',
@@ -139,8 +139,7 @@ describe('P5-SY11G-B — VariantItem 类型', () => {
 
 describe('P5-SY11G-B — VariantFilters 类型', () => {
   it('VariantFilters 包含 userId 字段', async () => {
-    const types = await import('./types');
-    const filters: types.VariantFilters = { userId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' };
+    const filters: VariantFilters = { userId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' };
     expect(filters.userId).toBeDefined();
   });
 });

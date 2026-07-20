@@ -12,9 +12,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { InventoryFilters } from '@/features/inventory/types';
 
 const INVENTORY_REPO_PATH = path.resolve(process.cwd(), 'src/features/inventory/repository.ts');
-const INVENTORY_TYPES_PATH = path.resolve(process.cwd(), 'src/features/inventory/types.ts');
 const INVENTORY_ACTIONS_PATH = path.resolve(process.cwd(), 'src/features/inventory/actions.ts');
 
 // ─── 源码静态检查 ────────────────────────────────────────────────────
@@ -111,8 +111,7 @@ describe('P5-SY11G-D — 方法签名包含 userId', () => {
 
 describe('P5-SY11G-D — InventoryFilters 类型', () => {
   it('InventoryFilters 包含 userId 字段', async () => {
-    const types = await import('@/features/inventory/types');
-    const filters: types.InventoryFilters = { userId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' };
+    const filters: InventoryFilters = { userId: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' };
     expect(filters.userId).toBeDefined();
   });
 });

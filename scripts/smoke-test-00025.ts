@@ -165,6 +165,7 @@ async function testOperatorTrigger() {
     .select("id")
     .eq("name", "admin")
     .single();
+  void adminRole;
 
   // 因为 service_role 绕过 RLS，但 trigger 是 BEFORE UPDATE ... FOR EACH ROW
   // trigger 内 get_user_role() 会查当前用户角色；
@@ -184,6 +185,7 @@ async function testOperatorTrigger() {
   const { data: triggerCheck } = await serviceClient.rpc(
     "check_operator_profile_update"
   ).maybeSingle();
+  void triggerCheck;
 
   // 直接用 serviceClient 测试 trigger 行为不太合适，
   // 因为 service_role 下 get_user_role() 无匹配用户。

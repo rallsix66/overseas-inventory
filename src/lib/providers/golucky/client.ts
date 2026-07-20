@@ -62,10 +62,13 @@ export class InMemoryTokenCache implements TokenCache {
   }
 
   async storeToken(provider: string, accessToken: string, expiresAt: string, _lease: TokenLease) {
+    void _lease;
     this.cache.set(provider, { token: accessToken, expiresAt });
   }
 
   async releaseLease(_provider: string, _lease: TokenLease) {
+    void _provider;
+    void _lease;
     // no-op — in-memory 无并发锁需求
   }
 }

@@ -2,36 +2,47 @@
 
 ## Task ID
 
-**OPT-5-CLOSEOUT / OPT-6-HANDOFF — OPT-5 FINAL PASS / PR #8 MERGE PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 1 CODE COMPLETE / REVIEW PENDING**
 
-## 当前事实
+## Handoff from OPT-5
 
-- OPT-5 指定独立审查已给出 `FINAL PASS`，允许主会话记录 PASS 并进入 OPT-6。
-- 通过绑定：head `9d52ad5fa976b7005a5c985a3616ec48b6b1b9aa`、GitHub Actions `29718642505`、Vercel `dpl_EhLhGoqpysRmRj49BNgDASrnWsGJ`。
-- PR #8 仍为 Draft/Open/MERGEABLE/CLEAN；合并/部署由主会话处理。
-- Production 与 Staging 均为精确 `00001–00049`，OPT-5 不再需要任何数据库写入。
-- 完整证据：[OPT-5 主报告](../reports/2026-07-20-opt5-database-least-privilege.md)；[Staging postcheck](../reports/evidence/2026-07-20-opt5-staging-postcheck.md)；[Production postcheck](../reports/evidence/2026-07-20-opt5-production-postcheck.md)。
+- OPT-5 received designated independent `FINAL PASS`.
+- PR #8 is merged to `master`; merge commit: `6c71c3f95bd75389b586c0389e01664a8936d053`.
+- Master CI run `29719290873` passed both quality and PostgreSQL jobs.
+- OPT-6 branch: `agent/opt-6-progressive-quality-governance`, based on that merge commit.
+- OPT-5 evidence remains indexed in the [main report](../reports/2026-07-20-opt5-database-least-privilege.md), [Staging evidence](../reports/evidence/2026-07-20-opt5-staging-postcheck.md), and [Production evidence](../reports/evidence/2026-07-20-opt5-production-postcheck.md).
 
-## 当前允许范围
+## User-authorized route and stop gates
 
-1. 把 OPT-5 FINAL PASS 与远程绑定写入项目树并完成链接/secret/diff 检查。
-2. 推送状态提交，等待新 exact-head CI/Vercel 全绿，将 PR #8 标为 Ready 并合并到 master。
-3. 从已合并的最新 master 建立独立 OPT-6 分支与任务包。
+The user authorized the existing OPT-6 route to continue without repeating stage-by-stage approval, while preserving the gate:
 
-## 当前禁止范围
+`implement → complete evidence/quality verification → designated independent review → explicit PASS → next stage`.
 
-- 禁止在 PR #8/OPT-5 分支混入 OPT-6 代码、Policy Migration、依赖或 lint 清理。
-- 禁止再次写 Staging/Production、修改 00049、修旧 history 或重放旧 Migration。
-- 禁止在 PR #8 合并前把 OPT-6 标为实施中。
-- 用户对既定 OPT-6 路线的持续授权不覆盖意外数据删除、直接回滚、绕过 RLS、密钥暴露或 materially different 的架构变更。
+CHANGES_REQUIRED means stop and fix only the requested scope. This route does not authorize accidental deletion, direct rollback, old Migration replay, RLS bypass, secret exposure, or materially different architecture.
 
-## OPT-6 交接范围
+## Batch 1 result (2026-07-20)
 
-合并后应先重算真实基线，再实施 [系统优化路线图](system-optimization-roadmap-2026-07-17.md#opt-6渐进式质量治理) 的既定项目：
+- `npm run lint -- --max-warnings 0`: 0 warnings / 0 errors after removing the 31 unused symbols; CI budget is now `--max-warnings 0`.
+- 00050 rewrites exactly six reviewed auth init-plan policies and its isolated PostgreSQL identity matrix is unchanged before/after.
+- `next.config.ts` pins Turbopack root to `__dirname`; the workspace-root warning is gone. The remaining sync NFT trace is a documented residual.
+- OPT-6 policy targets from the reviewed roadmap: 6 `auth_rls_initplan`, 115 `multiple_permissive_policies`, and unused-index findings that must not be bulk-deleted from one Advisor snapshot.
+- Turbopack workspace-root misdetection is fixed by `turbopack.root = __dirname`; one NFT trace warning remains because the sync route intentionally uses the project-root runtime path. No further path rewrite is allowed without proving runtime equivalence.
+- `npm audit --omit=dev` has 2 moderate PostCSS advisories with no available fix; do not claim audit zero or force an unsafe override.
 
-- 清理 31 个 lint warning，并把 CI warning budget 分批降至 0；
-- 对 6 个 auth init-plan policy 做等价优化并验证完整身份矩阵；
-- 对 115 个 multiple permissive policy 只按可证明 OR 语义等价的小批次治理；
-- 不因单次 Advisor 删除 unused index；调查 Turbopack NFT trace warning；
-- 评估 leaked-password protection、2 个无可用修复的 moderate PostCSS advisory 与依赖治理边界；
-- 每批保存本地/CI/远端 postcheck 与文档索引，最终再次移交指定会话；明确 `OPT-6 FINAL PASS` 前不宣称全部优化完成。
+## Implementation order
+
+1. ✅ Create this isolated branch and record the OPT-5 handoff.
+2. ✅ Re-run lint and collect a machine-readable warning inventory; fix unused symbols in small test-backed batches until warning count is zero.
+3. ✅ Batch 1: capture the reviewed policy targets, rewrite only six `auth.uid()` init expressions to equivalent scalar subqueries, and prove anonymous, disabled, Admin, Operator, and cross-warehouse behavior unchanged. See [Batch 1 report](../reports/2026-07-20-opt6-quality-governance-batch-1.md).
+4. Inventory multiple-permissive policies by table/command/role. Merge only groups whose OR semantics and `WITH CHECK` behavior can be proven; use forward-only Migration(s), never edit 00001–00049.
+5. Investigate the Turbopack trace warning and dependency residuals without changing runtime artifact paths, cron schedules, secrets, or provider behavior.
+6. Run full local tests, lint budget 0, TypeScript/build, PostgreSQL concurrency/contracts, migration replay, `git diff --check`, links, secret/orphan checks, and available Staging/Production postchecks.
+7. Record every batch in `docs/reports/` and indexes, then send Batch 1 to the designated review task. Do not mark OPT-6 DONE, apply 00050 remotely, or start Batch 2 before explicit PASS.
+
+## Current prohibitions
+
+- No changes to 00001–00049; all database changes must be 00050+ forward-only and replayable.
+- No policy merge without a before/after identity matrix and exact OR/WITH CHECK equivalence evidence.
+- No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
+- No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
+- Do not touch user synchronization scripts, `.claude` state, or project-summary files.

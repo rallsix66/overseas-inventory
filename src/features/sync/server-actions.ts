@@ -103,6 +103,7 @@ export async function getSyncRunDetail(
 export async function triggerSync(
   _formData: FormData,
 ): Promise<{ success: boolean; runId: string; status: string; error?: string }> {
+  void _formData;
   await requireActiveAdmin();
   // P5-SY9C: 旧版 FormData 同步路径已禁用。
   // 在构造 SyncService 之前直接返回中文错误，

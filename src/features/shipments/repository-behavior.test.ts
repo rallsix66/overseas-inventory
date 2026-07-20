@@ -100,7 +100,7 @@ function mockVariantRow(id: string, sku: string, name: string, country: string, 
 function pushResults(...results: Array<{ data?: unknown; error?: unknown }>) {
   const blds = results.map((r) => createQueryMock(r));
   let cursor = 0;
-  mockFrom.mockImplementation((_: string) => {
+  mockFrom.mockImplementation(() => {
     if (cursor >= blds.length) throw new Error('Unexpected from() call — queue exhausted');
     return blds[cursor++].builder;
   });

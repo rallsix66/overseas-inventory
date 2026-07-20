@@ -519,7 +519,6 @@ describe('createSyncActions — triggerBatchDryRun', () => {
   });
 
   it('single warehouse failure does not affect others', async () => {
-    const deps = buildDeps();
     const runner = new MockSyncRunner();
     runner.exitCode = 0; // All runner calls succeed
     const repo = new MockRepository('admin');
@@ -677,9 +676,6 @@ describe('createSyncActions — triggerBatchDryRun', () => {
     MockRepository._resetAll();
     MockArtifactProvider._resetAll();
 
-    const goodRunner = new MockSyncRunner();
-    goodRunner.exitCode = 0;
-
     const badRunner = new MockSyncRunner();
     badRunner.shouldThrow = true;
     badRunner.throwMessage = 'Runner 内部错误';
@@ -687,22 +683,10 @@ describe('createSyncActions — triggerBatchDryRun', () => {
     // Build per-warehouse infrastructure with a shared repo
     const repo = new MockRepository('admin');
     const ap = new MockArtifactProvider();
-    const svc1 = createSyncService({ repository: repo, artifactProvider: ap, runner: goodRunner });
     const svc2 = createSyncService({ repository: repo, artifactProvider: ap, runner: badRunner });
 
-    // Custom input source that routes to correct syncService
-    const actions = createSyncActions({
-      repository: repo,
-      syncService: svc1, // default — will be overridden per warehouse
-      inputArtifactSource: {
-        getInputArtifact: async () => ({ skus: ['SKU-1'] }),
-      },
-      artifactProvider: ap,
-    });
-
-    // We need per-warehouse sync service routing. Since createSyncActions
-    // binds one syncService, we test that runner.shouldThrow is caught.
-    // Use the bad runner as default to test that throw is caught.
+    // createSyncActions binds one syncService. Use the throwing runner as the
+    // default to prove the batch result catches the error instead of escaping.
     const actionsBad = createSyncActions({
       repository: repo,
       syncService: svc2,

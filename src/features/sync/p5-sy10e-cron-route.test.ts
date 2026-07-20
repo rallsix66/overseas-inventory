@@ -53,12 +53,6 @@ const healthySession: SessionHealthResult = {
   checkedAt: '2026-06-24T10:00:00.000Z',
 };
 
-const unhealthySession: SessionHealthResult = {
-  status: 'need_login',
-  message: '需要重新登录 BigSeller',
-  checkedAt: '2026-06-24T10:00:00.000Z',
-};
-
 // ─── Warehouses ─────────────────────────────────────────────────────
 
 const WH_PH = { id: 'adc5ec45-cd98-42a8-a1d1-26600e80d481', name: '菲律宾-新创启辰自建仓', country: 'PH' };
@@ -97,7 +91,6 @@ const VERCEL_JSON_PATH = path.resolve(process.cwd(), 'vercel.json');
 const ACTIONS_PATH = path.resolve(process.cwd(), 'src/features/sync/actions.ts');
 const SERVER_ACTIONS_PATH = path.resolve(process.cwd(), 'src/features/sync/server-actions.ts');
 const MIGRATION_00010_PATH = path.resolve(process.cwd(), 'supabase/migrations/00010_claim_sync_run_system.sql');
-const MIGRATION_00007_PATH = path.resolve(process.cwd(), 'supabase/migrations/00007_sync_run.sql');
 const MIGRATION_00008_PATH = path.resolve(process.cwd(), 'supabase/migrations/00008_sync_run_for_update_dry_run.sql');
 const SYNC_SERVICE_PATH = path.resolve(process.cwd(), 'src/features/sync/sync-service.ts');
 const REPOSITORY_PATH = path.resolve(process.cwd(), 'src/features/sync/repository.ts');
@@ -243,7 +236,6 @@ describe('P5-SY10E rework — Migration 00010 claim_sync_run_system', () => {
 
   it('无 auth.uid() 调用', () => {
     // Only check function body (between $$ and the final $$), not comments
-    const bodyMatch = migrationSrc.match(/\$\$[\s\S]*?(?:auth\.uid\(\))/);
     // auth.uid() should only appear in comments (outside the function body)
     const codeLines = migrationSrc
       .split('\n')
