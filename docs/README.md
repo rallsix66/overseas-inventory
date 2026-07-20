@@ -51,7 +51,8 @@ docs/README.md
 | 某个页面应该显示和操作什么 | `page-specification.md` |
 | 当前 Task 如何实施和验收 | `tasks/current-task.md`；必要时按引用读取详细规格 |
 | 当前系统优化按什么顺序实施 | `tasks/system-optimization-roadmap-2026-07-17.md` |
-| OPT-4 当前远端执行与 Migration history 证据 | [Production 主报告](reports/2026-07-18-opt4-production-verification.md) → [Production postcheck evidence](reports/evidence/2026-07-20-opt4-production-history-postcheck.md) |
+| OPT-4 已完成的远端执行、Migration history 与终审证据 | [Production 主报告](reports/2026-07-18-opt4-production-verification.md) → [Production postcheck evidence](reports/evidence/2026-07-20-opt4-production-history-postcheck.md) |
+| OPT-5 当前权限审计、实施边界与停止门 | [当前任务包](tasks/current-task.md) → [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) |
 | 后续 Phase 如何安排 | `mvp-roadmap.md` |
 | 如何部署、迁移和回滚 | `deployment.md` |
 

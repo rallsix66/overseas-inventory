@@ -2,7 +2,7 @@
 
 ## 结论
 
-2026-07-18，Production 已严格按“备份复核 → 00048 → 函数验证 → 00001–00040 history repair → 全量复核”的顺序完成写入，Schema 与函数验证通过。指定独立审查随后发现两环境远端 timestamp `version` 与仓库固定宽度 `00001–00048` 前缀不匹配。Staging 已于 2026-07-20 完成 history-only 对齐并通过独立复验；同日 Production 也在完整 preflight 后完成 48/48 history-only 对齐。两环境真实远端 version 现均为 `00001–00048`，非 version payload 与 14 组 canonical catalog 摘要均不变。当前状态为 `PRODUCTION EXECUTED / FULL POSTCHECK PASS / OPT-4 FINAL REVIEW PENDING`；OPT-4 尚未 DONE，禁止进入 OPT-5。
+2026-07-18，Production 已严格按“备份复核 → 00048 → 函数验证 → 00001–00040 history repair → 全量复核”的顺序完成写入，Schema 与函数验证通过。指定独立审查随后发现两环境远端 timestamp `version` 与仓库固定宽度 `00001–00048` 前缀不匹配。Staging 已于 2026-07-20 完成 history-only 对齐并通过独立复验；同日 Production 也在完整 preflight 后完成 48/48 history-only 对齐。两环境真实远端 version 现均为 `00001–00048`，非 version payload 与 14 组 canonical catalog 摘要均不变。指定审查会话已完成最终独立复算并给出 `OPT-4 FINAL PASS`；OPT-4 现为 DONE，允许切换到 OPT-5。
 
 ## 2026-07-20 Production History Version 对齐
 
@@ -79,13 +79,14 @@
 
 `docs/reports/sql/2026-07-18-opt4-production-rollback.sql` 仍是不可执行的注释模板。00048 与 history 已登记后，禁止直接删除函数或回删历史行。若最终审查发现必须撤销 Schema，必须创建新的 00049+ 前向 Migration，先在 Staging 验证并单独取得 Production 批准。
 
-## 最终审查门禁
+## 最终审查结果
 
 - Staging history-only 对齐已通过指定审查会话独立复验；Production history-only 对齐已完成本地与远端 postcheck。
 - 项目树与本地质量门已完成：相对链接 PASS、无孤儿 evidence/SQL、敏感信息扫描无命中；默认测试 3932/3932，lint 0 errors / 31 warnings，Next.js build 与应用 TypeScript PASS，PostgreSQL concurrency 44/44，migration contract 14/14，`git diff --check` PASS。
 - migration contract 在 Windows 临时 PostgreSQL 的中文 `lc_messages` 下首次为 12/14，两个失败均为正确权限拒绝但错误文本不是英文；切换为与 CI 同构的 `lc_messages=C` 并重建测试库后原命令 14/14 PASS。临时实例已删除。
 - `npm audit --omit=dev` 报告 Next.js 内嵌 PostCSS 的 2 个 moderate advisory，npm 明确显示当前依赖树无可用修复；本轮 history-only 范围不改依赖，作为 OPT-6/依赖治理残余风险提交终审。
 - Production 证据已提交并推送；PR #7 head `34f5c27` 的 GitHub Actions 与 Vercel Preview 已全绿，两环境最终远端复核仍为 48/48 aligned、0 个运行中任务。
-- 当前只剩本次 CI 记录的 docs-only 回填、最终 head 状态确认和指定审查会话终审。
-- 指定审查会话明确 PASS 前，状态保持 `OPT-4 FINAL REVIEW PENDING`，不得标记 OPT-4 DONE 或进入 OPT-5。
-- 若终审要求回退 Schema 或 materially different 的远端操作，必须停止；禁止删除历史、直接回滚、重放旧 Migration 或用 `--include-all` 绕过 history。
+- 最终绑定：base `ed203f1fadd8ef485fa2e86d29c020a7449d753a`，head `1a914bd0948975e3de3eb929a9220d90a2203dd7`，Draft PR #7，GitHub Actions run `29714460569`，Vercel Preview `dpl_FfeeXgiXMkE2eVYUjyjseQkhZHjK`。
+- 指定审查会话独立确认 PR/base...head 精确为 10 个文档、evidence 与非 Migration 维护 SQL 文件，工作树 clean，`git diff --check`、相对链接、索引、secret scan、远端 history/catalog/ACL/RLS、CI job 日志与 Vercel commit 绑定全部通过；阻塞问题为 0。
+- 独立终审结论：`OPT-4 FINAL PASS`。该结论允许主会话记录 PASS、合并/发布本阶段并进入 OPT-5；审查会话本身未修改、提交、合并或部署。
+- 残余安全边界：如后续发现必须回退 Schema 或执行 materially different 的远端操作，仍须停止并重新审查；禁止删除历史、直接回滚、重放旧 Migration 或用 `--include-all` 绕过 history。

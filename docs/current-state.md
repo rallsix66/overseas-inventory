@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-20 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并。OPT-4 的 00048、Production 00001–00040 history repair、两环境 Schema/权限/事务验证均已完成。指定独立审查发现的 timestamp `version` 阻塞现已按顺序修复：Staging 48/48 对齐后通过独立复验，Production 随后在持续授权与完整 preflight 下完成 48/48 history-only 对齐。两环境真实远端 version 均为 `00001–00048`，所有非 version payload、各自 name/statements digest 与 14 组 canonical catalog 摘要均不变；固定 CLI 2.109.1 同构验证为 48/48 local=remote 且 dry-run up to date。状态为 `OPT-4 PRODUCTION EXECUTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING`；须完成项目树索引、完整质量门、PR/CI 与指定会话终审，明确 PASS 前禁止标 DONE 或进入 OPT-5。实施证据见 [Staging History Version 对齐报告](reports/2026-07-18-opt4-staging-history-version-realignment.md)、[OPT-4 Production 验证报告](reports/2026-07-18-opt4-production-verification.md) 与 [Production postcheck evidence](reports/evidence/2026-07-20-opt4-production-history-postcheck.md)。
+> 2026-07-20 System optimization：OPT-1、OPT-2 与 OPT-3 均已通过阶段终审并合并。OPT-4 的 00048、Production 00001–00040 history repair、两环境 48/48 history-only version 对齐以及 Schema/权限/事务验证均已完成。指定审查会话对 base `ed203f1` 至 head `1a914bd`、Draft PR #7、CI run `29714460569`、Vercel Preview `dpl_FfeeXgiXMkE2eVYUjyjseQkhZHjK`、两套真实远端 history、14 组 catalog、ACL/RLS、Advisor、项目树与质量门完成独立复算并给出 `OPT-4 FINAL PASS`。两环境真实远端 version 均为 `00001–00048`，非 version payload 与各自 history 摘要保持不变。OPT-4 现为 `DONE`；当前切换到 `OPT-5 DATABASE LEAST-PRIVILEGE HARDENING — AUDIT IN PROGRESS`。完整结论见 [OPT-4 Production 验证报告](reports/2026-07-18-opt4-production-verification.md) 与两套 postcheck evidence。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
@@ -10,11 +10,11 @@
 
 ## Current Phase
 
-**Stage 1–4 已完成、合并并归档，当前进入系统优化与工程治理。** P0 生产 API 链路、P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）均已完成。OPT-2 主线质量门为 **3926/3926（90 files, 0 failures）**，PostgreSQL 并发 **44/44**、数据库行为 **10/10**，lint **0 errors / 31 warnings**，build 与 TypeScript 通过。Production 与 Staging 均已应用 00048，补齐 `claim_sync_run_system(...)` 并移除 00011 遗留对象；两环境 48/48 远端 version 均已与仓库固定宽度 `00001–00048` 对齐。当前正在重跑 OPT-4 最终完整质量门与远程 CI，终审 PASS 前不得进入 OPT-5。
+**Stage 1–4 已完成、合并并归档，当前进入系统优化与工程治理。** P0 生产 API 链路、P1 预测式补货（Migration 00041–00044）、P7 全球库存作战室（00045–00046）与首页决策看板（00047）均已完成。OPT-4 最终质量门为 **3932/3932（91 files）**、PostgreSQL 并发 **44/44**、Migration/RPC/RLS contract **14/14**、lint **0 errors / 31 warnings**、Next.js build/TypeScript PASS；PR #7 最终 head 的 GitHub Actions 与 Vercel Preview 全绿。Production 与 Staging 均为 48/48 远端 version 对齐，OPT-4 已获指定会话 FINAL PASS。当前按既定路线进入 OPT-5 数据库最小权限收口。
 
 ## Current Task
 
-**OPT-4-MIGRATION-HISTORY-REPAIR — PRODUCTION EXECUTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING** — 00048 已在 Staging 与 Production 应用且 Schema/权限/事务验证通过，00011 遗留对象均为 0，Production/Staging canonical catalog 完全一致。00001–00040 没有重放旧 SQL。Staging 与 Production 均已在单事务中只把 48 条远端 `version` 对齐为 `00001–00048`，所有非 version payload 与各自 history 摘要保持不变；Staging 已独立 PASS，Production 正在完成项目树、质量门、PR/CI 与最终审查证据。指定会话最终 PASS 前禁止标记 OPT-4 DONE 或进入 OPT-5。详细证据见 [Staging History Version 对齐报告](reports/2026-07-18-opt4-staging-history-version-realignment.md)、[OPT-4 Production 验证报告](reports/2026-07-18-opt4-production-verification.md)、[Production postcheck evidence](reports/evidence/2026-07-20-opt4-production-history-postcheck.md) 与 [当前任务包](tasks/current-task.md)。
+**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — AUDIT IN PROGRESS** — 依赖 OPT-4 FINAL PASS 已满足。当前只读审计已确认两环境的高信号基线：`get_user_role()` 与 `handle_new_user()` 存在不必要的匿名/直接 EXECUTE；5 个函数缺少固定 `search_path`；`provider_token_cache` 无普通用户策略是刻意的服务端隔离，但仍需核对并收紧直接表权限；其余 `SECURITY DEFINER` 警告须逐函数证明调用者身份、RLS 与实际调用点后才能决定是否变更。只允许通过新的 00049+ 前向 Migration 实施，先 Staging、后 Production，完成身份矩阵、完整质量门、远端 postcheck、项目树记录与指定会话 PASS 后才可标记 DONE 或进入 OPT-6。详见 [当前任务包](tasks/current-task.md) 与 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 
 ### P7 阶段拆分（v4 合并整合：P7 与作战室合并为单一产品「全球库存总览」）
 

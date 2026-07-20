@@ -2,83 +2,68 @@
 
 ## Task ID
 
-**OPT-4-MIGRATION-HISTORY-REPAIR — PRODUCTION EXECUTED / FULL POSTCHECK PASS / FINAL REVIEW PENDING**
+**OPT-5-DATABASE-LEAST-PRIVILEGE-HARDENING — AUDIT IN PROGRESS**
 
-路线图：[system-optimization-roadmap-2026-07-17.md](system-optimization-roadmap-2026-07-17.md)
+## 依赖与历史检查点
+
+- OPT-4 已在 base `ed203f1fadd8ef485fa2e86d29c020a7449d753a`、head `1a914bd0948975e3de3eb929a9220d90a2203dd7` 获指定审查会话 `OPT-4 FINAL PASS`。
+- Draft PR #7 的 CI run `29714460569` 中 quality 与 PostgreSQL job 全绿；Vercel Preview `dpl_FfeeXgiXMkE2eVYUjyjseQkhZHjK` 为 READY 且绑定同一 head。
+- Production 与 Staging 的 Migration history 均为精确 `00001–00048`；本任务只能新增 00049+ 前向 Migration，不修改或重放 00001–00048。
+- 用户已对 OPT-5/OPT-6 既定路线给出持续授权；每阶段仍必须完整验证并由指定审查会话明确 PASS 后才能进入下一阶段。
+
+OPT-4 详细证据：[Production 主报告](../reports/2026-07-18-opt4-production-verification.md)；[Production postcheck](../reports/evidence/2026-07-20-opt4-production-history-postcheck.md)；[Staging history 对齐报告](../reports/2026-07-18-opt4-staging-history-version-realignment.md)
 
 ## 目标
 
-通过新的 00048 前向 Migration 补齐 Production 缺失的 `claim_sync_run_system(...)`，清理 Staging 已被 00012 替代的 00011 遗留对象，并在对象证据成立后受控修复 Production 的 00001–00040 migration history。禁止重放或修改旧 Migration。
+通过最小、前向、可验证的权限变更消除高信号数据库安全告警，同时保持现有 Admin/Operator/RLS、Auth trigger、系统同步与 provider token lease 行为不变。
 
-## 已完成
+## 已确认只读基线
 
-- OPT-3 报告已经独立审查 PASS，用户确认继续。
-- Production 数据库密码已重置并仅用 Windows DPAPI 加密保存，明文剪贴板已清空。
-- Production 完整逻辑备份已生成并验证：角色、Schema、数据、custom archive、SHA-256 与可读归档目录全部通过。
-- 新增 `00048_restore_claim_sync_run_system.sql`；函数定义与 00010 的已审计语义一致，清理前带旧归档数据拒绝门禁，不使用 `CASCADE`。该 Migration 已在 Staging 登记，后续返工不修改 00048。
-- Staging 清理前 341 个 Variant 中旧归档有效数据为 0。
-- Staging 已成功应用 00048；函数 owner/ACL/search_path 正确，旧 3 列、FK、索引均已移除。
-- Staging 事务内 service_role Dry Run、Real Write 拒绝、Operator 拒绝均通过，测试事务已回滚且无残留记录。
-- 聚焦静态测试 5/5 PASS；PostgreSQL 契约套件已扩展覆盖 00048 的成功路径、service_role Schema USAGE 与有效旧数据触发整文件原子回滚的失败路径。
-- 本地默认测试 3932/3932（91 files）、PostgreSQL 17 契约测试 14/14、lint 0 errors / 31 warnings、Next.js build/TypeScript PASS。
-- 三轮独立阶段审查最终 PASS；00048 与 Staging `schema_migrations.statements[1]` 的 5778 bytes / 5596 chars / SHA-256 `0a833a0f407d4d9cc5be6a702662318c6afa6f382fa1689046d945d2dfefd87a` 逐字一致。
-- Draft PR #6 已创建；GitHub Actions run `29635961807` 的 quality job 与 PostgreSQL concurrency/contract job 全部 PASS，Vercel Preview PASS。
-- 用户已明确批准 2026-07-18 Production 维护窗口。写入前再次确认项目 `hzlhqyditalumhnxbaim` 为 `ACTIVE_HEALTHY`、PostgreSQL 17.6、完整备份 4 个核心文件 SHA-256 全部匹配、运行中同步任务为 0。
-- Production 已应用与 Staging 正文完全一致的 00048，登记版本为 `20260718074910`；语句长度 5596、MD5 `0a4a0cb7b1bcae70346efda90333e2f9`。函数为 `postgres` owner、`SECURITY DEFINER`、空 `search_path`，ACL 仅保留 `postgres` 与 `service_role`。
-- Production 事务验证通过：合法 service-role Dry Run 成功，Real Write 与无效操作者均被拒绝；事务回滚后 run、artifact hash 与 warehouse lock 残留均为 0。
-- 00001–00040 已在单一事务中仅修复 `supabase_migrations.schema_migrations`，未执行任何旧 SQL。事务前要求现有历史严格等于 00041–00048，提交前逐条校验从 Staging 只读取得的版本、名称、语句 MD5 与长度；最终为 48 stages / 48 unique names。
-- Production 与 Staging canonical catalog 的列、约束、索引、触发器、函数、Table/RLS 与 Policy 共 14 组摘要完全一致。00041–00047 历史正文仅有既有尾部换行差异，去除尾部空白后 7 条 MD5 全部一致。
-- Production 顾问复核完成：Security 22（1 INFO / 21 WARN）、Performance 158（37 INFO / 121 WARN），均为 OPT-5/OPT-6 的既有基线；`claim_sync_run_system` 没有新增告警。
-- 指定独立审查结论为 `CHANGES_REQUIRED`：本地 migration version 为 `00001–00048`，Production 与 Staging 远端 48/48 均使用 timestamp version，CLI 以 version 精确比较且不会用 name/正文摘要替代。当前 48 个唯一名称不等于 CLI history 已收敛，禁止执行 `db push` 或 `--include-all`。
-- `package.json` 与 `package-lock.json` 已把 Supabase CLI 精确固定为 `2.109.1`；本次返工的 `migration list`、`db push --dry-run` 与帮助检查必须使用仓库固定版本，禁止临时漂移到其他 CLI 版本。
-- Staging history-only 维护脚本已准备在 `docs/reports/sql/2026-07-18-opt4-staging-history-version-realignment.sql`：仅更新 `schema_migrations.version`，带 48 行/唯一名称/目标版本/旧 timestamp 基线断言、独占锁、单事务和所有非 version 字段逐项不变校验。本机 PostgreSQL 17.10 一次性测试库验证 48/48 成功，重复执行按预期拒绝（exit 3），测试库已删除。
-- Staging 远端只读 preflight 已通过：项目 `ACTIVE_HEALTHY`、PostgreSQL 17.6、运行中同步任务 0；48 条 history 全为 timestamp、0 条已对齐、name 目标集精确等于 `00001–00048`。写入前 name/statements digest 为 `3566222cba075216b6c9a0d3065b7b93`，14 组 canonical catalog 摘要已固化，详见 [Staging History Version 对齐报告](../reports/2026-07-18-opt4-staging-history-version-realignment.md)。
-- 2026-07-20 在已获批窗口执行 Staging history-only 维护脚本：48/48 version 从 timestamp 对齐为 `00001–00048`，事务内仅更新 `schema_migrations.version`，所有非 version payload 逐行不变断言通过。写入后 name/statements digest 仍为 `3566222cba075216b6c9a0d3065b7b93`，14 组 canonical catalog 摘要逐项不变，运行中同步任务仍为 0。
-- Supabase 官方连接器直接返回真实 Staging 48 条 migration version 精确为 `00001–00048`。仓库固定 CLI `2.109.1` 因新环境缺少 platform access token 未直接连接远端；它在由该真实远端 version 集合构造的一次性 PostgreSQL 17.10 history 镜像上输出 48/48 local=remote，`db push --dry-run` 返回 `Remote database is up to date.`，临时数据库已停止并删除。该证据边界已明确提交独立审查。
-- 指定审查会话已独立复算真实 Staging 48 行、两套 history digest、逐行 statement 证据、0 个运行中任务、14 组 catalog 摘要与脚本 CRLF/LF 哈希，并于 2026-07-20 给出 Staging 子阶段 PASS。该 PASS 不覆盖 Production。
-- 用户随后给出 OPT-4 剩余 Production history-only 对齐及 OPT-5/OPT-6 既定路线的持续授权，不再逐阶段重复口令；每阶段仍必须完整验证并由指定审查会话明确 PASS 后才能进入下一阶段。意外删除、直接回滚、重放旧 Migration、绕过 RLS、密钥暴露或 materially different 的范围外操作不在持续授权内。
-- Production 专用 history-only 脚本位于 [2026-07-20-opt4-production-history-version-realignment.sql](../reports/sql/2026-07-20-opt4-production-history-version-realignment.sql)，LF SHA-256 `eb3dfb3e7117504be3249294bb73c53af4c4e78072ecbed853e4e5e78631f420`。脚本带 Production 专属旧 version/name digest、0 运行任务、完整目标集、独占锁、单事务和非 version payload 不变门禁。
-- 一次性 PostgreSQL 17 测试库验证脚本首次 48/48 成功、重复执行原子拒绝；临时实例和 fixture 已删除。Production 即时 preflight 为 48 timestamp / 0 aligned、version+name digest `06c450dcf0e265c7d20f3cf7b8ed71e1`、name/statements digest `8f08a8dee32cbca3aebe5f5861206699`、0 个运行中任务。
-- 2026-07-20 Production 已在单事务中只把 48 条 `schema_migrations.version` 对齐为 `00001–00048`。首次连接器传输错误后先只读确认未写入，随后精确事务正文执行一次成功；没有重放 Migration SQL、修改 public Schema 或写业务数据。
-- Production postcheck 为 48 rows / 48 unique versions / 48 unique names / 0 timestamp / 48 aligned；name/statements digest 仍为 `8f08a8dee32cbca3aebe5f5861206699`，ordered history digest `8a9ff2ad685dc8ca0c2633afc293175e`，运行中任务 0。Production/Staging 14 组 catalog 摘要写后逐项一致。
-- 固定 CLI 2.109.1 在真实远端 version 集合的同构 PostgreSQL 17 history 上得到 48/48 local=remote，`db push --dry-run` 为 up to date；临时实例已删除。完整证据见 [Production history postcheck evidence](../reports/evidence/2026-07-20-opt4-production-history-postcheck.md)。
-
-详细证据：[OPT-4 Staging 验证报告](../reports/2026-07-18-opt4-staging-verification.md)；[Staging history 对齐报告](../reports/2026-07-18-opt4-staging-history-version-realignment.md)；[OPT-4 Production 验证报告](../reports/2026-07-18-opt4-production-verification.md)；[Production postcheck evidence](../reports/evidence/2026-07-20-opt4-production-history-postcheck.md)
+- `get_user_role()` 为 `SECURITY DEFINER` 且已固定空 `search_path`；RLS 依赖 authenticated 执行，但 anon/PUBLIC 直接执行没有业务必要。
+- `handle_new_user()` 为 Auth 用户创建 trigger 的 `SECURITY DEFINER` 函数且已固定空 `search_path`；普通 API 角色无需直接执行。
+- `update_updated_at_column()`、`update_shipment_external_updated_at()`、`check_operator_profile_update()`、`update_user_role_protected(...)`、`toggle_user_active_protected(...)` 尚未固定 `search_path`。
+- `check_operator_profile_update()` 内部存在未限定的 `get_user_role()` 调用，固定空 `search_path` 时必须同步改成 `public.get_user_role()`。
+- 两个用户管理 RPC 为 `SECURITY INVOKER`，应用通过 authenticated 会话调用，必须保留 authenticated EXECUTE 与 `auth.uid()` 身份绑定，不得切换为 `SECURITY DEFINER`。
+- `provider_token_cache` 已启用 RLS、无 anon/authenticated policy；服务端实现只调用三个 service-role-only `SECURITY DEFINER` lease RPC，没有直接表访问调用点。需验证后撤销不必要的直接表权限，不新增普通用户 policy。
+- Production Security Advisor 基线为 22 条（1 INFO / 21 WARN）：5 条 mutable search path、2 条匿名可执行 definer、既有 intentional authenticated definer、`pg_trgm` public extension 与 leaked-password protection disabled 等。不得以“清零告警”为理由改变正确的 RLS/RPC 语义。
 
 ## 当前允许范围
 
-- 更新 OPT-4 Production 报告、当前状态、路线图、项目树索引与完整 evidence。
-- 固定并验证 Supabase CLI `2.109.1`，不改变应用运行时依赖语义。
-- 完成全量测试、lint、TypeScript/build、PostgreSQL contract/concurrency、git、PR/CI 与远端 postcheck。
-- 修复指定审查会话提出的 OPT-4 范围内问题并重新提交，直至明确 PASS。
+- 逐函数记录 owner、SECURITY 模式、search_path、EXECUTE grantee、调用角色、内部提权、RLS 依赖和真实调用点。
+- 新增一个 00049+ 前向 Migration，固定安全 `search_path`、限定对象 schema、收紧不必要的 PUBLIC/anon/authenticated/service_role EXECUTE 与 `provider_token_cache` 直接表权限。
+- 新增/更新静态与 PostgreSQL 17 契约测试，覆盖匿名、未登录、活跃 Admin、活跃 Operator、disabled user、跨仓 Operator、service_role/系统触发器。
+- 先在 Staging 应用并完成 postcheck；确认行为、ACL、RLS、Advisor 与 Migration history 正确后，再在 Production 应用同一 Migration 并复核。
+- 评估 leaked-password protection 的兼容性和平台配置边界；若无法从受控工具安全配置，则记录为明确残余项，不索取或保存密码/token。
+- 更新 `docs/current-state.md`、数据库设计、路线图、主报告、evidence 与所有必要索引。
 
 ## 当前禁止范围
 
-- 禁止对已完成的 Production 00048 与 history repair 做未审查追加写入。
-- 禁止对已完成的 Production history-only 对齐做追加写入。
-- 禁止实际执行 `supabase db push`、`--include-all` 或通过重放旧 Migration 规避 history；只允许无写入 `--dry-run` 验证。
-- 禁止在 Production 重放 `00001–00040`。
-- 禁止修改 `00001–00047`。
-- 禁止通过伪造对象状态换取 migration 列表一致。
-- 禁止进入 OPT-5。
-- 禁止直接执行回滚模板；00048 登记后的撤销必须使用新的 00049+ 前向 Migration 并单独审查。
+- 禁止修改、删除或重放 00001–00048；禁止 history repair、`--include-all` 或伪造对象状态。
+- 禁止关闭 RLS、扩大 anon/authenticated/service_role 权限或把现有 invoker RPC 批量切为 definer。
+- 禁止为消除 Advisor 警告而破坏经验证的 authenticated RPC、仓库隔离、Auth trigger、同步原子性或 Token lease 模型。
+- 禁止移动 `pg_trgm`、批量重构全部 `SECURITY DEFINER` 函数或处理 OPT-6 的 policy/performance/lint 范围。
 - 禁止触碰用户既有同步脚本、`.claude` 状态与项目总结。
+- 禁止进入 OPT-6，直至 OPT-5 完整证据提交指定审查会话并得到明确 PASS。
 
-## 剩余步骤
+## 执行顺序
 
-1. ✅ 合并并上线代码、维护脚本与只读基线证据。
-2. ✅ 在已获批窗口把 Staging 48 条 history version 受控对齐为仓库 `00001–00048`，保持 name/statements 摘要与 canonical catalog 不变，并保存 48 行 postcheck。
-3. ✅ 指定审查会话已完成 Staging 独立复验并给出 PASS。
-4. ✅ Production history-only 对齐已执行，48/48 postcheck、两环境 CLI/catalog 与 Advisor 基线复核通过。
-5. ✅ 项目树索引、相对链接、secret scan、默认测试 3932/3932、lint 0/31、build/应用 TypeScript、PostgreSQL concurrency 44/44、migration contract 14/14 均已完成。
-6. ✅ Production 证据已提交并推送；PR #7 head `34f5c27` 的 GitHub Actions run `29713652260` 两个 job 与 Vercel Preview 均 PASS；最终远端复核两环境仍为 48/48 aligned、0 个运行中任务。
-7. ⏳ 提交本次 docs-only CI 回填，确认最终 head 状态后移交指定会话终审。OPT-4 最终 PASS 前禁止进入 OPT-5。
+1. 完成 Production/Staging 只读权限矩阵、调用点、Advisor 与对象摘要基线。
+2. 编写 00049+ Migration 与静态/PostgreSQL 契约测试；在一次性 PostgreSQL 17 上连续重放 00001–00049 并验证权限矩阵。
+3. 运行默认测试、lint、TypeScript/build、PostgreSQL contract/concurrency、`git diff --check`、链接/索引/secret/orphan 检查。
+4. 提交并推送独立 OPT-5 分支，等待 PR/CI/Vercel Preview 全绿。
+5. 在 Staging 应用相同 Migration，保存 before/after ACL、function、RLS、身份矩阵、Advisor 与 history evidence。
+6. Staging 全绿后在 Production 应用同一 Migration并保存等价 postcheck；若出现行为或摘要漂移立即停止，不进入下一环境/阶段。
+7. 把实际变更、时间/环境、命令类别、PR/commit/CI/deployment/远端证据、停止门与残余风险写入项目树并建立索引。
+8. 正式移交指定审查会话；CHANGES_REQUIRED 时只在 OPT-5 范围返工，明确 PASS 前不进入 OPT-6。
 
 ## 验收标准
 
-- 00048 在缺列/有旧空列两种起点均安全收敛；存在旧归档数据时拒绝执行。
-- `claim_sync_run_system` 仅 `service_role` 可执行，且 Admin/Dry Run/锁/租约语义与 00010 一致。
-- 00011 遗留对象不进入 Production，Staging 最终状态与正确业务语义一致。
-- Production 操作严格遵守“备份 → 00048 → 验证 → history repair → 全量复核”顺序。
-- 远程 PostgreSQL 17 契约测试、默认测试、lint、build 与 `git diff --check` 全部通过。
-- 指定独立审查会话给出 PASS。
+- 所有目标函数固定安全 `search_path`，函数体中的非系统对象均显式限定 schema。
+- Auth trigger 与普通触发器继续正常执行，但无法被不需要的 API 角色直接调用。
+- `get_user_role()` 保持 RLS 所需 authenticated 行为，anon/PUBLIC 不可执行；disabled/未登录返回空权限语义不变。
+- 用户管理 RPC 仍为 invoker，仅 authenticated 可调用，身份绑定、最后管理员保护和 RLS 行为不变。
+- `provider_token_cache` 无 anon/authenticated policy 且普通角色无表权限；service_role 只能通过已审计 lease RPC 完成系统调用。
+- Admin/Operator/disabled/cross-warehouse/service_role 身份矩阵通过，18/18 public tables RLS enabled 与既有 policy/trigger 语义不变。
+- 新 Migration 可从空库按顺序重放，并在 Staging、Production 只应用一次；两环境 history、Schema/ACL 摘要与目标证据一致。
+- 默认测试、lint、build/TypeScript、PostgreSQL concurrency/contract、PR/CI、Vercel Preview、`git diff --check`、文档链接/索引、secret/orphan 检查全部通过。
+- 指定审查会话明确给出 `OPT-5 PASS`；在此之前不得标记 DONE 或进入 OPT-6。
