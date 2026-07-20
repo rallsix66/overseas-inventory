@@ -2,7 +2,7 @@
 
 ## Status
 
-`CODE COMPLETE / LOCAL VERIFY PASS / REMOTE APPLY AND INDEPENDENT REVIEW PENDING`
+`CODE COMPLETE / LOCAL VERIFY PASS / CI + VERCEL PASS / REMOTE APPLY AND INDEPENDENT REVIEW PENDING`
 
 This is the first independently reviewable OPT-6 batch. It does not mark OPT-6
 complete and does not authorize the next batch until the designated review task
@@ -66,9 +66,12 @@ locale-only mismatch is not a 00050 failure and remains a CI verification item.
   merge. No policy merge was included here.
 - Unused-index findings remain deferred until a production statistics window;
   no index was deleted.
-- Supabase Staging/Production postchecks, CI, Vercel deployment, and independent
-  review are pending. Do not apply 00050 remotely or enter OPT-6 Batch 2 before
-  the designated review task returns `PASS`.
+- Exact-head PR #9 checks for commit `99fae34` are green: workflow run
+  `29730076706` quality and PostgreSQL jobs passed; Vercel Preview is green at
+  `https://vercel.com/rallsix66s-projects/overseas-inventory/AQGwQhJWYgCKbFyoDnRZYpC7LcMY`.
+- Supabase Staging/Production apply/postchecks and independent review remain
+  pending. Do not apply 00050 remotely or enter OPT-6 Batch 2 before the
+  designated review task returns `PASS`.
 
 ## Navigation
 

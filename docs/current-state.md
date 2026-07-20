@@ -1,6 +1,6 @@
 # Current Project State
 
-> 2026-07-20 System optimization：OPT-1–OPT-5 均已通过指定会话终审并合并；OPT-5 merge commit 为 `6c71c3f95bd75389b586c0389e01664a8936d053`，master CI `29719290873` 全绿。OPT-6 Batch 1 已完成代码与本地验证：lint 0 warning、00050 auth init-plan 合同与身份矩阵通过、Turbopack workspace-root 误判已消除；当前仍为 `OPT-6 BATCH 1 REVIEW PENDING`，远端 Migration、CI/Vercel 和指定会话终审未完成，115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [OPT-6 Batch 1 报告](reports/2026-07-20-opt6-quality-governance-batch-1.md)、[OPT-6 当前任务包](tasks/current-task.md) 与 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
+> 2026-07-20 System optimization：OPT-1–OPT-5 均已通过指定会话终审并合并；OPT-5 merge commit 为 `6c71c3f95bd75389b586c0389e01664a8936d053`，master CI `29719290873` 全绿。OPT-6 Batch 1 已完成代码与本地验证：lint 0 warning、00050 auth init-plan 合同与身份矩阵通过、Turbopack workspace-root 误判已消除；Draft PR #9 的 head `99fae34`、CI `29730076706` 与 Vercel Preview 已全绿。当前仍为 `OPT-6 BATCH 1 REVIEW PENDING`，远端 Migration 与指定会话终审未完成，115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [OPT-6 Batch 1 报告](reports/2026-07-20-opt6-quality-governance-batch-1.md)、[OPT-6 当前任务包](tasks/current-task.md) 与 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 
 > 2026-07-17 Preview session hotfix（CODE COMPLETE / DEPLOY PENDING）: 修复 `/dashboard/sync` 点击「重新建立登录会话」后因 `spawn python ENOENT` 冒泡为 Server Components 生产错误的问题。Vercel 环境现作为可预期失败返回明确提示，不再创建锁文件或启动子进程；支持桌面 Chrome 的本地同步主机改为等待 `spawn` 成功事件后才返回启动成功，并支持 `PYTHON_EXECUTABLE` 配置，失败时清理锁与日志句柄。新增 4 项回归测试；全量非并发测试 3883/3883，聚焦 lint 0 errors，build/TypeScript 通过。独立 worktree 未保存 Vercel 项目链接，当前未重新绑定、未部署。
 
