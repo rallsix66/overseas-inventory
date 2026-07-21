@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 1 REMOTE FINAL PASS / PR #10 MERGE PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 CODE COMPLETE / LOCAL VERIFY PASS / REVIEW PENDING**
 
 ## Handoff from OPT-5
 
@@ -49,8 +49,9 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   passed CI `29739720283` and Vercel Preview
   `obXa1wmkxzMorYz9k8AmpkhBSZmG`. The designated review task independently
   confirmed both remote projects and returned `OPT-6 BATCH 1 REMOTE FINAL
-  PASS`. PR #10 merge is the only remaining Batch 1 handoff; do not start
-  Batch 2 before that merge completes.
+  PASS`. PR #10 was merged as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`.
+  Batch 1 is closed; this packet is the separately reviewable Batch 2 role
+  policy-overlap candidate.
 - OPT-6 policy targets from the reviewed roadmap: 6 `auth_rls_initplan`, 115 `multiple_permissive_policies`, and unused-index findings that must not be bulk-deleted from one Advisor snapshot.
 - Turbopack workspace-root misdetection is fixed by `turbopack.root = __dirname`; one NFT trace warning remains because the sync route intentionally uses the project-root runtime path. No further path rewrite is allowed without proving runtime equivalence.
 - `npm audit --omit=dev` has 2 moderate PostCSS advisories with no available fix; do not claim audit zero or force an unsafe override.
@@ -60,10 +61,18 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 1. ✅ Create this isolated branch and record the OPT-5 handoff.
 2. ✅ Re-run lint and collect a machine-readable warning inventory; fix unused symbols in small test-backed batches until warning count is zero.
 3. ✅ Batch 1: capture the reviewed policy targets, rewrite only six `auth.uid()` init expressions to equivalent scalar subqueries, and prove anonymous, disabled, Admin, Operator, and cross-warehouse behavior unchanged. See [Batch 1 report](../reports/2026-07-20-opt6-quality-governance-batch-1.md).
-4. Inventory multiple-permissive policies by table/command/role. Merge only groups whose OR semantics and `WITH CHECK` behavior can be proven; use forward-only Migration(s), never edit 00001–00049.
+4. Inventory multiple-permissive policies by table/command/role. The local
+   `00001`–`00050` replay catalog has 42 policies and 23 concrete overlap
+   groups. Batch 2 changes only `public.role`: `00051` proves the Admin OR
+   Operator SELECT union and preserves Admin write checks as separate policies.
+   The remaining 22 groups stay unchanged until separately proven. Never edit
+   00001–00050.
 5. Investigate the Turbopack trace warning and dependency residuals without changing runtime artifact paths, cron schedules, secrets, or provider behavior.
 6. Run full local tests, lint budget 0, TypeScript/build, PostgreSQL concurrency/contracts, migration replay, `git diff --check`, links, secret/orphan checks, and available Staging/Production postchecks.
-7. Record every batch in `docs/reports/` and indexes, then send it to the designated review task. Batch 1 code and remote stages both have explicit independent PASS; merge PR #10, then prepare the separately reviewable Batch 2 packet.
+7. Record every batch in `docs/reports/` and indexes, then send it to the
+   designated review task. Batch 2 must receive explicit PASS before any
+   Staging preflight/apply is prepared; Production and all remaining groups
+   remain prohibited.
 
 ## Current prohibitions
 
@@ -72,3 +81,5 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
 - Do not touch user synchronization scripts, `.claude` state, or project-summary files.
+- Do not write `00051` to Staging or Production before the designated review
+  returns explicit PASS for the complete code/documentation packet.

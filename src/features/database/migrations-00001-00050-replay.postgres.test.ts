@@ -63,7 +63,7 @@ function migrationFiles(): string[] {
     .map((name) => resolve(directory, name))
 }
 
-describe('fixed-width migrations 00001-00050 continuous PostgreSQL replay', () => {
+describe('fixed-width migrations 00001-00051 continuous PostgreSQL replay', () => {
   let files: string[] = []
 
   beforeAll(async () => {
@@ -79,10 +79,10 @@ describe('fixed-width migrations 00001-00050 continuous PostgreSQL replay', () =
     await client.end()
   })
 
-  it('replays exactly the fixed-width 00001-00050 migration set', () => {
-    expect(files).toHaveLength(50)
+  it('replays exactly the fixed-width 00001-00051 migration set', () => {
+    expect(files).toHaveLength(51)
     expect(files[0]).toMatch(/00001_initial_schema\.sql$/)
-    expect(files.at(-1)).toMatch(/00050_optimize_auth_rls_initplan\.sql$/)
+    expect(files.at(-1)).toMatch(/00051_optimize_role_rls_policy_overlap\.sql$/)
   })
 
   it('keeps all public business tables protected by RLS', async () => {
