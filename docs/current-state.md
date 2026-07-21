@@ -4,8 +4,11 @@
 > apply/postcheck has designated independent `PASS`, bound to documentation
 > head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and green
 > Vercel Preview. The next allowed action is Production exact preflight and
-> maintenance-window preparation only; Production write and Batch 3 remain
-> prohibited.
+> maintenance-window preparation only; the read-only preflight packet is now
+> recorded at [Production preflight evidence](reports/evidence/2026-07-21-opt6-00051-production-preflight.md)
+> and [SQL packet](reports/sql/2026-07-21-opt6-00051-production-preflight.sql).
+> Remote Production preflight is still pending; Production write and Batch 3
+> remain prohibited.
 
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051

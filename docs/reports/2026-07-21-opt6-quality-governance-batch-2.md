@@ -91,6 +91,14 @@ The Staging remote apply/postcheck review is closed with `PASS`, bound to
 documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
 `29822891836`, and the green Vercel Preview. This does not authorize Production.
 
+## Production gate preparation (2026-07-21)
+
+The read-only Production exact preflight packet is prepared, but has not been
+executed. See the [Production preflight evidence](evidence/2026-07-21-opt6-00051-production-preflight.md)
+and [SELECT-only SQL packet](sql/2026-07-21-opt6-00051-production-preflight.sql).
+Remote preflight execution, any apply packet, and any Production write remain
+separate review-gated steps.
+
 ## Review closure
 
 - Designated review: `OPT-6 Batch 2 FINAL PASS`.
@@ -108,6 +116,8 @@ documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
 
 - [Policy inventory evidence](evidence/2026-07-21-opt6-batch2-policy-inventory.md)
 - [Staging read-only preflight evidence](evidence/2026-07-21-opt6-00051-staging-preflight.md)
+- [Production exact preflight packet](evidence/2026-07-21-opt6-00051-production-preflight.md)
+- [Production preflight SQL](sql/2026-07-21-opt6-00051-production-preflight.sql)
 - [Staging apply generator](../../scripts/prepare-opt6-00051-staging-apply.ps1)
 - [Current task packet](../tasks/current-task.md)
 - [Optimization roadmap](../tasks/system-optimization-roadmap-2026-07-17.md)

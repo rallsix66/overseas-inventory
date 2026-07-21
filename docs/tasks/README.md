@@ -72,3 +72,6 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 2. 将下一任务内容写入 `current-task.md`。
 3. 在 `current-state.md` 更新 Current Task 与引用。
 4. 新 Claude 会话只执行新的 `current-task.md`。
+> Current OPT-6 gate (2026-07-21): Batch 2 Staging remote apply/postcheck
+> has independent `PASS`; the Production exact preflight packet is prepared,
+> remote preflight is pending, and no Production write or Batch 3 is allowed.

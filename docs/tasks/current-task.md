@@ -122,6 +122,15 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   exact preflight and maintenance-window packet. Production writes, Batch 3,
   and the remaining policy groups remain prohibited.
 
+## Production gate preparation (2026-07-21)
+
+- The SELECT-only Production `00051` exact preflight packet is prepared and
+  indexed in the [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-production-preflight.md)
+  and [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-preflight.sql).
+- The packet has not been executed yet. Remote Production preflight, any
+  apply packet, and Production write each require their own evidence and
+  designated review `PASS`; Staging `PASS` is not Production authorization.
+
 ## Current prohibitions
 
 - No changes to 00001–00049; all database changes must be 00050+ forward-only and replayable.

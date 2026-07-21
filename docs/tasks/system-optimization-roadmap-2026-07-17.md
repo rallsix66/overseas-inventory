@@ -223,3 +223,6 @@ Preview. Only Production exact preflight/maintenance-window preparation may
 follow; no Production write, Batch 3, or other policy group is authorized.
 This current-gate note supersedes the earlier Batch 2 paragraph that described
 the Staging evidence as still pending review.
+The Production exact preflight packet is now prepared and indexed, but remote
+preflight has not been executed; Production write and Batch 3 remain blocked
+by their separate review gates.
