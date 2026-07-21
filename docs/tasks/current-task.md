@@ -90,8 +90,9 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - Staging read-only preflight subsequently passed: exact `00001`–`00050`, no
   `00051`, and the full `public.role` two-policy catalog all match the
   reviewed baseline. See [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
-  This is not a Staging apply authorization; submit the apply/postcheck packet
-  to the designated review task before any remote write.
+  The designated review task returned `PASS` for this preflight evidence. It
+  permits preparation, not execution, of the Staging apply/postcheck packet;
+  that atomic write packet needs its own review before any remote write.
 
 ## Current prohibitions
 

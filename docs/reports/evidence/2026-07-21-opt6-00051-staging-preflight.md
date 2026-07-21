@@ -2,7 +2,7 @@
 
 ## Status
 
-`READ-ONLY PREFLIGHT PASS / STAGING APPLY REVIEW PENDING / NO REMOTE WRITE`
+`READ-ONLY PREFLIGHT REVIEW PASS / STAGING APPLY PACKET PREPARATION / NO REMOTE WRITE`
 
 ## Scope and boundary
 
@@ -35,10 +35,12 @@ baseline policies are `admin_all_role` (`FOR ALL`, Admin) and
 
 ## Next stop gate
 
-This evidence prepares the controlled Staging apply/postcheck packet only. It
-does not authorize executing `00051`. The designated independent review task
-must review this Staging packet and return an explicit `PASS` before a Staging
-write; Production and all remaining policy groups remain prohibited.
+The designated independent review task returned `PASS` for this read-only
+preflight packet. That permits preparation of the controlled Staging
+apply/postcheck packet only; it does not execute or itself authorize `00051`.
+The atomically applied Migration/history-registration script and its expected
+postcheck must be independently reviewed before a Staging write. Production
+and all remaining policy groups remain prohibited.
 
 ## Navigation
 

@@ -82,8 +82,9 @@ candidate remain prohibited pending their own evidence and review gates.
 The Staging read-only preflight is now `PASS`: the environment has exact
 `00001`–`00050` history, no `00051`, and the complete two-policy
 `public.role` baseline matches the reviewed catalog. This records preparation,
-not an apply. The controlled Staging apply/postcheck packet now requires its
-own designated independent review before any write.
+not an apply. The designated review task independently returned `PASS` for
+this preflight packet. The controlled atomic Staging apply/postcheck packet is
+now the only work permitted, and it requires its own review before any write.
 
 ## Review closure
 
