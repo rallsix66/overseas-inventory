@@ -103,6 +103,7 @@ now the only work permitted, and it requires its own review before any write.
 
 - [Policy inventory evidence](evidence/2026-07-21-opt6-batch2-policy-inventory.md)
 - [Staging read-only preflight evidence](evidence/2026-07-21-opt6-00051-staging-preflight.md)
+- [Staging apply generator](../../scripts/prepare-opt6-00051-staging-apply.ps1)
 - [Current task packet](../tasks/current-task.md)
 - [Optimization roadmap](../tasks/system-optimization-roadmap-2026-07-17.md)
 - [00051 migration](../../supabase/migrations/00051_optimize_role_rls_policy_overlap.sql)

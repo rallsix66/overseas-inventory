@@ -42,9 +42,23 @@ The atomically applied Migration/history-registration script and its expected
 postcheck must be independently reviewed before a Staging write. Production
 and all remaining policy groups remain prohibited.
 
+## Apply packet prepared for review
+
+- Generator: [prepare-opt6-00051-staging-apply.ps1](../../../scripts/prepare-opt6-00051-staging-apply.ps1).
+- It normalizes the reviewed `00051` body to LF, verifies 5686 characters and
+  MD5 `aee8d4811b5382afc9786ef0dae195be`, then emits one `BEGIN`/`COMMIT`
+  transaction.
+- The generated SQL gates exact 50-row history before executing the reviewed
+  Migration; it then locks only the migration history, inserts exactly one
+  `00051` body row, and requires exact 51-row/history-payload postchecks.
+- Local generator verification passed: one transaction, one commit, two body
+  occurrences (execution plus literal registration), and one history INSERT.
+- This generator has not been executed against any remote database.
+
 ## Navigation
 
 - [Batch 2 report](../2026-07-21-opt6-quality-governance-batch-2.md)
 - [Current task packet](../../tasks/current-task.md)
 - [Optimization roadmap](../../tasks/system-optimization-roadmap-2026-07-17.md)
 - [00051 migration](../../../supabase/migrations/00051_optimize_role_rls_policy_overlap.sql)
+- [Staging apply generator](../../../scripts/prepare-opt6-00051-staging-apply.ps1)
