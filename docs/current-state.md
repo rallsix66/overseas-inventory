@@ -1,5 +1,12 @@
 # Current Project State
 
+> Current gate (2026-07-21): OPT-6 Batch 2 Staging `00051` remote
+> apply/postcheck has designated independent `PASS`, bound to documentation
+> head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and green
+> Vercel Preview. The next allowed action is Production exact preflight and
+> maintenance-window preparation only; Production write and Batch 3 remain
+> prohibited.
+
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051
 > role-policy-overlap candidate, complete local replay/identity/guard evidence,

@@ -2,7 +2,7 @@
 
 ## Status
 
-`STAGING APPLY/POSTCHECK PASS / PRODUCTION PROHIBITED / REVIEW PENDING`
+`STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION ONLY`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
 OPT-6 complete, does not authorize Batch 3, and has not executed a Production
@@ -76,8 +76,10 @@ residual are also out of scope.
 
 The complete packet received designated independent `PASS` on 2026-07-21.
 The controlled Staging exact preflight/apply packet has now been executed and
-postchecked successfully. Production and every further Batch 2 candidate
-remain prohibited pending their own evidence and review gates.
+postchecked successfully, and the designated independent review returned
+`PASS` on 2026-07-21. This authorizes only preparation of a separate Production
+exact preflight and maintenance-window packet. Production and every further
+Batch 2 candidate remain prohibited.
 
 The Staging read-only preflight is now `PASS`: the environment has exact
 `00001`–`00050` history, no `00051`, and the complete two-policy
@@ -85,8 +87,9 @@ The Staging read-only preflight is now `PASS`: the environment has exact
 preparation checkpoint. The reviewed atomic Staging packet then returned
 `Success. No rows returned`; its separate SELECT-only postcheck returned all
 nine checks `true`. See the [Staging apply/postcheck evidence](evidence/2026-07-21-opt6-00051-staging-preflight.md).
-This evidence is submitted for designated independent review and does not
-authorize Production.
+The Staging remote apply/postcheck review is closed with `PASS`, bound to
+documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
+`29822891836`, and the green Vercel Preview. This does not authorize Production.
 
 ## Review closure
 

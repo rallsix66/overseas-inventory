@@ -216,3 +216,10 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - 任一数据库任务无法证明 Admin/Operator/RLS 语义等价，不进入 Production。
 - 任一 Migration 无法在空库连续重放，不部署 Staging/Production。
 - 用户已对 OPT-4 剩余项与 OPT-5/OPT-6 既定路线给出持续授权；仍须逐阶段完成“实施/执行 → 完整验证与证据 → 指定会话明确 PASS”，且 PASS 前不得进入下一阶段。意外数据删除、直接回滚、重放旧 Migration、绕过 RLS、密钥暴露、范围外架构变更或 materially different 的操作仍必须停止并取得单独确认。
+**Current gate (2026-07-21)**: Staging `00051` remote apply/postcheck has
+designated independent `PASS`, bound to documentation head
+`2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and green Vercel
+Preview. Only Production exact preflight/maintenance-window preparation may
+follow; no Production write, Batch 3, or other policy group is authorized.
+This current-gate note supersedes the earlier Batch 2 paragraph that described
+the Staging evidence as still pending review.

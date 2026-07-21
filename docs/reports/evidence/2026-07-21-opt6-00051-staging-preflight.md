@@ -2,7 +2,7 @@
 
 ## Status
 
-`STAGING APPLY/POSTCHECK PASS / PRODUCTION PROHIBITED / REVIEW PENDING`
+`STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION ONLY`
 
 ## Scope and boundary
 
@@ -77,8 +77,11 @@ and all remaining policy groups remain prohibited.
   `00051` history payload, and the four reviewed `public.role` policies with
   exact PERMISSIVE/roles/command/normalized `USING`/`WITH CHECK` values.
 - No Production query or write was performed. No later overlap candidate was
-  started. This evidence is submitted for the designated independent review;
-  it does not authorize Production.
+  started. The designated independent review returned `PASS` on 2026-07-21 for
+  this Staging remote apply/postcheck evidence, bound to documentation head
+  `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and the green
+  Vercel Preview. This PASS authorizes only Production gate preparation; it does
+  not authorize a Production write.
 
 ## Navigation
 

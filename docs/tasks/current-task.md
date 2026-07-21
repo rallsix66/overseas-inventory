@@ -2,7 +2,19 @@
 
 ## Task ID
 
+### Current gate (2026-07-21)
+
+Staging `00051` remote apply/postcheck has designated independent `PASS`, bound
+to documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
+`29822891836`, and the green Vercel Preview. The next allowed step is only
+Production exact preflight and maintenance-window preparation. Production
+writes, Batch 3, and the remaining policy groups remain prohibited.
+
 **OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 STAGING APPLY/POSTCHECK PASS / REVIEW PENDING**
+
+> The title above is a historical packet label. The current state is
+> `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION`;
+> the designated review `PASS` does not authorize a Production write.
 
 ## Handoff from OPT-5
 
@@ -103,9 +115,12 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   `true`: exact 00001–00051 history, unique version/name sets, no timestamp
   versions, exact 00051 body payload, four policies, and exact normalized
   policy catalog. See [Staging apply/postcheck evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
-- This is Staging-only remote evidence. Production and all remaining policy
-  groups remain prohibited until this evidence receives designated independent
-  review `PASS`; this does not authorize Batch 3 or PR #11 merge.
+- This is Staging-only remote evidence. The designated independent review
+  returned `PASS` on 2026-07-21, bound to documentation head
+  `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and the green
+  Vercel Preview. The next allowed step is only to prepare a separate Production
+  exact preflight and maintenance-window packet. Production writes, Batch 3,
+  and the remaining policy groups remain prohibited.
 
 ## Current prohibitions
 
