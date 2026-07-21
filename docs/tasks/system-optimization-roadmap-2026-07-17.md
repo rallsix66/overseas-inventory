@@ -190,7 +190,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 ## OPT-6：渐进式质量治理
 
-**当前状态（2026-07-21）**：Batch 1 remote final PASS evidence 已合并为 `2510b0e070b7fe637239cf0a8eecc3e63aec9570`。Batch 2 的代码与本地验证已完成，并获指定独立审查 `FINAL PASS`（head `3885651309ac37f2bf5dd48ce905dfdfe6da8886`；CI `29798631677` 与 Vercel Preview 全绿）；尚未执行任何 Batch 2 远端写入。下一步仅可准备受控 Staging 精确 preflight/apply 包，Production 与其余候选组仍禁止。回放 inventory 有 42 条 policy、将 `FOR ALL` 展开后有 23 个 table/action overlap group。`00051` 仅处理 `public.role` 的 Admin/Operator SELECT union，并以完整 catalog 与身份矩阵证明等价；其余 22 组仍待逐组证明。详见 [Batch 2 报告](../reports/2026-07-21-opt6-quality-governance-batch-2.md) 与 [inventory evidence](../reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md)。
+**当前状态（2026-07-21）**：Batch 1 remote final PASS evidence 已合并为 `2510b0e070b7fe637239cf0a8eecc3e63aec9570`。Batch 2 的代码与本地验证已完成，并获指定独立审查 `FINAL PASS`（head `3885651309ac37f2bf5dd48ce905dfdfe6da8886`；CI `29798631677` 与 Vercel Preview 全绿）；尚未执行任何 Batch 2 远端写入。Staging 的精确只读 preflight 已通过（`00001`–`00050`、无 `00051`、完整 `public.role` 基线），现等待 Staging apply/postcheck 包的指定独立审查；Production 与其余候选组仍禁止。回放 inventory 有 42 条 policy、将 `FOR ALL` 展开后有 23 个 table/action overlap group。`00051` 仅处理 `public.role` 的 Admin/Operator SELECT union，并以完整 catalog 与身份矩阵证明等价；其余 22 组仍待逐组证明。详见 [Batch 2 报告](../reports/2026-07-21-opt6-quality-governance-batch-2.md)、[Staging preflight evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md) 与 [inventory evidence](../reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md)。
 
 - 清理 31 个 unused-vars warning；CI warning budget 从 31 逐步降至 0。
 - 对 6 个 auth init-plan policy 使用 `(select auth.uid())` 等等价形式优化，并验证权限矩阵不变。

@@ -79,6 +79,12 @@ The only permissible next step is a controlled Staging exact preflight/apply
 packet. No remote write has happened yet; Production and every further Batch 2
 candidate remain prohibited pending their own evidence and review gates.
 
+The Staging read-only preflight is now `PASS`: the environment has exact
+`00001`–`00050` history, no `00051`, and the complete two-policy
+`public.role` baseline matches the reviewed catalog. This records preparation,
+not an apply. The controlled Staging apply/postcheck packet now requires its
+own designated independent review before any write.
+
 ## Review closure
 
 - Designated review: `OPT-6 Batch 2 FINAL PASS`.
@@ -95,6 +101,7 @@ candidate remain prohibited pending their own evidence and review gates.
 ## Navigation
 
 - [Policy inventory evidence](evidence/2026-07-21-opt6-batch2-policy-inventory.md)
+- [Staging read-only preflight evidence](evidence/2026-07-21-opt6-00051-staging-preflight.md)
 - [Current task packet](../tasks/current-task.md)
 - [Optimization roadmap](../tasks/system-optimization-roadmap-2026-07-17.md)
 - [00051 migration](../../supabase/migrations/00051_optimize_role_rls_policy_overlap.sql)

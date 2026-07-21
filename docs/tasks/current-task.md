@@ -87,6 +87,11 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   remote environment. The sole next step is to prepare a controlled Staging
   exact preflight/apply packet. It does not authorize Production, a further
   policy-overlap candidate, or PR #11 merge.
+- Staging read-only preflight subsequently passed: exact `00001`–`00050`, no
+  `00051`, and the full `public.role` two-policy catalog all match the
+  reviewed baseline. See [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
+  This is not a Staging apply authorization; submit the apply/postcheck packet
+  to the designated review task before any remote write.
 
 ## Current prohibitions
 
@@ -96,5 +101,5 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
 - Do not touch user synchronization scripts, `.claude` state, or project-summary files.
 - Do not write `00051` to Production or start another candidate. Before any
-  Staging write, execute and record an exact Staging preflight/apply packet,
-  then obtain its designated independent review result.
+  Staging write, obtain the designated independent review `PASS` for the
+  recorded Staging preflight/apply packet.
