@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 CODE REVIEW FINAL PASS / STAGING PREFLIGHT-APPLY PREPARATION ONLY**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 STAGING APPLY/POSTCHECK PASS / REVIEW PENDING**
 
 ## Handoff from OPT-5
 
@@ -94,6 +94,19 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   permits preparation, not execution, of the Staging apply/postcheck packet;
   that atomic write packet needs its own review before any remote write.
 
+## Batch 2 Staging remote result (2026-07-21)
+
+- After the designated review returned `PASS` for the atomic packet, the exact
+  generated SQL was executed in Staging project `hyarhvsjhkjpallbyifn` as
+  role `postgres`. The SQL Editor returned `Success. No rows returned`.
+- A separate SELECT-only postcheck returned one row with all nine checks
+  `true`: exact 00001–00051 history, unique version/name sets, no timestamp
+  versions, exact 00051 body payload, four policies, and exact normalized
+  policy catalog. See [Staging apply/postcheck evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
+- This is Staging-only remote evidence. Production and all remaining policy
+  groups remain prohibited until this evidence receives designated independent
+  review `PASS`; this does not authorize Batch 3 or PR #11 merge.
+
 ## Current prohibitions
 
 - No changes to 00001–00049; all database changes must be 00050+ forward-only and replayable.
@@ -102,5 +115,5 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
 - Do not touch user synchronization scripts, `.claude` state, or project-summary files.
 - Do not write `00051` to Production or start another candidate. Before any
-  Staging write, obtain the designated independent review `PASS` for the
-  recorded Staging preflight/apply packet.
+  Production write, obtain designated independent review `PASS` for this
+  recorded Staging apply/postcheck evidence and a separate Production gate.

@@ -2,11 +2,11 @@
 
 ## Status
 
-`CODE REVIEW FINAL PASS / STAGING PREFLIGHT-APPLY PREPARATION ONLY / REMOTE WRITE NOT YET EXECUTED`
+`STAGING APPLY/POSTCHECK PASS / PRODUCTION PROHIBITED / REVIEW PENDING`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
-OPT-6 complete, does not authorize Batch 3, and has not executed a remote
-Migration write. The designated independent review returned `PASS` for head
+OPT-6 complete, does not authorize Batch 3, and has not executed a Production
+write. The designated independent review returned `PASS` for head
 `3885651309ac37f2bf5dd48ce905dfdfe6da8886`, with exact-head CI
 `29798631677` and Vercel Preview green. That PASS authorizes only preparation
 of the controlled Staging exact preflight/apply packet; it does not authorize
@@ -75,16 +75,18 @@ Unused-index investigation, Auth configuration and the documented NFT trace
 residual are also out of scope.
 
 The complete packet received designated independent `PASS` on 2026-07-21.
-The only permissible next step is a controlled Staging exact preflight/apply
-packet. No remote write has happened yet; Production and every further Batch 2
-candidate remain prohibited pending their own evidence and review gates.
+The controlled Staging exact preflight/apply packet has now been executed and
+postchecked successfully. Production and every further Batch 2 candidate
+remain prohibited pending their own evidence and review gates.
 
 The Staging read-only preflight is now `PASS`: the environment has exact
 `00001`–`00050` history, no `00051`, and the complete two-policy
-`public.role` baseline matches the reviewed catalog. This records preparation,
-not an apply. The designated review task independently returned `PASS` for
-this preflight packet. The controlled atomic Staging apply/postcheck packet is
-now the only work permitted, and it requires its own review before any write.
+`public.role` baseline matches the reviewed catalog. This was the read-only
+preparation checkpoint. The reviewed atomic Staging packet then returned
+`Success. No rows returned`; its separate SELECT-only postcheck returned all
+nine checks `true`. See the [Staging apply/postcheck evidence](evidence/2026-07-21-opt6-00051-staging-preflight.md).
+This evidence is submitted for designated independent review and does not
+authorize Production.
 
 ## Review closure
 
