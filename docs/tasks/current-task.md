@@ -10,7 +10,7 @@ to documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
 Production exact preflight and maintenance-window preparation. Production
 writes, Batch 3, and the remaining policy groups remain prohibited.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 STAGING APPLY/POSTCHECK PASS / REVIEW PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION**
 
 > The title above is a historical packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION`;
