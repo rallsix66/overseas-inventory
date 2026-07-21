@@ -2,7 +2,7 @@
 
 ## Task ID
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 CODE COMPLETE / LOCAL VERIFY PASS / REVIEW PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 CODE REVIEW FINAL PASS / STAGING PREFLIGHT-APPLY PREPARATION ONLY**
 
 ## Handoff from OPT-5
 
@@ -74,6 +74,20 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
    Staging preflight/apply is prepared; Production and all remaining groups
    remain prohibited.
 
+## Batch 2 review result (2026-07-21)
+
+- The designated review task returned `OPT-6 Batch 2 FINAL PASS` for head
+  `3885651309ac37f2bf5dd48ce905dfdfe6da8886`. It independently confirmed the
+  forward-only `00051` catalog gates, the four-identity CRUD matrix, drift
+  rejection before policy removal, documentation navigation, and clean scope.
+- Exact-head CI `29798631677` passed the quality and PostgreSQL jobs; the
+  associated Vercel Preview and Preview Comments checks are green. Draft PR
+  #11 remains open and mergeable.
+- This is a code-review closure only: `00051` has not been written to either
+  remote environment. The sole next step is to prepare a controlled Staging
+  exact preflight/apply packet. It does not authorize Production, a further
+  policy-overlap candidate, or PR #11 merge.
+
 ## Current prohibitions
 
 - No changes to 00001–00049; all database changes must be 00050+ forward-only and replayable.
@@ -81,5 +95,6 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
 - Do not touch user synchronization scripts, `.claude` state, or project-summary files.
-- Do not write `00051` to Staging or Production before the designated review
-  returns explicit PASS for the complete code/documentation packet.
+- Do not write `00051` to Production or start another candidate. Before any
+  Staging write, execute and record an exact Staging preflight/apply packet,
+  then obtain its designated independent review result.

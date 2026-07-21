@@ -3,8 +3,12 @@
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051
 > role-policy-overlap candidate, complete local replay/identity/guard evidence,
-> and is `CODE COMPLETE / LOCAL VERIFY PASS / REVIEW PENDING`. It has not been
-> applied to Staging or Production. See the [Batch 2 report](reports/2026-07-21-opt6-quality-governance-batch-2.md), [inventory evidence](reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md), and [current task packet](tasks/current-task.md).
+> and designated independent `FINAL PASS` for head
+> `3885651309ac37f2bf5dd48ce905dfdfe6da8886`. Exact-head CI `29798631677`
+> and the Vercel Preview are green. It has not been applied to Staging or
+> Production. The sole next permitted step is a controlled Staging exact
+> preflight/apply packet; Production and every further candidate remain
+> prohibited. See the [Batch 2 report](reports/2026-07-21-opt6-quality-governance-batch-2.md), [inventory evidence](reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md), and [current task packet](tasks/current-task.md).
 
 > 2026-07-20 System optimization：OPT-1–OPT-5 均已通过指定会话终审并合并。OPT-6 Batch 1 代码与远端阶段也均获指定会话 `FINAL PASS`：PR #9 已合并为 `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`，master CI `29733960202` 与 Vercel production deployment `BKDzcK4k9noxQgzAboJB6h2XjmeF` 全绿；受控 00050 已按 Staging → Production 顺序完成，两环境均为精确 `00001`–`00050`，正文摘要和六条完整 policy catalog 命中审定基线。远端终审绑定 head `1fbc6b042caf289698d60d2697a909787002968d`、CI `29739720283`、Vercel Preview `obXa1wmkxzMorYz9k8AmpkhBSZmG`，结论为 `OPT-6 BATCH 1 REMOTE FINAL PASS`。当前只待合并文档 PR #10；合并后方可建立 Batch 2 任务包。115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [OPT-6 Batch 1 报告](reports/2026-07-20-opt6-quality-governance-batch-1.md)、[远端 postcheck 证据](reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md)、[OPT-6 当前任务包](tasks/current-task.md) 与 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 

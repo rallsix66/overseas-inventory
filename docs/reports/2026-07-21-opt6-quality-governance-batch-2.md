@@ -2,12 +2,15 @@
 
 ## Status
 
-`CODE COMPLETE / LOCAL VERIFY PASS / REVIEW PENDING / REMOTE WRITE PROHIBITED`
+`CODE REVIEW FINAL PASS / STAGING PREFLIGHT-APPLY PREPARATION ONLY / REMOTE WRITE NOT YET EXECUTED`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
-OPT-6 complete, does not authorize Batch 3, and does not authorize a remote
-Migration write before the designated independent review returns explicit
-`PASS`.
+OPT-6 complete, does not authorize Batch 3, and has not executed a remote
+Migration write. The designated independent review returned `PASS` for head
+`3885651309ac37f2bf5dd48ce905dfdfe6da8886`, with exact-head CI
+`29798631677` and Vercel Preview green. That PASS authorizes only preparation
+of the controlled Staging exact preflight/apply packet; it does not authorize
+Production or a further Batch 2 candidate.
 
 ## Scope
 
@@ -71,10 +74,23 @@ rules; they need their own equivalence matrices rather than a bulk transform.
 Unused-index investigation, Auth configuration and the documented NFT trace
 residual are also out of scope.
 
-Before any remote action, this exact packet needs full quality checks and an
-explicit PASS from the designated review task. A PASS can authorize only the
-next controlled Staging preflight/apply packet; it does not authorize
-Production or a further Batch 2 candidate.
+The complete packet received designated independent `PASS` on 2026-07-21.
+The only permissible next step is a controlled Staging exact preflight/apply
+packet. No remote write has happened yet; Production and every further Batch 2
+candidate remain prohibited pending their own evidence and review gates.
+
+## Review closure
+
+- Designated review: `OPT-6 Batch 2 FINAL PASS`.
+- Reviewed head: `3885651309ac37f2bf5dd48ce905dfdfe6da8886`.
+- Draft PR: [#11](https://github.com/rallsix66/overseas-inventory/pull/11),
+  open and mergeable; it remains unmerged.
+- Exact-head CI: `29798631677`, with the quality and PostgreSQL jobs passed.
+- Deployment evidence: [Vercel Preview](https://vercel.com/rallsix66s-projects/overseas-inventory/8KhF7SHrowPf3nCK69BRqAihtpZu)
+  and Preview Comments passed.
+- Review scope includes migration direction and catalog gates, identity and
+  drift tests, repository scope, documentation navigation, CI, and Preview.
+  It does not substitute for Staging postcheck or authorize Production.
 
 ## Navigation
 

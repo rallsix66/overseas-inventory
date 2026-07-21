@@ -55,7 +55,7 @@ docs/README.md
 | OPT-5 当前权限审计、实施边界与停止门 | [当前任务包](tasks/current-task.md) → [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md) |
 | OPT-5 实际权限基线、00049 与验证证据 | [OPT-5 主报告](reports/2026-07-20-opt5-database-least-privilege.md) → [Staging postcheck](reports/evidence/2026-07-20-opt5-staging-postcheck.md) → [Production postcheck](reports/evidence/2026-07-20-opt5-production-postcheck.md) |
 | OPT-6 Batch 1 lint、RLS init-plan、Turbopack 与远端 00050 证据 | [Batch 1 报告](reports/2026-07-20-opt6-quality-governance-batch-1.md) → [Staging/Production remote postcheck](reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md) |
-| OPT-6 Batch 2 policy-overlap inventory and 00051 review packet | [Batch 2 report](reports/2026-07-21-opt6-quality-governance-batch-2.md) → [inventory evidence](reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md) |
+| OPT-6 Batch 2 policy-overlap inventory, 00051 review PASS and Staging gate | [Batch 2 report](reports/2026-07-21-opt6-quality-governance-batch-2.md) → [inventory evidence](reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md) |
 | 后续 Phase 如何安排 | `mvp-roadmap.md` |
 | 如何部署、迁移和回滚 | `deployment.md` |
 
