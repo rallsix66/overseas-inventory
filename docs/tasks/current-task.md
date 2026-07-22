@@ -10,7 +10,7 @@ to documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
 Production exact preflight and maintenance-window preparation. Production
 writes, Batch 3, and the remaining policy groups remain prohibited.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE ??BATCH 2 STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION**
 
 > The title above is a historical packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION`;
@@ -28,7 +28,7 @@ writes, Batch 3, and the remaining policy groups remain prohibited.
 
 The user authorized the existing OPT-6 route to continue without repeating stage-by-stage approval, while preserving the gate:
 
-`implement → complete evidence/quality verification → designated independent review → explicit PASS → next stage`.
+`implement ??complete evidence/quality verification ??designated independent review ??explicit PASS ??next stage`.
 
 CHANGES_REQUIRED means stop and fix only the requested scope. This route does not authorize accidental deletion, direct rollback, old Migration replay, RLS bypass, secret exposure, or materially different architecture.
 
@@ -50,7 +50,7 @@ CHANGES_REQUIRED means stop and fix only the requested scope. This route does no
 - PR #9 was merged as `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`;
   master CI `29733960202` and production deployment
   `BKDzcK4k9noxQgzAboJB6h2XjmeF` passed. The controlled remote stage then
-  applied 00050 to Staging and Production. Both are now exact `00001`–`00050`,
+  applied 00050 to Staging and Production. Both are now exact `00001`??00050`,
   with the canonical one-statement 00050 body and six reviewed optimized
 policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md).
 - The documentation-only evidence checkpoint was PR #10 head
@@ -70,15 +70,15 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 
 ## Implementation order
 
-1. ✅ Create this isolated branch and record the OPT-5 handoff.
-2. ✅ Re-run lint and collect a machine-readable warning inventory; fix unused symbols in small test-backed batches until warning count is zero.
-3. ✅ Batch 1: capture the reviewed policy targets, rewrite only six `auth.uid()` init expressions to equivalent scalar subqueries, and prove anonymous, disabled, Admin, Operator, and cross-warehouse behavior unchanged. See [Batch 1 report](../reports/2026-07-20-opt6-quality-governance-batch-1.md).
+1. ??Create this isolated branch and record the OPT-5 handoff.
+2. ??Re-run lint and collect a machine-readable warning inventory; fix unused symbols in small test-backed batches until warning count is zero.
+3. ??Batch 1: capture the reviewed policy targets, rewrite only six `auth.uid()` init expressions to equivalent scalar subqueries, and prove anonymous, disabled, Admin, Operator, and cross-warehouse behavior unchanged. See [Batch 1 report](../reports/2026-07-20-opt6-quality-governance-batch-1.md).
 4. Inventory multiple-permissive policies by table/command/role. The local
-   `00001`–`00050` replay catalog has 42 policies and 23 concrete overlap
+   `00001`??00050` replay catalog has 42 policies and 23 concrete overlap
    groups. Batch 2 changes only `public.role`: `00051` proves the Admin OR
    Operator SELECT union and preserves Admin write checks as separate policies.
    The remaining 22 groups stay unchanged until separately proven. Never edit
-   00001–00050.
+   00001??0050.
 5. Investigate the Turbopack trace warning and dependency residuals without changing runtime artifact paths, cron schedules, secrets, or provider behavior.
 6. Run full local tests, lint budget 0, TypeScript/build, PostgreSQL concurrency/contracts, migration replay, `git diff --check`, links, secret/orphan checks, and available Staging/Production postchecks.
 7. Record every batch in `docs/reports/` and indexes, then send it to the
@@ -99,7 +99,7 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   remote environment. The sole next step is to prepare a controlled Staging
   exact preflight/apply packet. It does not authorize Production, a further
   policy-overlap candidate, or PR #11 merge.
-- Staging read-only preflight subsequently passed: exact `00001`–`00050`, no
+- Staging read-only preflight subsequently passed: exact `00001`??00050`, no
   `00051`, and the full `public.role` two-policy catalog all match the
   reviewed baseline. See [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
   The designated review task returned `PASS` for this preflight evidence. It
@@ -112,7 +112,7 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   generated SQL was executed in Staging project `hyarhvsjhkjpallbyifn` as
   role `postgres`. The SQL Editor returned `Success. No rows returned`.
 - A separate SELECT-only postcheck returned one row with all nine checks
-  `true`: exact 00001–00051 history, unique version/name sets, no timestamp
+  `true`: exact 00001??0051 history, unique version/name sets, no timestamp
   versions, exact 00051 body payload, four policies, and exact normalized
   policy catalog. See [Staging apply/postcheck evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
 - This is Staging-only remote evidence. The designated independent review
@@ -127,18 +127,19 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - The SELECT-only Production `00051` exact preflight packet is prepared and
   indexed in the [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-production-preflight.md)
   and [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-preflight.sql).
-- Its `expected_history` CTE pins all reviewed `00001`–`00050` version/name and
+- Its `expected_history` CTE pins all reviewed `00001`??00050` version/name and
   full `statements[]` payload summaries; `exact_version_name_history` and
   `exact_history_payload` are executable row-by-row equality gates, with the
   static read-only contract indexed here:
   [preflight contract](../../src/features/database/opt6-production-preflight.test.ts).
-- The packet has not been executed yet. Remote Production preflight, any
-  apply packet, and Production write each require their own evidence and
-  designated review `PASS`; Staging `PASS` is not Production authorization.
+- The packet was executed read-only on 2026-07-22 and all history, full-payload,
+  role-catalog, and active-run gates passed. Remote Production apply, any
+  apply-packet assembly, and Production write still require designated review
+  `PASS`; Staging `PASS` is not Production authorization.
 
 ## Current prohibitions
 
-- No changes to 00001–00049; all database changes must be 00050+ forward-only and replayable.
+- No changes to 00001??0049; all database changes must be 00050+ forward-only and replayable.
 - No policy merge without a before/after identity matrix and exact OR/WITH CHECK equivalence evidence.
 - No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
@@ -146,3 +147,4 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - Do not write `00051` to Production or start another candidate. Before any
   Production write, obtain designated independent review `PASS` for this
   recorded Staging apply/postcheck evidence and a separate Production gate.
+

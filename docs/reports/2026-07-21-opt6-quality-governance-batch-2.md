@@ -1,8 +1,8 @@
-# OPT-6 Quality Governance — Batch 2
+# OPT-6 Quality Governance ??Batch 2
 
 ## Status
 
-`STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION ONLY`
+`STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION READ-ONLY PREFLIGHT PASS / PRODUCTION WRITE PROHIBITED`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
 OPT-6 complete, does not authorize Batch 3, and has not executed a Production
@@ -44,7 +44,7 @@ Migration edit/replay, and no remote history manipulation.
 ## Local verification
 
 - 00051 static contract: 4/4 passed.
-- Isolated PostgreSQL 17 replay `00001`–`00051`: 5/5 passed.
+- Isolated PostgreSQL 17 replay `00001`??00051`: 5/5 passed.
 - Isolated PostgreSQL identity matrix and guard failures: 3/3 passed.
 - Combined focused suite: 12/12 passed.
 - Default non-PostgreSQL suite: 94 files / 3949 tests passed.
@@ -61,7 +61,7 @@ catalog untouched because the migration rejects before policy removal.
 
 The complete local database-contract command also exercised all five contract
 files. The new 00051 suite and its replay passed; four pre-existing assertions
-in 00041–00049 expect the English text `permission denied`, while this local
+in 00041??0049 expect the English text `permission denied`, while this local
 PostgreSQL installation emits the equivalent Chinese permission message. That
 locale-only baseline is not changed by this batch; the CI PostgreSQL job is the
 authoritative exact-head gate for the complete suite.
@@ -82,7 +82,7 @@ exact preflight and maintenance-window packet. Production and every further
 Batch 2 candidate remain prohibited.
 
 The Staging read-only preflight is now `PASS`: the environment has exact
-`00001`–`00050` history, no `00051`, and the complete two-policy
+`00001`??00050` history, no `00051`, and the complete two-policy
 `public.role` baseline matches the reviewed catalog. This was the read-only
 preparation checkpoint. The reviewed atomic Staging packet then returned
 `Success. No rows returned`; its separate SELECT-only postcheck returned all
@@ -93,11 +93,15 @@ documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
 
 ## Production gate preparation (2026-07-21)
 
-The read-only Production exact preflight packet is prepared, but has not been
-executed. See the [Production preflight evidence](evidence/2026-07-21-opt6-00051-production-preflight.md)
+The corrected read-only Production exact preflight was executed on 2026-07-22
+against project `hzlhqyditalumhnxbaim` and returned one row with every history,
+full-payload, role-catalog, and active-run gate passing. Actual and expected
+version/name digest were both `f046958a6c39a8b240536a6f59b5cb18`; actual and
+expected full-payload digest were both `7a743aa540a39a1f4d3fe7e2a01ea08d`.
+See the [Production preflight evidence](evidence/2026-07-21-opt6-00051-production-preflight.md)
 and [SELECT-only SQL packet](sql/2026-07-21-opt6-00051-production-preflight.sql).
-Remote preflight execution, any apply packet, and any Production write remain
-separate review-gated steps.
+No apply packet was assembled and no Production write was executed. The
+read-only result remains subject to designated independent review.
 
 ## Review closure
 
@@ -125,3 +129,4 @@ separate review-gated steps.
 - [00051 migration](../../supabase/migrations/00051_optimize_role_rls_policy_overlap.sql)
 - [00051 static contract](../../src/features/database/opt6-role-policy-overlap-migration.test.ts)
 - [00051 PostgreSQL behavior contract](../../src/features/database/opt6-role-policy-overlap.postgres.test.ts)
+
