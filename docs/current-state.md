@@ -7,7 +7,9 @@
 > `96c87461afd444b2065059c98ba0cf08522b749e`, CI `29908869113`, and Vercel
 > Preview `87HAB8w8rTZhDtJAZCvt2kmaRM31`. The earlier packet-review head
 > `f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized execution only; it is
-> not the closing review result. Batch 3 remains prohibited.
+> not the closing review result. Batch 3's `public.product` implementation
+> checkpoint is now active; remote writes remain prohibited until its own
+> independent review `PASS`.
 > The packet now compares all reviewed 00001–00050 version/name rows and full
 > statements[] payload summaries through explicit equality booleans; its static
 > read-only contract is indexed from the Production preflight evidence.
@@ -18,7 +20,10 @@
 > 2026-07-22 maintenance window and its SELECT-only postcheck passed: exact
 > 00001–00051 history, canonical 00051 payload, four reviewed role policies,
 > and zero active sync runs. See [apply/postcheck evidence](reports/evidence/2026-07-22-opt6-00051-production-apply.md).
-> Batch 3 remains prohibited pending its own implementation and review.
+> Batch 3 remote writes remain prohibited pending its own implementation and
+> independent review. The current implementation checkpoint is indexed in the
+> [Batch 3 report](reports/2026-07-22-opt6-quality-governance-batch-3.md) and
+> [evidence](reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
 
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051

@@ -241,3 +241,13 @@ version/name and full `statements[]` payload summaries. Its
 `exact_version_name_history` and `exact_history_payload` booleans are the
 row-by-row hard stop; the read-only static contract is indexed from the
 preflight report. No digest-only output can authorize the next step.
+
+**Batch 3 implementation checkpoint (2026-07-22)**: the next bounded
+candidate is the pure `public.product` SELECT overlap. Forward-only Migration
+`00052_optimize_product_rls_policy_overlap.sql` and its static/PostgreSQL
+behavior contracts are implemented and indexed in the [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md)
+and [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
+Status is `IMPLEMENTATION COMPLETE / REVIEW PENDING / REMOTE WRITE PROHIBITED`.
+The remaining policy groups are unchanged. Complete local/CI verification and
+an explicit independent `PASS` are required before preparing a Staging
+read-only preflight; Production and later candidates remain prohibited.

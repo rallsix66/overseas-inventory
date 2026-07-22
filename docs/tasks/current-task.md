@@ -11,16 +11,30 @@ SELECT-only postcheck passed. The current independent closing review returned
 `29908869113`, and Vercel Preview `87HAB8w8rTZhDtJAZCvt2kmaRM31`. The earlier
 packet-review head
 `f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized the controlled
-Production execution only; it is not the closing review result. Batch 3 and
-every other policy group remain prohibited until their own implementation and
-independent review.
+Production execution only; it is not the closing review result. The Batch 3
+`public.product` implementation checkpoint is now active, but all remote
+writes and every other policy group remain prohibited until this candidate's
+own implementation review returns `PASS`.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 PROHIBITED**
+### Current implementation checkpoint (2026-07-22)
 
-> The title above is a historical packet label. The current state is
+Batch 3 targets only the pure `public.product` SELECT overlap and adds
+forward-only `00052_optimize_product_rls_policy_overlap.sql`. Its static and
+PostgreSQL behavior contracts, evidence and navigation are recorded in the
+[Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md) and
+[evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
+The exact head is `REVIEW PENDING`; no Staging/Production SQL has been run.
+After complete quality verification, submit the exact head to the independent
+review task and wait for `PASS`/`CHANGES_REQUIRED` before preparing any remote
+preflight. A `PASS` authorizes only the next controlled Staging read-only
+preflight, not Production or a later candidate group.
+
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PENDING**
+
+> The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
-> FINAL PASS`; the older pre-Production wording is not a current stop
-> condition.
+> FINAL PASS / BATCH 3 IMPLEMENTATION REVIEW PENDING`; no remote write is
+> authorized for 00052.
 
 ## Handoff from OPT-5
 
@@ -153,5 +167,6 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
 - Do not touch user synchronization scripts, `.claude` state, or project-summary files.
-- Do not start Batch 3 or another candidate until its own implementation,
-  complete evidence, and designated independent review `PASS` are recorded.
+- Do not prepare a remote preflight/apply packet, write Staging/Production, or
+  start another candidate until this Batch 3 implementation has complete
+  evidence and designated independent review `PASS`.

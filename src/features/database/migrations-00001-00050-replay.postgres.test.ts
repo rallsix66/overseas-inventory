@@ -63,7 +63,7 @@ function migrationFiles(): string[] {
     .map((name) => resolve(directory, name))
 }
 
-describe('fixed-width migrations 00001-00051 continuous PostgreSQL replay', () => {
+describe('fixed-width migrations 00001-00052 continuous PostgreSQL replay', () => {
   let files: string[] = []
 
   beforeAll(async () => {
@@ -79,10 +79,10 @@ describe('fixed-width migrations 00001-00051 continuous PostgreSQL replay', () =
     await client.end()
   })
 
-  it('replays exactly the fixed-width 00001-00051 migration set', () => {
-    expect(files).toHaveLength(51)
+  it('replays exactly the fixed-width 00001-00052 migration set', () => {
+    expect(files).toHaveLength(52)
     expect(files[0]).toMatch(/00001_initial_schema\.sql$/)
-    expect(files.at(-1)).toMatch(/00051_optimize_role_rls_policy_overlap\.sql$/)
+    expect(files.at(-1)).toMatch(/00052_optimize_product_rls_policy_overlap\.sql$/)
   })
 
   it('keeps all public business tables protected by RLS', async () => {
@@ -190,5 +190,22 @@ describe('fixed-width migrations 00001-00051 continuous PostgreSQL replay', () =
         )
     `)
     expect(result.rows).toEqual([{ targets: '6', optimized: '6' }])
+  })
+
+  it('ends with the reviewed four-policy product catalog', async () => {
+    const result = await client.query<{ policy_name: string; command: string }>(`
+      SELECT policy.polname AS policy_name, policy.polcmd AS command
+      FROM pg_policy policy
+      JOIN pg_class relation ON relation.oid = policy.polrelid
+      JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'public' AND relation.relname = 'product'
+      ORDER BY policy.polname
+    `)
+    expect(result.rows).toEqual([
+      { policy_name: 'product_delete_admin', command: 'd' },
+      { policy_name: 'product_insert_admin', command: 'a' },
+      { policy_name: 'product_select_admin_or_operator', command: 'r' },
+      { policy_name: 'product_update_admin', command: 'w' },
+    ])
   })
 })
