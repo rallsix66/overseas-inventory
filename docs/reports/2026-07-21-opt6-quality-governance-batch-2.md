@@ -2,15 +2,16 @@
 
 ## Status
 
-`STAGING + PRODUCTION REMOTE APPLY/POSTCHECK PASS / BATCH 3 PROHIBITED`
+`STAGING REMOTE APPLY/POSTCHECK PASS + PRODUCTION APPLY/POSTCHECK EVIDENCE
+CAPTURED / FINAL REVIEW PENDING / BATCH 3 PROHIBITED`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
-OPT-6 complete and does not authorize Batch 3. The designated independent review returned `PASS` for head
-`3885651309ac37f2bf5dd48ce905dfdfe6da8886`, with exact-head CI
-`29798631677` and Vercel Preview green. At that code-review checkpoint the PASS
-authorized only preparation of the controlled Staging exact preflight/apply
-packet; the later Production packet review and apply are recorded below and
-do not authorize a further Batch 2 candidate.
+OPT-6 complete and does not authorize Batch 3. The designated code review
+returned `PASS` for head `3885651309ac37f2bf5dd48ce905dfdfe6da8886`, with
+exact-head CI `29798631677` and Vercel Preview green. That historical code
+review authorized preparation of the controlled Staging exact preflight/apply
+packet. The later Production packet review, execution, and postcheck are
+recorded below; the current independent closing review remains `PENDING`.
 
 ## Scope
 
@@ -49,7 +50,9 @@ Migration edit/replay, and no remote history manipulation.
 - Isolated PostgreSQL 17 replay `00001`–`00051`: 5/5 passed.
 - Isolated PostgreSQL identity matrix and guard failures: 3/3 passed.
 - Combined focused suite: 12/12 passed.
-- Default non-PostgreSQL suite: 94 files / 3949 tests passed.
+- Exact-head CI run `29899138622`: quality job 96 files / 3958 tests passed.
+- Earlier local checkpoint: 94 files / 3949 tests passed (historical local
+  result, not the current exact-head count).
 - Lint: 0 errors / 0 warnings.
 - Next.js 16.2.9 production build and TypeScript: passed. The pre-existing
   sync-route NFT trace warning remains documented and was not changed.
@@ -76,12 +79,15 @@ rules; they need their own equivalence matrices rather than a bulk transform.
 Unused-index investigation, Auth configuration and the documented NFT trace
 residual are also out of scope.
 
-The complete packet received designated independent `PASS` on 2026-07-21.
+The implementation packet received designated independent code-review `PASS` on
+2026-07-21. That result did not close the later Production apply/postcheck
+review.
 The controlled Staging exact preflight/apply packet was executed and
 postchecked successfully. The separately reviewed Production packet then ran
-in the approved 2026-07-22 maintenance window and its postcheck passed. This
-closes the `00051` remote apply stage; Batch 3 and every further policy group
-remain prohibited pending a new implementation/review cycle.
+in the approved 2026-07-22 maintenance window and its postcheck passed. The
+remote evidence is captured, but the current independent closing review remains
+`PENDING`; Batch 3 and every further policy group remain prohibited pending
+that review and a new implementation/review cycle.
 
 The Staging read-only preflight is now `PASS`: the environment has exact
 `00001`–`00050` history, no `00051`, and the complete two-policy
@@ -108,20 +114,24 @@ head `f7acf211ac66e2b86a22e14254a1ffe75782c224` (CI `29891089089`, Vercel
 Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`). Its single transaction committed and
 the SELECT-only postcheck confirmed exact 00001–00051 history, the canonical
 00051 payload, four reviewed `public.role` policies, and zero active sync runs.
+The current independent closing review of this evidence remains `PENDING`;
 Batch 3 remains prohibited.
 
 ## Review closure
 
-- Designated review: `OPT-6 Batch 2 FINAL PASS`.
-- Reviewed head: `3885651309ac37f2bf5dd48ce905dfdfe6da8886`.
+- Designated code review: `OPT-6 Batch 2 FINAL PASS` at head
+  `3885651309ac37f2bf5dd48ce905dfdfe6da8886`.
+- Current Production apply/postcheck closing review: `PENDING`, bound to exact
+  head `53a4874a03df31cbd303b88b6d8724d1be59bf70`.
 - Draft PR: [#11](https://github.com/rallsix66/overseas-inventory/pull/11),
   open and mergeable; it remains unmerged.
-- Exact-head CI: `29798631677`, with the quality and PostgreSQL jobs passed.
+- Exact-head CI: `29899138622`, with the quality and PostgreSQL jobs passed.
 - Deployment evidence: [Vercel Preview](https://vercel.com/rallsix66s-projects/overseas-inventory/8KhF7SHrowPf3nCK69BRqAihtpZu)
   and Preview Comments passed.
-- Review scope includes migration direction and catalog gates, identity and
-  drift tests, repository scope, documentation navigation, CI, and Preview.
-  It does not substitute for Staging postcheck or authorize Production.
+- The historical code-review scope includes migration direction and catalog
+  gates, identity and drift tests, repository scope, documentation navigation,
+  CI, and Preview. The current closing review must additionally verify the
+  Production evidence and postcheck; it has not yet authorized Batch 3.
 
 ## Navigation
 

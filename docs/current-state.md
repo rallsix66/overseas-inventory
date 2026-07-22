@@ -1,12 +1,13 @@
 # Current Project State
 
-> Current gate (2026-07-21): OPT-6 Batch 2 Staging `00051` remote
-> apply/postcheck has designated independent `PASS`, bound to documentation
-> head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and green
-> Vercel Preview. The next allowed action is Production exact preflight and
-> maintenance-window preparation only; the read-only preflight packet is now
-> recorded at [Production preflight evidence](reports/evidence/2026-07-21-opt6-00051-production-preflight.md)
-> and [SQL packet](reports/sql/2026-07-21-opt6-00051-production-preflight.sql).
+> Current gate (2026-07-22): Staging `00051` remote apply/postcheck has
+> designated independent `PASS`. Production `00051` apply/postcheck evidence
+> has been captured and its SELECT-only postcheck passed, but the current
+> independent closing review is `PENDING`, bound to exact head
+> `53a4874a03df31cbd303b88b6d8724d1be59bf70`, CI `29899138622`, and Vercel
+> Preview `4TiMiagYh3xkpaJAxoqhamqLuhUU`. The earlier packet-review head
+> `f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized execution only; it is
+> not the closing review result. Batch 3 remains prohibited.
 > The packet now compares all reviewed 00001–00050 version/name rows and full
 > statements[] payload summaries through explicit equality booleans; its static
 > read-only contract is indexed from the Production preflight evidence.

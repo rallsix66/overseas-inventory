@@ -216,11 +216,17 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - 任一数据库任务无法证明 Admin/Operator/RLS 语义等价，不进入 Production。
 - 任一 Migration 无法在空库连续重放，不部署 Staging/Production。
 - 用户已对 OPT-4 剩余项与 OPT-5/OPT-6 既定路线给出持续授权；仍须逐阶段完成“实施/执行 → 完整验证与证据 → 指定会话明确 PASS”，且 PASS 前不得进入下一阶段。意外数据删除、直接回滚、重放旧 Migration、绕过 RLS、密钥暴露、范围外架构变更或 materially different 的操作仍必须停止并取得单独确认。
-**Current gate (2026-07-22)**: Staging and Production `00051` remote
-apply/postcheck have designated independent `PASS`. Production closed at
-packet head `f7acf211ac66e2b86a22e14254a1ffe75782c224`, CI `29891089089`, and
-Vercel Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. Batch 3 and every other policy
-group remain blocked until their own implementation and independent review.
+The preceding 2026-07-21 Batch 2 paragraph is a historical checkpoint only;
+its Production-prohibited wording is superseded by this current gate.
+
+**Current gate (2026-07-22)**: Staging `00051` remote apply/postcheck has
+designated independent `PASS`. Production `00051` apply/postcheck evidence has
+been captured and the SELECT-only postcheck passed, but the current independent
+closing review is `PENDING` at exact head `53a4874a03df31cbd303b88b6d8724d1be59bf70`,
+CI `29899138622`, and Vercel Preview `4TiMiagYh3xkpaJAxoqhamqLuhUU`. The
+earlier packet-review head `f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized
+execution only; it is not the closing review result. Batch 3 and every other
+policy group remain blocked until this review returns `PASS`.
 This current-gate note supersedes the earlier Batch 2 paragraph that described
 the Staging evidence as still pending review.
 The corrected Production exact preflight packet was executed read-only on

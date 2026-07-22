@@ -17,9 +17,11 @@
   registration, and post-apply catalog/history assertions, including a second
   full old-history payload comparison.
 - The approved packet was executed in the Production SQL Editor on 2026-07-22
-  (Asia/Shanghai), as the signed-in `postgres` role. It returned one result row
-  with no error; the transaction committed. No old Migration was replayed and
-  no business-table data was changed. Batch 3 remains prohibited.
+  (Asia/Shanghai), as the signed-in `postgres` role. The SQL Editor reported
+  `Success. No rows returned`; the packet ends with `COMMIT` and the transaction
+  committed. The separate SELECT-only postcheck below produced the result row.
+  No old Migration was replayed and no business-table data was changed. Batch 3
+  remains prohibited.
 
 ## Preconditions already satisfied
 
@@ -42,10 +44,12 @@ role policies and the exact normalized predicates/commands/roles, while also
 reconfirming the complete old-history payload and zero active sync runs. Any
 failed gate raises an exception and the transaction rolls back.
 
-The designated independent review returned `PASS` for this exact packet at
-head `f7acf211ac66e2b86a22e14254a1ffe75782c224`, with CI `29891089089` and
-Vercel Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. That review authorized this
-controlled Production apply/postcheck only; it did not authorize Batch 3.
+The designated packet review returned `PASS` for the executable packet at head
+`f7acf211ac66e2b86a22e14254a1ffe75782c224`, with CI `29891089089` and Vercel
+Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. That historical packet review
+authorized this controlled Production apply/postcheck only. The current
+closing review is pending at exact head `53a4874a03df31cbd303b88b6d8724d1be59bf70`;
+it does not authorize Batch 3.
 
 The focused apply contract reports `6/6` tests: transaction/lock ordering,
 full-array preflight and active-sync guards, canonical body preservation,

@@ -53,7 +53,7 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 | Phase 4 团队账号 | `phase-4-users.md` | 待开始 |
 | Phase 5 数据同步 | `phase-5-sync.md` | 待开始 |
 | 发布与部署 | `deployment.md` | 平台待定 |
-| 系统优化与工程治理 | `system-optimization-roadmap-2026-07-17.md` | ACTIVE；OPT-1–OPT-5 MERGED/FINAL PASS；OPT-6 Batch 1 closed；Batch 2 CODE REVIEW FINAL PASS / Staging preflight-apply preparation only |
+| 系统优化与工程治理 | `system-optimization-roadmap-2026-07-17.md` | ACTIVE；OPT-1–OPT-5 MERGED/FINAL PASS；OPT-6 Batch 1 closed；Batch 2 Staging PASS、Production apply/postcheck evidence captured / final review pending；Batch 3 prohibited |
 
 ## 状态标记
 
@@ -72,6 +72,7 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 2. 将下一任务内容写入 `current-task.md`。
 3. 在 `current-state.md` 更新 Current Task 与引用。
 4. 新 Claude 会话只执行新的 `current-task.md`。
-> Current OPT-6 gate (2026-07-21): Batch 2 Staging remote apply/postcheck
-> has independent `PASS`; the Production exact preflight packet is prepared,
-> remote preflight is pending, and no Production write or Batch 3 is allowed.
+> Current OPT-6 gate (2026-07-22): Batch 2 Staging remote apply/postcheck has
+> independent `PASS`; Production apply/postcheck evidence is captured and its
+> closing independent review is pending at exact head `53a4874…`. No Batch 3
+> or further policy-group write is allowed before that review returns `PASS`.

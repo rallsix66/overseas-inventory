@@ -2,21 +2,24 @@
 
 ## Task ID
 
-### Current gate (2026-07-21)
+### Current gate (2026-07-22)
 
-Staging and Production `00051` remote apply/postcheck both have designated
-independent `PASS`. Production closed at packet head
-`f7acf211ac66e2b86a22e14254a1ffe75782c224`, CI `29891089089`, and Vercel
-Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. The next allowed step is a new,
-separately reviewed Batch 3 implementation; no Batch 3 write is authorized by
-this status alone.
+Staging `00051` remote apply/postcheck has its designated independent `PASS`.
+Production `00051` apply/postcheck evidence has been captured and the
+SELECT-only postcheck passed, but the current independent closing review is
+still `PENDING`. The candidate is bound to exact head
+`53a4874a03df31cbd303b88b6d8724d1be59bf70`, CI `29899138622`, and Vercel
+Preview `4TiMiagYh3xkpaJAxoqhamqLuhUU`. The earlier packet-review head
+`f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized the controlled
+Production execution only; it is not the closing review result. Batch 3 and
+every other policy group remain prohibited until this review returns `PASS`.
 
 **OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 PROHIBITED**
 
 > The title above is a historical packet label. The current state is
-> `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION` was
-> the historical pre-Production label; the current state is the Production
-> apply/postcheck PASS recorded at the top of this packet.
+> `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY EVIDENCE
+> CAPTURED / FINAL REVIEW PENDING`; the older pre-Production wording is not a
+> current stop condition.
 
 ## Handoff from OPT-5
 
