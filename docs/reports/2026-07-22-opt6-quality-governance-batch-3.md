@@ -1,4 +1,4 @@
-# OPT-6 Quality Governance — Batch 3
+# OPT-6 Quality Governance ? Batch 3
 
 ## Status
 
@@ -18,7 +18,7 @@ does not start a later candidate group.
 - Remaining policy groups, index findings, Auth platform settings, runtime
   paths and synchronization scripts are out of scope.
 
-The candidate was selected from the 00001–00051 replay inventory because its
+The candidate was selected from the 00001?00051 replay inventory because its
 Operator predicate is a simple role check with no warehouse scope, own-user
 condition or command-specific `WITH CHECK`. The migration still requires the
 complete two-policy catalog before any `DROP POLICY` and the complete four-
@@ -37,26 +37,31 @@ indexes, business rows, old migrations or remote history. The full
 
 - 00052 static contract: 4/4 passed locally.
 - Isolated PostgreSQL 17 behavior and replay contracts: 2 files / 9 tests
-  passed locally (product behavior 3/3; continuous 00001–00052 replay 6/6).
+  passed locally (product behavior 3/3; continuous 00001?00052 replay 6/6).
   The same suite remains an exact-head CI gate.
 - The combined six-file database-contract command ran 39 tests: 35 passed
-  and 4 pre-existing locale-only failures in 00041–00049 assertions that match
+  and 4 pre-existing locale-only failures in 00041?00049 assertions that match
   English `permission denied` while this PostgreSQL installation emits the
   equivalent Chinese message. The new 00052 contract and the extended replay
   contract are both fully green; CI remains the authoritative full-suite gate.
-- Exact-head remote gate: `ce7e623ff396f099c3bf9256733973ce158beb9e`, GitHub
-  Actions run `29913122480` (quality and PostgreSQL jobs passed), and Vercel
-  Preview `EeNmUmEaEajq3MnRVe7V3RCTfGph` (READY, exact-head match). PR #11 is
-  Draft/Open; the first independent review returned `CHANGES_REQUIRED` only
-  for stale PR/documentation bindings, so the current status remains FINAL
-  REVIEW PENDING and no remote write is authorized.
+- Exact-head remote gate: `6fd4537198d458fddad7baae174180d7fe478d3a`, GitHub
+  Actions run `29917354045` (quality and PostgreSQL jobs passed), and Vercel
+  Preview `AiTr8VWQjKGAbqcUJW9i55odhhFv` (READY, exact-head match). PR #11 is
+  Draft/Open. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e` /
+  `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
+  implementation-checkpoint evidence only. The first independent review
+  returned `CHANGES_REQUIRED` only for stale PR/documentation bindings; those
+  bindings are now corrected, so the current re-review remains FINAL REVIEW
+  PENDING and no remote write is authorized.
 - Product behavior contract covers anonymous, active Admin, active Operator
   and disabled identities for SELECT/INSERT/UPDATE/DELETE before and after the
   migration, comparing success, row count and SQLSTATE. Guard cases reject an
   extra permissive policy and a changed complete Operator predicate before any
   baseline policy is dropped.
-- `git diff --check` and documentation/secret/orphan checks remain required
-  before submission. No Staging or Production SQL has been executed for 00052.
+- Current hygiene gates are green: `git diff --check` PASS, documentation
+  relative-link check `0 missing`, high-confidence secret scan `0`, orphan/temp
+  file check `0`, and worktree clean. No Staging or Production SQL has been
+  executed for 00052.
 
 Detailed evidence and the exact stop gate are in the
 [Batch 3 evidence record](evidence/2026-07-22-opt6-batch3-product-policy.md).

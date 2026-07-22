@@ -23,16 +23,19 @@ forward-only `00052_optimize_product_rls_policy_overlap.sql`. Its static and
 PostgreSQL behavior contracts, evidence and navigation are recorded in the
 [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md) and
 [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
-The exact head is `ce7e623ff396f099c3bf9256733973ce158beb9e`, bound to CI
-`29913122480` and Vercel Preview `EeNmUmEaEajq3MnRVe7V3RCTfGph`; both exact-
-head checks are green. No Staging/Production SQL has been run. The first
-independent review returned `CHANGES_REQUIRED` only for stale PR/documentation
-bindings, so this packet remains `FINAL REVIEW PENDING`. After those wording
-fixes are pushed, wait for `PASS`/`CHANGES_REQUIRED` before preparing any
-remote preflight. A `PASS` authorizes only the next controlled Staging
-read-only preflight, not Production or a later candidate group.
+The current exact head is `6fd4537198d458fddad7baae174180d7fe478d3a`, bound to
+CI `29917354045` and Vercel Preview `AiTr8VWQjKGAbqcUJW9i55odhhFv`; both
+exact-head checks are green. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e`
+/ `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
+implementation-checkpoint evidence only. No Staging/Production SQL has been
+run. The first independent review returned `CHANGES_REQUIRED` only for stale
+PR/documentation bindings; those wording fixes are now pushed and the current
+re-review remains `FINAL REVIEW PENDING`. Wait for `PASS`/`CHANGES_REQUIRED`
+before preparing any remote preflight. A `PASS` authorizes only the next
+controlled Staging read-only preflight, not Production or a later candidate
+group.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE ? BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PENDING**
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
@@ -51,7 +54,7 @@ read-only preflight, not Production or a later candidate group.
 
 The user authorized the existing OPT-6 route to continue without repeating stage-by-stage approval, while preserving the gate:
 
-`implement → complete evidence/quality verification → designated independent review → explicit PASS → next stage`.
+`implement ? complete evidence/quality verification ? designated independent review ? explicit PASS ? next stage`.
 
 CHANGES_REQUIRED means stop and fix only the requested scope. This route does not authorize accidental deletion, direct rollback, old Migration replay, RLS bypass, secret exposure, or materially different architecture.
 
@@ -73,7 +76,7 @@ CHANGES_REQUIRED means stop and fix only the requested scope. This route does no
 - PR #9 was merged as `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`;
   master CI `29733960202` and production deployment
   `BKDzcK4k9noxQgzAboJB6h2XjmeF` passed. The controlled remote stage then
-  applied 00050 to Staging and Production. Both are now exact `00001`–`00050`,
+  applied 00050 to Staging and Production. Both are now exact `00001`?`00050`,
   with the canonical one-statement 00050 body and six reviewed optimized
 policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md).
 - The documentation-only evidence checkpoint was PR #10 head
@@ -93,15 +96,15 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 
 ## Implementation order
 
-1. ✅ Create this isolated branch and record the OPT-5 handoff.
-2. ✅ Re-run lint and collect a machine-readable warning inventory; fix unused symbols in small test-backed batches until warning count is zero.
-3. ✅ Batch 1: capture the reviewed policy targets, rewrite only six `auth.uid()` init expressions to equivalent scalar subqueries, and prove anonymous, disabled, Admin, Operator, and cross-warehouse behavior unchanged. See [Batch 1 report](../reports/2026-07-20-opt6-quality-governance-batch-1.md).
+1. ? Create this isolated branch and record the OPT-5 handoff.
+2. ? Re-run lint and collect a machine-readable warning inventory; fix unused symbols in small test-backed batches until warning count is zero.
+3. ? Batch 1: capture the reviewed policy targets, rewrite only six `auth.uid()` init expressions to equivalent scalar subqueries, and prove anonymous, disabled, Admin, Operator, and cross-warehouse behavior unchanged. See [Batch 1 report](../reports/2026-07-20-opt6-quality-governance-batch-1.md).
 4. Inventory multiple-permissive policies by table/command/role. The local
-   `00001`–`00050` replay catalog has 42 policies and 23 concrete overlap
+   `00001`?`00050` replay catalog has 42 policies and 23 concrete overlap
    groups. Batch 2 changes only `public.role`: `00051` proves the Admin OR
    Operator SELECT union and preserves Admin write checks as separate policies.
    The remaining 22 groups stay unchanged until separately proven. Never edit
-   00001–00050.
+   00001?00050.
 5. Investigate the Turbopack trace warning and dependency residuals without changing runtime artifact paths, cron schedules, secrets, or provider behavior.
 6. Run full local tests, lint budget 0, TypeScript/build, PostgreSQL concurrency/contracts, migration replay, `git diff --check`, links, secret/orphan checks, and available Staging/Production postchecks.
 7. Record every batch in `docs/reports/` and indexes, then send it to the
@@ -122,7 +125,7 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   environment. Subsequent Staging and Production apply/postcheck results are
   recorded below; this historical checkpoint did not authorize a further
   policy-overlap candidate or PR #11 merge.
-- Staging read-only preflight subsequently passed: exact `00001`–`00050`, no
+- Staging read-only preflight subsequently passed: exact `00001`?`00050`, no
   `00051`, and the full `public.role` two-policy catalog all match the
   reviewed baseline. See [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
   The designated review task returned `PASS` for this preflight evidence. It
@@ -135,7 +138,7 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   generated SQL was executed in Staging project `hyarhvsjhkjpallbyifn` as
   role `postgres`. The SQL Editor returned `Success. No rows returned`.
 - A separate SELECT-only postcheck returned one row with all nine checks
-  `true`: exact 00001–00051 history, unique version/name sets, no timestamp
+  `true`: exact 00001?00051 history, unique version/name sets, no timestamp
   versions, exact 00051 body payload, four policies, and exact normalized
   policy catalog. See [Staging apply/postcheck evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
 - This is the historical Staging-only remote evidence. The designated independent review
@@ -150,7 +153,7 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - The SELECT-only Production `00051` exact preflight packet is prepared and
   indexed in the [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-production-preflight.md)
   and [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-preflight.sql).
-- Its `expected_history` CTE pins all reviewed `00001`–`00050` version/name and
+- Its `expected_history` CTE pins all reviewed `00001`?`00050` version/name and
   full `statements[]` payload summaries; `exact_version_name_history` and
   `exact_history_payload` are executable row-by-row equality gates, with the
   static read-only contract indexed here:
@@ -160,12 +163,12 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   apply packet then committed in the approved window; its [apply/postcheck
   evidence](../reports/evidence/2026-07-22-opt6-00051-production-apply.md) and
   [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-apply.sql) record
-  exact 00001–00051 history, the canonical payload, four role policies, and
+  exact 00001?00051 history, the canonical payload, four role policies, and
   zero active sync runs. Batch 3 remains a separate implementation/review gate.
 
 ## Current prohibitions
 
-- No changes to 00001–00049; all database changes must be 00050+ forward-only and replayable.
+- No changes to 00001?00049; all database changes must be 00050+ forward-only and replayable.
 - No policy merge without a before/after identity matrix and exact OR/WITH CHECK equivalence evidence.
 - No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
