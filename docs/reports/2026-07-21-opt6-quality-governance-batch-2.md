@@ -127,7 +127,7 @@ Batch 3 remains prohibited.
 - Draft PR: [#11](https://github.com/rallsix66/overseas-inventory/pull/11),
   open and mergeable; it remains unmerged.
 - Exact-head CI: `29905051425`, with the quality and PostgreSQL jobs passed.
-- Deployment evidence: [Vercel Preview](https://vercel.com/rallsix66s-projects/overseas-inventory/8KhF7SHrowPf3nCK69BRqAihtpZu)
+- Deployment evidence: [Vercel Preview](https://vercel.com/rallsix66s-projects/overseas-inventory/DGTnEf1Xp2brhc8p5cd1p6QPcEJh)
   and Preview Comments passed.
 - The historical code-review scope includes migration direction and catalog
   gates, identity and drift tests, repository scope, documentation navigation,
