@@ -118,6 +118,7 @@ separate review-gated steps.
 - [Staging read-only preflight evidence](evidence/2026-07-21-opt6-00051-staging-preflight.md)
 - [Production exact preflight packet](evidence/2026-07-21-opt6-00051-production-preflight.md)
 - [Production preflight SQL](sql/2026-07-21-opt6-00051-production-preflight.sql)
+- [Production preflight static contract](../../src/features/database/opt6-production-preflight.test.ts)
 - [Staging apply generator](../../scripts/prepare-opt6-00051-staging-apply.ps1)
 - [Current task packet](../tasks/current-task.md)
 - [Optimization roadmap](../tasks/system-optimization-roadmap-2026-07-17.md)

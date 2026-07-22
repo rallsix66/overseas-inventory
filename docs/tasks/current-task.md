@@ -127,6 +127,11 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - The SELECT-only Production `00051` exact preflight packet is prepared and
   indexed in the [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-production-preflight.md)
   and [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-preflight.sql).
+- Its `expected_history` CTE pins all reviewed `00001`–`00050` version/name and
+  full `statements[]` payload summaries; `exact_version_name_history` and
+  `exact_history_payload` are executable row-by-row equality gates, with the
+  static read-only contract indexed here:
+  [preflight contract](../../src/features/database/opt6-production-preflight.test.ts).
 - The packet has not been executed yet. Remote Production preflight, any
   apply packet, and Production write each require their own evidence and
   designated review `PASS`; Staging `PASS` is not Production authorization.

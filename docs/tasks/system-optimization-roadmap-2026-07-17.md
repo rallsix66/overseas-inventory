@@ -226,3 +226,8 @@ the Staging evidence as still pending review.
 The Production exact preflight packet is now prepared and indexed, but remote
 preflight has not been executed; Production write and Batch 3 remain blocked
 by their separate review gates.
+The packet's `expected_history` CTE pins the reviewed `00001`–`00050`
+version/name and full `statements[]` payload summaries. Its
+`exact_version_name_history` and `exact_history_payload` booleans are the
+row-by-row hard stop; the read-only static contract is indexed from the
+preflight report. No digest-only output can authorize the next step.

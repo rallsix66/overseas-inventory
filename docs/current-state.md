@@ -7,6 +7,9 @@
 > maintenance-window preparation only; the read-only preflight packet is now
 > recorded at [Production preflight evidence](reports/evidence/2026-07-21-opt6-00051-production-preflight.md)
 > and [SQL packet](reports/sql/2026-07-21-opt6-00051-production-preflight.sql).
+> The packet now compares all reviewed 00001–00050 version/name rows and full
+> statements[] payload summaries through explicit equality booleans; its static
+> read-only contract is indexed from the Production preflight evidence.
 > Remote Production preflight is still pending; Production write and Batch 3
 > remain prohibited.
 
