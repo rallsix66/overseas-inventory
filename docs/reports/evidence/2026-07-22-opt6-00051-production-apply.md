@@ -44,6 +44,13 @@ Only a separate independent review `PASS` for this exact packet may authorize
 execution in a separately announced Production maintenance window. Until then
 the packet is an audit artifact, not an instruction to run.
 
+The focused apply contract reports `6/6` tests: transaction/lock ordering,
+full-array preflight and active-sync guards, canonical body preservation,
+single expected-history `VALUES` clause, deterministic structural SQL sanity,
+and repeated post-body guards. No local PostgreSQL execution was attempted;
+the packet is Production-only and the deterministic parser-level contract is
+the pre-execution syntax gate.
+
 ## Navigation
 
 - [Production exact preflight evidence](2026-07-21-opt6-00051-production-preflight.md)

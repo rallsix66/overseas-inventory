@@ -22,7 +22,6 @@ CREATE TEMP TABLE opt6_history_expected (
 
 INSERT INTO opt6_history_expected(version, name, statement_count, statement_chars, statement_digest)
 VALUES
-VALUES
     ('00001', '00001_initial_schema', 1, 15219, 'b9ffd51f5f16c72c95a86a55ab053419'),
     ('00002', '00002_create_shipment_transaction', 1, 1691, '8c647673acebe9b4b7fd1dcb209822dd'),
     ('00003', '00003_tighten_variant_rls', 1, 421, '62660676007d10db7f120a8e83da2e8b'),

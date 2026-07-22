@@ -44,6 +44,8 @@ Migration edit/replay, and no remote history manipulation.
 ## Local verification
 
 - 00051 static contract: 4/4 passed.
+- Production apply packet static contract: 6/6 passed, including a
+  deterministic structural SQL sanity check and duplicate-`VALUES` guard.
 - Isolated PostgreSQL 17 replay `00001`–`00051`: 5/5 passed.
 - Isolated PostgreSQL identity matrix and guard failures: 3/3 passed.
 - Combined focused suite: 12/12 passed.

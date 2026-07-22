@@ -47,4 +47,30 @@ describe('OPT-6 Batch 2 Production apply packet static contract', () => {
     expect(postBody).toContain("status = 'in_progress'")
     expect(postBody).toContain('count(*) FROM supabase_migrations.schema_migrations) <> 51')
   })
+
+  it('has exactly one expected-history insert and rejects duplicate VALUES tokens', () => {
+    expect(packet.match(/INSERT INTO opt6_history_expected/g)).toHaveLength(1)
+    const insert = packet.slice(packet.indexOf('INSERT INTO opt6_history_expected'), packet.indexOf(';', packet.indexOf('INSERT INTO opt6_history_expected')))
+    expect(insert.match(/\bVALUES\b/g)).toHaveLength(1)
+    expect(packet).not.toMatch(/INSERT INTO opt6_history_expected[\s\S]{0,200}\bVALUES\s+VALUES\b/)
+  })
+
+  it('passes the deterministic structural SQL sanity check', () => {
+    let depth = 0
+    for (const character of packet) {
+      if (character === '(') depth += 1
+      if (character === ')') depth -= 1
+      expect(depth).toBeGreaterThanOrEqual(0)
+    }
+    expect(depth).toBe(0)
+    expect(packet.match(/^BEGIN;$/gm)).toHaveLength(1)
+    expect(packet.match(/^COMMIT;$/gm)).toHaveLength(1)
+    expect(packet.match(/\$migration\$/g)).toHaveLength(2)
+  })
+
+  it('keeps both pre- and post-body exact history guards tied to the active-sync gate', () => {
+    expect(packet.match(/FULL JOIN actual_history AS actual USING \(version\)/g)).toHaveLength(2)
+    expect(packet.match(/status = 'in_progress'/g)).toHaveLength(2)
+    expect(packet.indexOf('LOCK TABLE supabase_migrations.schema_migrations')).toBeLessThan(packet.indexOf('-- Migration 00051:'))
+  })
 })
