@@ -216,18 +216,19 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - 任一数据库任务无法证明 Admin/Operator/RLS 语义等价，不进入 Production。
 - 任一 Migration 无法在空库连续重放，不部署 Staging/Production。
 - 用户已对 OPT-4 剩余项与 OPT-5/OPT-6 既定路线给出持续授权；仍须逐阶段完成“实施/执行 → 完整验证与证据 → 指定会话明确 PASS”，且 PASS 前不得进入下一阶段。意外数据删除、直接回滚、重放旧 Migration、绕过 RLS、密钥暴露、范围外架构变更或 materially different 的操作仍必须停止并取得单独确认。
-**Current gate (2026-07-21)**: Staging `00051` remote apply/postcheck has
-designated independent `PASS`, bound to documentation head
-`2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and green Vercel
-Preview. Only Production exact preflight/maintenance-window preparation may
-follow; no Production write, Batch 3, or other policy group is authorized.
+**Current gate (2026-07-22)**: Staging and Production `00051` remote
+apply/postcheck have designated independent `PASS`. Production closed at
+packet head `f7acf211ac66e2b86a22e14254a1ffe75782c224`, CI `29891089089`, and
+Vercel Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. Batch 3 and every other policy
+group remain blocked until their own implementation and independent review.
 This current-gate note supersedes the earlier Batch 2 paragraph that described
 the Staging evidence as still pending review.
 The corrected Production exact preflight packet was executed read-only on
 2026-07-22 and all history, full-payload, role-catalog, and active-run gates
-passed. The result is indexed in the preflight evidence; no apply packet was
-executed. The generated apply packet is indexed as an unexecuted audit artifact;
-Production write and Batch 3 remain blocked by their separate review gates.
+passed. The separately reviewed apply packet then committed in the approved
+window; its postcheck confirmed exact 00001–00051 history, canonical 00051
+payload, four reviewed role policies, and zero active sync runs. Batch 3 remains
+blocked by its separate implementation/review gate.
 The packet's `expected_history` CTE pins the reviewed `00001`–`00050`
 version/name and full `statements[]` payload summaries. Its
 `exact_version_name_history` and `exact_history_payload` booleans are the

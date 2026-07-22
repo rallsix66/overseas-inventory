@@ -2,7 +2,7 @@
 
 ## Status
 
-`APPLY PACKET PREPARED / FINAL REVIEW PENDING / NOT EXECUTED`
+`PRODUCTION APPLY/POSTCHECK PASS / BATCH 3 PROHIBITED`
 
 ## Scope and safety boundary
 
@@ -16,8 +16,10 @@
 - It retains the migration's exact policy catalog gates, exact body
   registration, and post-apply catalog/history assertions, including a second
   full old-history payload comparison.
-- The packet has not been executed. No Production policy, migration history,
-  or business data was changed. Batch 3 remains prohibited.
+- The approved packet was executed in the Production SQL Editor on 2026-07-22
+  (Asia/Shanghai), as the signed-in `postgres` role. It returned one result row
+  with no error; the transaction committed. No old Migration was replayed and
+  no business-table data was changed. Batch 3 remains prohibited.
 
 ## Preconditions already satisfied
 
@@ -40,16 +42,32 @@ role policies and the exact normalized predicates/commands/roles, while also
 reconfirming the complete old-history payload and zero active sync runs. Any
 failed gate raises an exception and the transaction rolls back.
 
-Only a separate independent review `PASS` for this exact packet may authorize
-execution in a separately announced Production maintenance window. Until then
-the packet is an audit artifact, not an instruction to run.
+The designated independent review returned `PASS` for this exact packet at
+head `f7acf211ac66e2b86a22e14254a1ffe75782c224`, with CI `29891089089` and
+Vercel Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. That review authorized this
+controlled Production apply/postcheck only; it did not authorize Batch 3.
 
 The focused apply contract reports `6/6` tests: transaction/lock ordering,
 full-array preflight and active-sync guards, canonical body preservation,
 single expected-history `VALUES` clause, deterministic structural SQL sanity,
 and repeated post-body guards. No local PostgreSQL execution was attempted;
-the packet is Production-only and the deterministic parser-level contract is
+the packet is Production-only and the deterministic parser-level contract was
 the pre-execution syntax gate.
+
+## Production postcheck (2026-07-22)
+
+The separate SELECT-only postcheck returned `rows_total=51`,
+`unique_versions=51`, `unique_names=51`, `min=00001`, `max=00051`,
+`timestamp_versions=0`, exact canonical `00051` payload
+(`cardinality=1`, `length=5686`, MD5 `aee8d4811b5382afc9786ef0dae195be`),
+exact version set `00001`–`00051`, `in_progress_sync_runs=0`, and
+`public.role` policy count `4`.
+
+The policy catalog query returned the four reviewed policies with
+`PERMISSIVE=true`, roles `{0}`, commands `d/a/r/w`, and the approved normalized
+USING/WITH CHECK predicates: Admin-only delete/insert/update plus the shared
+Admin-or-Operator SELECT predicate. No credentials or secret values were
+recorded.
 
 ## Navigation
 

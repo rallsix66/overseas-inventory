@@ -2,7 +2,7 @@
 
 ## Status
 
-`PRODUCTION READ-ONLY PREFLIGHT PASS / PRODUCTION WRITE STILL PROHIBITED`
+`HISTORICAL PRODUCTION READ-ONLY PREFLIGHT PASS / APPLY POSTCHECK CLOSED`
 
 ## Scope and safety boundary
 
@@ -58,14 +58,14 @@ actual/expected history digest pairs were equal. Any false value, payload
 mismatch, or digest drift is a hard stop before a write packet is even
 considered.
 
-## Controlled next gate
+## Historical controlled next gate
 
-This read-only result must receive designated independent review. Only a
+At this checkpoint, this read-only result required designated independent review. Only a
 separate explicit review `PASS` for the Production preflight may permit
-assembling a single-transaction apply packet. That later packet must still be
-independently reviewed before any Production write. Staging `PASS` does not
-authorize Production. No apply packet was assembled or executed, and no
-credentials or secrets are recorded here.
+assembling a single-transaction apply packet. That later packet was independently
+reviewed and executed; its result is recorded in the [Production apply/postcheck
+evidence](2026-07-22-opt6-00051-production-apply.md). No credentials or secrets
+are recorded here.
 
 ## Navigation
 

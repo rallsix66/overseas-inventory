@@ -4,17 +4,19 @@
 
 ### Current gate (2026-07-21)
 
-Staging `00051` remote apply/postcheck has designated independent `PASS`, bound
-to documentation head `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI
-`29822891836`, and the green Vercel Preview. The next allowed step is only
-Production exact preflight and maintenance-window preparation. Production
-writes, Batch 3, and the remaining policy groups remain prohibited.
+Staging and Production `00051` remote apply/postcheck both have designated
+independent `PASS`. Production closed at packet head
+`f7acf211ac66e2b86a22e14254a1ffe75782c224`, CI `29891089089`, and Vercel
+Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. The next allowed step is a new,
+separately reviewed Batch 3 implementation; no Batch 3 write is authorized by
+this status alone.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 PROHIBITED**
 
 > The title above is a historical packet label. The current state is
-> `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION`;
-> the designated review `PASS` does not authorize a Production write.
+> `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION GATE PREPARATION` was
+> the historical pre-Production label; the current state is the Production
+> apply/postcheck PASS recorded at the top of this packet.
 
 ## Handoff from OPT-5
 
@@ -95,10 +97,10 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - Exact-head CI `29798631677` passed the quality and PostgreSQL jobs; the
   associated Vercel Preview and Preview Comments checks are green. Draft PR
   #11 remains open and mergeable.
-- This is a code-review closure only: `00051` has not been written to either
-  remote environment. The sole next step is to prepare a controlled Staging
-  exact preflight/apply packet. It does not authorize Production, a further
-  policy-overlap candidate, or PR #11 merge.
+- At this code-review checkpoint `00051` had not been written to either remote
+  environment. Subsequent Staging and Production apply/postcheck results are
+  recorded below; this historical checkpoint did not authorize a further
+  policy-overlap candidate or PR #11 merge.
 - Staging read-only preflight subsequently passed: exact `00001`–`00050`, no
   `00051`, and the full `public.role` two-policy catalog all match the
   reviewed baseline. See [preflight evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
@@ -115,12 +117,12 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   `true`: exact 00001–00051 history, unique version/name sets, no timestamp
   versions, exact 00051 body payload, four policies, and exact normalized
   policy catalog. See [Staging apply/postcheck evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md).
-- This is Staging-only remote evidence. The designated independent review
+- This is the historical Staging-only remote evidence. The designated independent review
   returned `PASS` on 2026-07-21, bound to documentation head
   `2905b5bfa54ab8a8cebe6ce746186495231af9fe`, CI `29822891836`, and the green
-  Vercel Preview. The next allowed step is only to prepare a separate Production
-  exact preflight and maintenance-window packet. Production writes, Batch 3,
-  and the remaining policy groups remain prohibited.
+  Vercel Preview. The later Production apply/postcheck is recorded in the
+  Production evidence below; Batch 3 and the remaining policy groups remain
+  prohibited.
 
 ## Production gate preparation (2026-07-21)
 
@@ -133,12 +135,12 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   static read-only contract indexed here:
   [preflight contract](../../src/features/database/opt6-production-preflight.test.ts).
 - The packet was executed read-only on 2026-07-22 and all history, full-payload,
-  role-catalog, and active-run gates passed. Remote Production apply, any
-  Production write, and Batch 3 still require a separate designated review
-  `PASS`; the generated [apply packet evidence](../reports/evidence/2026-07-22-opt6-00051-production-apply.md)
-  and [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-apply.sql)
-  are indexed as unexecuted audit artifacts. Staging `PASS` is not Production
-  authorization.
+  role-catalog, and active-run gates passed. The separately reviewed Production
+  apply packet then committed in the approved window; its [apply/postcheck
+  evidence](../reports/evidence/2026-07-22-opt6-00051-production-apply.md) and
+  [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-apply.sql) record
+  exact 00001–00051 history, the canonical payload, four role policies, and
+  zero active sync runs. Batch 3 remains a separate implementation/review gate.
 
 ## Current prohibitions
 
@@ -147,6 +149,5 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
 - Do not touch user synchronization scripts, `.claude` state, or project-summary files.
-- Do not write `00051` to Production or start another candidate. Before any
-  Production write, obtain designated independent review `PASS` for this
-  recorded Staging apply/postcheck evidence and a separate Production gate.
+- Do not start Batch 3 or another candidate until its own implementation,
+  complete evidence, and designated independent review `PASS` are recorded.

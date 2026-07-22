@@ -2,15 +2,15 @@
 
 ## Status
 
-`STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION PREFLIGHT PASS / APPLY PACKET REVIEW PENDING`
+`STAGING + PRODUCTION REMOTE APPLY/POSTCHECK PASS / BATCH 3 PROHIBITED`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
-OPT-6 complete, does not authorize Batch 3, and has not executed a Production
-write. The designated independent review returned `PASS` for head
+OPT-6 complete and does not authorize Batch 3. The designated independent review returned `PASS` for head
 `3885651309ac37f2bf5dd48ce905dfdfe6da8886`, with exact-head CI
-`29798631677` and Vercel Preview green. That PASS authorizes only preparation
-of the controlled Staging exact preflight/apply packet; it does not authorize
-Production or a further Batch 2 candidate.
+`29798631677` and Vercel Preview green. At that code-review checkpoint the PASS
+authorized only preparation of the controlled Staging exact preflight/apply
+packet; the later Production packet review and apply are recorded below and
+do not authorize a further Batch 2 candidate.
 
 ## Scope
 
@@ -77,11 +77,11 @@ Unused-index investigation, Auth configuration and the documented NFT trace
 residual are also out of scope.
 
 The complete packet received designated independent `PASS` on 2026-07-21.
-The controlled Staging exact preflight/apply packet has now been executed and
-postchecked successfully, and the designated independent review returned
-`PASS` on 2026-07-21. This authorizes only preparation of a separate Production
-exact preflight and maintenance-window packet. Production and every further
-Batch 2 candidate remain prohibited.
+The controlled Staging exact preflight/apply packet was executed and
+postchecked successfully. The separately reviewed Production packet then ran
+in the approved 2026-07-22 maintenance window and its postcheck passed. This
+closes the `00051` remote apply stage; Batch 3 and every further policy group
+remain prohibited pending a new implementation/review cycle.
 
 The Staging read-only preflight is now `PASS`: the environment has exact
 `00001`–`00050` history, no `00051`, and the complete two-policy
@@ -103,9 +103,12 @@ expected full-payload digest were both `7a743aa540a39a1f4d3fe7e2a01ea08d`.
 See the [Production preflight evidence](evidence/2026-07-21-opt6-00051-production-preflight.md)
 and [SELECT-only SQL packet](sql/2026-07-21-opt6-00051-production-preflight.sql).
 The generated [Production apply packet](sql/2026-07-21-opt6-00051-production-apply.sql)
-is now recorded as an audit artifact. It has not been executed; a separate
-designated independent review `PASS` is required for this exact packet before
-any Production maintenance window. Batch 3 remains prohibited.
+was executed only after the designated independent packet review `PASS` at
+head `f7acf211ac66e2b86a22e14254a1ffe75782c224` (CI `29891089089`, Vercel
+Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`). Its single transaction committed and
+the SELECT-only postcheck confirmed exact 00001–00051 history, the canonical
+00051 payload, four reviewed `public.role` policies, and zero active sync runs.
+Batch 3 remains prohibited.
 
 ## Review closure
 

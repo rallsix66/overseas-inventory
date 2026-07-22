@@ -13,10 +13,11 @@
 > Remote Production exact preflight executed read-only on 2026-07-22 and passed
 > all history, full-payload, role-catalog, and active-run gates; see the
 > [Production preflight evidence](reports/evidence/2026-07-21-opt6-00051-production-preflight.md).
-> The generated Production apply packet is now indexed for review, but has not
-> been executed. A separate designated `PASS` for that exact packet is required
-> before any Production maintenance window; see [apply packet evidence](reports/evidence/2026-07-22-opt6-00051-production-apply.md).
-> Batch 3 remains prohibited.
+> The separately reviewed Production apply packet was executed in the approved
+> 2026-07-22 maintenance window and its SELECT-only postcheck passed: exact
+> 00001–00051 history, canonical 00051 payload, four reviewed role policies,
+> and zero active sync runs. See [apply/postcheck evidence](reports/evidence/2026-07-22-opt6-00051-production-apply.md).
+> Batch 3 remains prohibited pending its own implementation and review.
 
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051
@@ -24,12 +25,10 @@
 > and designated independent `FINAL PASS` for head
 > `3885651309ac37f2bf5dd48ce905dfdfe6da8886`. Exact-head CI `29798631677`
 > and the Vercel Preview are green. The reviewed 00051 packet has now been
-> applied to Staging and its read-only postcheck passed. Production remains
-> untouched. The controlled Staging preflight had passed before the write:
+> applied to Staging and Production; both read-only postchecks passed. The
+> controlled preflights had passed before each write:
 > exact `00001`–`00050`, no `00051`, and the full two-policy `public.role`
-> baseline all match. The Staging apply/postcheck evidence is now pending
-> designated independent review; Production and every further candidate remain
-> prohibited. See the [Batch 2 report](reports/2026-07-21-opt6-quality-governance-batch-2.md), [Staging evidence](reports/evidence/2026-07-21-opt6-00051-staging-preflight.md), [inventory evidence](reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md), and [current task packet](tasks/current-task.md).
+> baseline all match. See the [Batch 2 report](reports/2026-07-21-opt6-quality-governance-batch-2.md), [Staging evidence](reports/evidence/2026-07-21-opt6-00051-staging-preflight.md), [Production evidence](reports/evidence/2026-07-22-opt6-00051-production-apply.md), [inventory evidence](reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md), and [current task packet](tasks/current-task.md).
 
 > 2026-07-20 System optimization：OPT-1–OPT-5 均已通过指定会话终审并合并。OPT-6 Batch 1 代码与远端阶段也均获指定会话 `FINAL PASS`：PR #9 已合并为 `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`，master CI `29733960202` 与 Vercel production deployment `BKDzcK4k9noxQgzAboJB6h2XjmeF` 全绿；受控 00050 已按 Staging → Production 顺序完成，两环境均为精确 `00001`–`00050`，正文摘要和六条完整 policy catalog 命中审定基线。远端终审绑定 head `1fbc6b042caf289698d60d2697a909787002968d`、CI `29739720283`、Vercel Preview `obXa1wmkxzMorYz9k8AmpkhBSZmG`，结论为 `OPT-6 BATCH 1 REMOTE FINAL PASS`。当前只待合并文档 PR #10；合并后方可建立 Batch 2 任务包。115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [OPT-6 Batch 1 报告](reports/2026-07-20-opt6-quality-governance-batch-1.md)、[远端 postcheck 证据](reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md)、[OPT-6 当前任务包](tasks/current-task.md) 与 [系统优化路线图](tasks/system-optimization-roadmap-2026-07-17.md)。
 

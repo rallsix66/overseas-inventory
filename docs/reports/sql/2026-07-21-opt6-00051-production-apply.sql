@@ -1,9 +1,9 @@
--- OPT-6 Batch 2 / 00051 Production apply packet (prepared, DO NOT EXECUTE yet).
+-- OPT-6 Batch 2 / 00051 Production apply packet (executed 2026-07-22 after review PASS).
 -- Target: Production project hzlhqyditalumhnxbaim only.
 --
 -- This packet takes the history and sync locks before any policy DDL, then
 -- revalidates the complete approved 00001-00050 payload baseline in-transaction.
--- It has not been run; no Production write is authorized by this file alone.
+-- It was run once in the approved Production window; do not replay this packet.
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
