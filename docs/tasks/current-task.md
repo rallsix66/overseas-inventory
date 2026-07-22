@@ -134,8 +134,9 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
   [preflight contract](../../src/features/database/opt6-production-preflight.test.ts).
 - The packet was executed read-only on 2026-07-22 and all history, full-payload,
   role-catalog, and active-run gates passed. Remote Production apply, any
-  apply-packet assembly, and Production write still require designated review
-  `PASS`; Staging `PASS` is not Production authorization.
+  Production write, and Batch 3 still require a separate designated review
+  `PASS`; the generated apply packet is indexed as an unexecuted audit artifact.
+  Staging `PASS` is not Production authorization.
 
 ## Current prohibitions
 

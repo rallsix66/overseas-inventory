@@ -13,8 +13,10 @@
 > Remote Production exact preflight executed read-only on 2026-07-22 and passed
 > all history, full-payload, role-catalog, and active-run gates; see the
 > [Production preflight evidence](reports/evidence/2026-07-21-opt6-00051-production-preflight.md).
-> Production write, apply-packet assembly, and Batch 3 remain prohibited until
-> designated independent review explicitly passes this result.
+> The generated Production apply packet is now indexed for review, but has not
+> been executed. A separate designated `PASS` for that exact packet is required
+> before any Production maintenance window; see [apply packet evidence](reports/evidence/2026-07-22-opt6-00051-production-apply.md).
+> Batch 3 remains prohibited.
 
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051

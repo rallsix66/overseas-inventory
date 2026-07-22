@@ -226,8 +226,8 @@ the Staging evidence as still pending review.
 The corrected Production exact preflight packet was executed read-only on
 2026-07-22 and all history, full-payload, role-catalog, and active-run gates
 passed. The result is indexed in the preflight evidence; no apply packet was
-assembled, and Production write and Batch 3 remain blocked by their separate
-review gates.
+executed. The generated apply packet is indexed as an unexecuted audit artifact;
+Production write and Batch 3 remain blocked by their separate review gates.
 The packet's `expected_history` CTE pins the reviewed `00001`–`00050`
 version/name and full `statements[]` payload summaries. Its
 `exact_version_name_history` and `exact_history_payload` booleans are the

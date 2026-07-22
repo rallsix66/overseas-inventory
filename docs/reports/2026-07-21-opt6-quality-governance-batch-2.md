@@ -2,7 +2,7 @@
 
 ## Status
 
-`STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION READ-ONLY PREFLIGHT PASS / PRODUCTION WRITE PROHIBITED`
+`STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION PREFLIGHT PASS / APPLY PACKET REVIEW PENDING`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
 OPT-6 complete, does not authorize Batch 3, and has not executed a Production
@@ -100,8 +100,10 @@ version/name digest were both `f046958a6c39a8b240536a6f59b5cb18`; actual and
 expected full-payload digest were both `7a743aa540a39a1f4d3fe7e2a01ea08d`.
 See the [Production preflight evidence](evidence/2026-07-21-opt6-00051-production-preflight.md)
 and [SELECT-only SQL packet](sql/2026-07-21-opt6-00051-production-preflight.sql).
-No apply packet was assembled and no Production write was executed. The
-read-only result remains subject to designated independent review.
+The generated [Production apply packet](sql/2026-07-21-opt6-00051-production-apply.sql)
+is now recorded as an audit artifact. It has not been executed; a separate
+designated independent review `PASS` is required for this exact packet before
+any Production maintenance window. Batch 3 remains prohibited.
 
 ## Review closure
 
@@ -122,6 +124,8 @@ read-only result remains subject to designated independent review.
 - [Staging read-only preflight evidence](evidence/2026-07-21-opt6-00051-staging-preflight.md)
 - [Production exact preflight packet](evidence/2026-07-21-opt6-00051-production-preflight.md)
 - [Production preflight SQL](sql/2026-07-21-opt6-00051-production-preflight.sql)
+- [Production apply packet evidence](evidence/2026-07-22-opt6-00051-production-apply.md)
+- [Production apply SQL](sql/2026-07-21-opt6-00051-production-apply.sql)
 - [Production preflight static contract](../../src/features/database/opt6-production-preflight.test.ts)
 - [Staging apply generator](../../scripts/prepare-opt6-00051-staging-apply.ps1)
 - [Current task packet](../tasks/current-task.md)
