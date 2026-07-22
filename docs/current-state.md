@@ -4,8 +4,8 @@
 > designated independent `PASS`. Production `00051` apply/postcheck evidence
 > has been captured and its SELECT-only postcheck passed, but the current
 > independent closing review is `PENDING`, bound to exact head
-> `53a4874a03df31cbd303b88b6d8724d1be59bf70`, CI `29899138622`, and Vercel
-> Preview `4TiMiagYh3xkpaJAxoqhamqLuhUU`. The earlier packet-review head
+> `c154b3df03b6025892f4a86e0fd365102b1b7c2c`, CI `29905051425`, and Vercel
+> Preview `DGTnEf1Xp2brhc8p5cd1p6QPcEJh`. The earlier packet-review head
 > `f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized execution only; it is
 > not the closing review result. Batch 3 remains prohibited.
 > The packet now compares all reviewed 00001–00050 version/name rows and full

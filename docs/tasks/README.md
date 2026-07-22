@@ -74,5 +74,7 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 4. 新 Claude 会话只执行新的 `current-task.md`。
 > Current OPT-6 gate (2026-07-22): Batch 2 Staging remote apply/postcheck has
 > independent `PASS`; Production apply/postcheck evidence is captured and its
-> closing independent review is pending at exact head `53a4874…`. No Batch 3
+> closing independent review is pending at exact head
+> `c154b3df03b6025892f4a86e0fd365102b1b7c2c`, CI `29905051425`, Vercel
+> `DGTnEf1Xp2brhc8p5cd1p6QPcEJh`. No Batch 3
 > or further policy-group write is allowed before that review returns `PASS`.

@@ -50,7 +50,7 @@ Migration edit/replay, and no remote history manipulation.
 - Isolated PostgreSQL 17 replay `00001`–`00051`: 5/5 passed.
 - Isolated PostgreSQL identity matrix and guard failures: 3/3 passed.
 - Combined focused suite: 12/12 passed.
-- Exact-head CI run `29899138622`: quality job 96 files / 3958 tests passed.
+- Exact-head CI run `29905051425`: quality job 96 files / 3958 tests passed.
 - Earlier local checkpoint: 94 files / 3949 tests passed (historical local
   result, not the current exact-head count).
 - Lint: 0 errors / 0 warnings.
@@ -122,10 +122,11 @@ Batch 3 remains prohibited.
 - Designated code review: `OPT-6 Batch 2 FINAL PASS` at head
   `3885651309ac37f2bf5dd48ce905dfdfe6da8886`.
 - Current Production apply/postcheck closing review: `PENDING`, bound to exact
-  head `53a4874a03df31cbd303b88b6d8724d1be59bf70`.
+  head `c154b3df03b6025892f4a86e0fd365102b1b7c2c`, CI `29905051425`, Vercel
+  Preview `DGTnEf1Xp2brhc8p5cd1p6QPcEJh`.
 - Draft PR: [#11](https://github.com/rallsix66/overseas-inventory/pull/11),
   open and mergeable; it remains unmerged.
-- Exact-head CI: `29899138622`, with the quality and PostgreSQL jobs passed.
+- Exact-head CI: `29905051425`, with the quality and PostgreSQL jobs passed.
 - Deployment evidence: [Vercel Preview](https://vercel.com/rallsix66s-projects/overseas-inventory/8KhF7SHrowPf3nCK69BRqAihtpZu)
   and Preview Comments passed.
 - The historical code-review scope includes migration direction and catalog
