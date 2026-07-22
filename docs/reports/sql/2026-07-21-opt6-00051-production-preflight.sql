@@ -192,4 +192,7 @@ SELECT
   role_check.*,
   (
     SELECT count(*) FROM public.sync_run WHERE status = 'in_progress'
-  ) AS in_progress_sync_runs;
+  ) AS in_progress_sync_runs
+FROM history_check
+CROSS JOIN history_compare
+CROSS JOIN role_check;
