@@ -2,8 +2,7 @@
 
 ## Status
 
-`STAGING REMOTE APPLY/POSTCHECK PASS + PRODUCTION APPLY/POSTCHECK EVIDENCE
-CAPTURED / FINAL REVIEW PENDING / BATCH 3 PROHIBITED`
+`STAGING + PRODUCTION REMOTE APPLY/POSTCHECK FINAL PASS / BATCH 3 PROHIBITED`
 
 This is the second independently reviewable OPT-6 batch. It does not mark
 OPT-6 complete and does not authorize Batch 3. The designated code review
@@ -11,7 +10,9 @@ returned `PASS` for head `3885651309ac37f2bf5dd48ce905dfdfe6da8886`, with
 exact-head CI `29798631677` and Vercel Preview green. That historical code
 review authorized preparation of the controlled Staging exact preflight/apply
 packet. The later Production packet review, execution, and postcheck are
-recorded below; the current independent closing review remains `PENDING`.
+recorded below; the current independent closing review returned `PASS` at exact
+head `96c87461afd444b2065059c98ba0cf08522b749e` (CI `29908869113`, Vercel
+`87HAB8w8rTZhDtJAZCvt2kmaRM31`).
 
 ## Scope
 
@@ -50,7 +51,7 @@ Migration edit/replay, and no remote history manipulation.
 - Isolated PostgreSQL 17 replay `00001`–`00051`: 5/5 passed.
 - Isolated PostgreSQL identity matrix and guard failures: 3/3 passed.
 - Combined focused suite: 12/12 passed.
-- Exact-head CI run `29905051425`: quality job 96 files / 3958 tests passed.
+- Exact-head CI run `29908869113`: quality job 96 files / 3958 tests passed.
 - Earlier local checkpoint: 94 files / 3949 tests passed (historical local
   result, not the current exact-head count).
 - Lint: 0 errors / 0 warnings.
@@ -85,9 +86,9 @@ review.
 The controlled Staging exact preflight/apply packet was executed and
 postchecked successfully. The separately reviewed Production packet then ran
 in the approved 2026-07-22 maintenance window and its postcheck passed. The
-remote evidence is captured, but the current independent closing review remains
-`PENDING`; Batch 3 and every further policy group remain prohibited pending
-that review and a new implementation/review cycle.
+remote evidence is captured and the current independent closing review returned
+`PASS`; Batch 3 and every further policy group remain prohibited pending their
+own implementation/review cycle.
 
 The Staging read-only preflight is now `PASS`: the environment has exact
 `00001`–`00050` history, no `00051`, and the complete two-policy
@@ -114,25 +115,25 @@ head `f7acf211ac66e2b86a22e14254a1ffe75782c224` (CI `29891089089`, Vercel
 Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`). Its single transaction committed and
 the SELECT-only postcheck confirmed exact 00001–00051 history, the canonical
 00051 payload, four reviewed `public.role` policies, and zero active sync runs.
-The current independent closing review of this evidence remains `PENDING`;
-Batch 3 remains prohibited.
+The current independent closing review of this evidence returned `PASS`;
+Batch 3 remains prohibited pending its own implementation/review cycle.
 
 ## Review closure
 
 - Designated code review: `OPT-6 Batch 2 FINAL PASS` at head
   `3885651309ac37f2bf5dd48ce905dfdfe6da8886`.
-- Current Production apply/postcheck closing review: `PENDING`, bound to exact
-  head `c154b3df03b6025892f4a86e0fd365102b1b7c2c`, CI `29905051425`, Vercel
-  Preview `DGTnEf1Xp2brhc8p5cd1p6QPcEJh`.
+- Current Production apply/postcheck closing review: `PASS`, bound to exact
+  head `96c87461afd444b2065059c98ba0cf08522b749e`, CI `29908869113`, Vercel
+  Preview `87HAB8w8rTZhDtJAZCvt2kmaRM31`.
 - Draft PR: [#11](https://github.com/rallsix66/overseas-inventory/pull/11),
   open and mergeable; it remains unmerged.
-- Exact-head CI: `29905051425`, with the quality and PostgreSQL jobs passed.
-- Deployment evidence: [Vercel Preview](https://vercel.com/rallsix66s-projects/overseas-inventory/DGTnEf1Xp2brhc8p5cd1p6QPcEJh)
+- Exact-head CI: `29908869113`, with the quality and PostgreSQL jobs passed.
+- Deployment evidence: [Vercel Preview](https://vercel.com/rallsix66s-projects/overseas-inventory/87HAB8w8rTZhDtJAZCvt2kmaRM31)
   and Preview Comments passed.
 - The historical code-review scope includes migration direction and catalog
   gates, identity and drift tests, repository scope, documentation navigation,
-  CI, and Preview. The current closing review must additionally verify the
-  Production evidence and postcheck; it has not yet authorized Batch 3.
+  CI, and Preview. The current closing review additionally verified the
+  Production evidence and postcheck; it does not authorize Batch 3.
 
 ## Navigation
 

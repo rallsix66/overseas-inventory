@@ -53,7 +53,7 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 | Phase 4 团队账号 | `phase-4-users.md` | 待开始 |
 | Phase 5 数据同步 | `phase-5-sync.md` | 待开始 |
 | 发布与部署 | `deployment.md` | 平台待定 |
-| 系统优化与工程治理 | `system-optimization-roadmap-2026-07-17.md` | ACTIVE；OPT-1–OPT-5 MERGED/FINAL PASS；OPT-6 Batch 1 closed；Batch 2 Staging PASS、Production apply/postcheck evidence captured / final review pending；Batch 3 prohibited |
+| 系统优化与工程治理 | `system-optimization-roadmap-2026-07-17.md` | ACTIVE；OPT-1–OPT-5 MERGED/FINAL PASS；OPT-6 Batch 1 closed；Batch 2 Production apply/postcheck FINAL PASS；Batch 3 remains separately gated |
 
 ## 状态标记
 
@@ -73,8 +73,7 @@ Claude 每次会话只执行 `current-task.md` 中的一个 Task Packet。
 3. 在 `current-state.md` 更新 Current Task 与引用。
 4. 新 Claude 会话只执行新的 `current-task.md`。
 > Current OPT-6 gate (2026-07-22): Batch 2 Staging remote apply/postcheck has
-> independent `PASS`; Production apply/postcheck evidence is captured and its
-> closing independent review is pending at exact head
-> `c154b3df03b6025892f4a86e0fd365102b1b7c2c`, CI `29905051425`, Vercel
-> `DGTnEf1Xp2brhc8p5cd1p6QPcEJh`. No Batch 3
-> or further policy-group write is allowed before that review returns `PASS`.
+> independent `PASS`; Production apply/postcheck closing review returned
+> `PASS` at exact head `96c87461afd444b2065059c98ba0cf08522b749e`, CI
+> `29908869113`, Vercel `87HAB8w8rTZhDtJAZCvt2kmaRM31`. Batch 3 or further
+> policy-group write still requires its own implementation and review.

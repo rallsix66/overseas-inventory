@@ -2,7 +2,7 @@
 
 ## Status
 
-`PRODUCTION APPLY/POSTCHECK PASS / BATCH 3 PROHIBITED`
+`PRODUCTION APPLY/POSTCHECK FINAL PASS / BATCH 3 PROHIBITED`
 
 ## Scope and safety boundary
 
@@ -48,9 +48,9 @@ The designated packet review returned `PASS` for the executable packet at head
 `f7acf211ac66e2b86a22e14254a1ffe75782c224`, with CI `29891089089` and Vercel
 Preview `BE2eahGEhTZsb83MTjs6xmKFAFc8`. That historical packet review
 authorized this controlled Production apply/postcheck only. The current
-closing review is pending at exact head `c154b3df03b6025892f4a86e0fd365102b1b7c2c`,
-with CI `29905051425` and Vercel Preview `DGTnEf1Xp2brhc8p5cd1p6QPcEJh`;
-it does not authorize Batch 3.
+closing review returned `PASS` at exact head
+`96c87461afd444b2065059c98ba0cf08522b749e`, with CI `29908869113` and Vercel
+Preview `87HAB8w8rTZhDtJAZCvt2kmaRM31`; it does not authorize Batch 3.
 
 The focused apply contract reports `6/6` tests: transaction/lock ordering,
 full-array preflight and active-sync guards, canonical body preservation,
