@@ -126,6 +126,7 @@ any Production maintenance window. Batch 3 remains prohibited.
 - [Production preflight SQL](sql/2026-07-21-opt6-00051-production-preflight.sql)
 - [Production apply packet evidence](evidence/2026-07-22-opt6-00051-production-apply.md)
 - [Production apply SQL](sql/2026-07-21-opt6-00051-production-apply.sql)
+- [Production apply static contract](../../src/features/database/opt6-production-apply.test.ts)
 - [Production preflight static contract](../../src/features/database/opt6-production-preflight.test.ts)
 - [Staging apply generator](../../scripts/prepare-opt6-00051-staging-apply.ps1)
 - [Current task packet](../tasks/current-task.md)

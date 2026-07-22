@@ -9,9 +9,13 @@
 - Target: Production project `hzlhqyditalumhnxbaim` only.
 - Candidate: forward-only `00051_optimize_role_rls_policy_overlap.sql`.
 - Packet: [Production apply SQL](../sql/2026-07-21-opt6-00051-production-apply.sql).
-- The packet is a single transaction with lock and statement timeouts,
-  history preflight, the migration's exact policy catalog gates, exact body
-  registration, and post-apply catalog/history assertions.
+- The packet is a single transaction with lock and statement timeouts. It takes
+  `ACCESS EXCLUSIVE` on `schema_migrations` and `SHARE` on `sync_run` before
+  any policy DDL, then rechecks the full 50-row version/name/statement payload
+  baseline and `in_progress=0` in that same transaction.
+- It retains the migration's exact policy catalog gates, exact body
+  registration, and post-apply catalog/history assertions, including a second
+  full old-history payload comparison.
 - The packet has not been executed. No Production policy, migration history,
   or business data was changed. Batch 3 remains prohibited.
 
@@ -27,12 +31,14 @@ were `7a743aa540a39a1f4d3fe7e2a01ea08d`.
 ## Packet gates
 
 The SQL is generated from the canonical migration body and refuses to proceed
-unless the candidate is absent, the existing history set is exactly
-`00001`–`00050`, the pre-migration `public.role` catalog matches the reviewed
+unless the candidate is absent, the existing history is exactly the reviewed
+`00001`–`00050` version/name/full-array payload baseline, no sync run is
+`in_progress`, the pre-migration `public.role` catalog matches the reviewed
 two-policy baseline, and the canonical body is inserted as exactly one
 `00051` history row. After policy replacement it requires exactly four reviewed
-role policies and the exact normalized predicates/commands/roles. Any failed
-gate raises an exception and the transaction rolls back.
+role policies and the exact normalized predicates/commands/roles, while also
+reconfirming the complete old-history payload and zero active sync runs. Any
+failed gate raises an exception and the transaction rolls back.
 
 Only a separate independent review `PASS` for this exact packet may authorize
 execution in a separately announced Production maintenance window. Until then
@@ -41,6 +47,7 @@ the packet is an audit artifact, not an instruction to run.
 ## Navigation
 
 - [Production exact preflight evidence](2026-07-21-opt6-00051-production-preflight.md)
+- [Production apply static contract](../../../src/features/database/opt6-production-apply.test.ts)
 - [Batch 2 report](../2026-07-21-opt6-quality-governance-batch-2.md)
 - [Current task packet](../../tasks/current-task.md)
 - [Optimization roadmap](../../tasks/system-optimization-roadmap-2026-07-17.md)

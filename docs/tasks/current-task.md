@@ -135,8 +135,10 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - The packet was executed read-only on 2026-07-22 and all history, full-payload,
   role-catalog, and active-run gates passed. Remote Production apply, any
   Production write, and Batch 3 still require a separate designated review
-  `PASS`; the generated apply packet is indexed as an unexecuted audit artifact.
-  Staging `PASS` is not Production authorization.
+  `PASS`; the generated [apply packet evidence](../reports/evidence/2026-07-22-opt6-00051-production-apply.md)
+  and [SQL packet](../reports/sql/2026-07-21-opt6-00051-production-apply.sql)
+  are indexed as unexecuted audit artifacts. Staging `PASS` is not Production
+  authorization.
 
 ## Current prohibitions
 
