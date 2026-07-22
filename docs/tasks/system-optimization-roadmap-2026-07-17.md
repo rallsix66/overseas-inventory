@@ -251,3 +251,8 @@ Status is `IMPLEMENTATION COMPLETE / REVIEW PENDING / REMOTE WRITE PROHIBITED`.
 The remaining policy groups are unchanged. Complete local/CI verification and
 an explicit independent `PASS` are required before preparing a Staging
 read-only preflight; Production and later candidates remain prohibited.
+The submitted exact head is `ce7e623ff396f099c3bf9256733973ce158beb9e`,
+bound to CI `29913122480` and Vercel Preview `EeNmUmEaEajq3MnRVe7V3RCTfGph`;
+both are green and exact-head matched. The first independent review returned
+`CHANGES_REQUIRED` only because PR/documentation still carried Batch 2
+historical bindings; those bindings are being corrected before re-review.

@@ -1,15 +1,14 @@
 # Current Project State
 
-> Current gate (2026-07-22): Staging `00051` remote apply/postcheck has
-> designated independent `PASS`. Production `00051` apply/postcheck evidence
-> has been captured and its SELECT-only postcheck passed. The current
-> independent closing review returned `PASS` at exact head
-> `96c87461afd444b2065059c98ba0cf08522b749e`, CI `29908869113`, and Vercel
-> Preview `87HAB8w8rTZhDtJAZCvt2kmaRM31`. The earlier packet-review head
-> `f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized execution only; it is
-> not the closing review result. Batch 3's `public.product` implementation
-> checkpoint is now active; remote writes remain prohibited until its own
-> independent review `PASS`.
+> Current gate (2026-07-22 Batch 3): Batch 2 Staging/Production `00051`
+> apply/postcheck remains closed with its historical independent `PASS` at
+> `96c87461afd444b2065059c98ba0cf08522b749e` / CI `29908869113` / Vercel
+> `87HAB8w8rTZhDtJAZCvt2kmaRM31`. The active Batch 3 `00052` implementation
+> exact head is `ce7e623ff396f099c3bf9256733973ce158beb9e`, with CI
+> `29913122480` and Vercel Preview `EeNmUmEaEajq3MnRVe7V3RCTfGph` both green
+> and exact-head matched. Its first independent review found only stale
+> PR/documentation bindings; status is `FINAL REVIEW PENDING`, and no
+> Staging/Production write is authorized.
 > The packet now compares all reviewed 00001–00050 version/name rows and full
 > statements[] payload summaries through explicit equality booleans; its static
 > read-only contract is indexed from the Production preflight evidence.

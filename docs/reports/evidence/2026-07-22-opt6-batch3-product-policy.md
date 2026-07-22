@@ -54,6 +54,12 @@ Migration edits or history manipulation.
 
 ## Review and remote stop gates
 
+The submitted exact head is `ce7e623ff396f099c3bf9256733973ce158beb9e`,
+bound to CI run `29913122480` (quality and PostgreSQL jobs passed) and Vercel
+Preview `EeNmUmEaEajq3MnRVe7V3RCTfGph` (READY). PR #11 remains Draft/Open.
+The first independent review found only stale PR/documentation bindings;
+those are being corrected and the current state remains `FINAL REVIEW PENDING`.
+
 Before any remote step, the exact submitted head must have green quality and
 PostgreSQL CI jobs, lint/build/type checks, diff/link/secret/orphan checks and
 an explicit independent reviewer `PASS`. That PASS authorizes only preparation

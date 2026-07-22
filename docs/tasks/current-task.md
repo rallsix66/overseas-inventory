@@ -23,11 +23,14 @@ forward-only `00052_optimize_product_rls_policy_overlap.sql`. Its static and
 PostgreSQL behavior contracts, evidence and navigation are recorded in the
 [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md) and
 [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
-The exact head is `REVIEW PENDING`; no Staging/Production SQL has been run.
-After complete quality verification, submit the exact head to the independent
-review task and wait for `PASS`/`CHANGES_REQUIRED` before preparing any remote
-preflight. A `PASS` authorizes only the next controlled Staging read-only
-preflight, not Production or a later candidate group.
+The exact head is `ce7e623ff396f099c3bf9256733973ce158beb9e`, bound to CI
+`29913122480` and Vercel Preview `EeNmUmEaEajq3MnRVe7V3RCTfGph`; both exact-
+head checks are green. No Staging/Production SQL has been run. The first
+independent review returned `CHANGES_REQUIRED` only for stale PR/documentation
+bindings, so this packet remains `FINAL REVIEW PENDING`. After those wording
+fixes are pushed, wait for `PASS`/`CHANGES_REQUIRED` before preparing any
+remote preflight. A `PASS` authorizes only the next controlled Staging
+read-only preflight, not Production or a later candidate group.
 
 **OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PENDING**
 
