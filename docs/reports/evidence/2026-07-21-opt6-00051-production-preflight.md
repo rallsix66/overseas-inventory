@@ -1,4 +1,4 @@
-# OPT-6 Batch 2 ??00051 Production Exact Preflight Packet
+# OPT-6 Batch 2 — 00051 Production Exact Preflight Packet
 
 ## Status
 
@@ -30,7 +30,7 @@ in-progress sync runs:
 | unique history versions and names | `unique_versions = true`, `unique_names = true` |
 | history range | `min_00001 = true`, `max_00050 = true` |
 | no timestamp versions | `no_timestamp_versions = true` |
-| exact `00001`??00050` set | `exact_version_set = true` |
+| exact `00001`–`00050` set | `exact_version_set = true` |
 | candidate absent | `no_00051 = true` |
 | exact version/name history | `exact_version_name_history = true` |
 | exact full history payload | `exact_history_payload = true` |
@@ -42,14 +42,14 @@ in-progress sync runs:
 | complete role policy catalog | `exact_role_policies = true` |
 | active sync runs | `in_progress_sync_runs = 0` |
 
-The history baseline is the reviewed Production `00001`??00050` row catalog in
+The history baseline is the reviewed Production `00001`–`00050` row catalog in
 the SQL packet's `expected_history` CTE. Each row pins version, name,
 `cardinality(statements)`, normalized payload length, and the MD5 of the full
 `array_to_string(statements, E'\x1f')` payload (with `<NULL>` normalization).
 `exact_version_name_history` compares the complete version-to-name mapping;
 `exact_history_payload` additionally compares every row's complete payload
 summary. The packet returns both actual and expected aggregate digests, but the
-row-by-row equality booleans??ot a digest display alone??re the hard gate.
+row-by-row equality booleans—not a digest display alone—are the hard gate.
 
 The role catalog comparison includes policy name, PERMISSIVE state, role OIDs,
 command, complete normalized `USING`, and complete normalized `WITH CHECK`.
@@ -75,4 +75,3 @@ credentials or secrets are recorded here.
 - [Staging apply/postcheck evidence](2026-07-21-opt6-00051-staging-preflight.md)
 - [Current task packet](../../tasks/current-task.md)
 - [Optimization roadmap](../../tasks/system-optimization-roadmap-2026-07-17.md)
-

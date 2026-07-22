@@ -1,4 +1,4 @@
-# OPT-6 Quality Governance ??Batch 2
+# OPT-6 Quality Governance — Batch 2
 
 ## Status
 
@@ -44,7 +44,7 @@ Migration edit/replay, and no remote history manipulation.
 ## Local verification
 
 - 00051 static contract: 4/4 passed.
-- Isolated PostgreSQL 17 replay `00001`??00051`: 5/5 passed.
+- Isolated PostgreSQL 17 replay `00001`–`00051`: 5/5 passed.
 - Isolated PostgreSQL identity matrix and guard failures: 3/3 passed.
 - Combined focused suite: 12/12 passed.
 - Default non-PostgreSQL suite: 94 files / 3949 tests passed.
@@ -61,7 +61,7 @@ catalog untouched because the migration rejects before policy removal.
 
 The complete local database-contract command also exercised all five contract
 files. The new 00051 suite and its replay passed; four pre-existing assertions
-in 00041??0049 expect the English text `permission denied`, while this local
+in 00041–00049 expect the English text `permission denied`, while this local
 PostgreSQL installation emits the equivalent Chinese permission message. That
 locale-only baseline is not changed by this batch; the CI PostgreSQL job is the
 authoritative exact-head gate for the complete suite.
@@ -82,7 +82,7 @@ exact preflight and maintenance-window packet. Production and every further
 Batch 2 candidate remain prohibited.
 
 The Staging read-only preflight is now `PASS`: the environment has exact
-`00001`??00050` history, no `00051`, and the complete two-policy
+`00001`–`00050` history, no `00051`, and the complete two-policy
 `public.role` baseline matches the reviewed catalog. This was the read-only
 preparation checkpoint. The reviewed atomic Staging packet then returned
 `Success. No rows returned`; its separate SELECT-only postcheck returned all
@@ -129,4 +129,3 @@ read-only result remains subject to designated independent review.
 - [00051 migration](../../supabase/migrations/00051_optimize_role_rls_policy_overlap.sql)
 - [00051 static contract](../../src/features/database/opt6-role-policy-overlap-migration.test.ts)
 - [00051 PostgreSQL behavior contract](../../src/features/database/opt6-role-policy-overlap.postgres.test.ts)
-
