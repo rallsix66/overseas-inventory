@@ -2,7 +2,7 @@
 
 ## Current status
 
-EXECUTION HARD STOP / STAGING REVALIDATION PASS / REVIEW SUBMISSION PENDING / REMOTE WRITE PROHIBITED
+EXECUTION HARD STOP / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION APPLY REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 The reviewed 00052 implementation and status-sync record are PASS. This evidence
 records the prepared SELECT-only packet; no Staging or Production write occurred.
@@ -32,7 +32,7 @@ Fresh independent review and one further SELECT-only revalidation were required;
 
 The corrected packet was run once as SELECT-only in Staging after independent review PASS. It returned one row and made no write. All hard-stop booleans were true: exact 51-row history/set, no 00052, exact version/name mapping, exact full statements[] payload, two exact public.product policies, and zero in-progress sync runs. Actual and expected version/name digest were both 2d6174dce487614c3280456fff9169d0; actual and expected full-payload digest were both 8ec295c38bc90f769dc35ca5fd64a500; observed product-policy digest was 119e5878b2ddd6d3f7c1c01e614c4112.
 
-The result is submitted for fresh independent review. This is not an apply authorization: Production, 00052 writes, and Batch 4 remain prohibited until that review returns PASS.
+The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This is not an apply authorization: Production, 00052 writes, and Batch 4 remain prohibited pending their own review.
 
 ## Hard-stop assertions
 

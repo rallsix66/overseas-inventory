@@ -2,7 +2,7 @@
 
 ## Status
 
-EXECUTION HARD STOP / STAGING REVALIDATION PASS / REVIEW SUBMISSION PENDING / REMOTE WRITE PROHIBITED
+EXECUTION HARD STOP / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION APPLY REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 Batch 3 implementation and documentation-only status-sync reviews are PASS.
 This packet is a SELECT-only read-only preflight for the reviewed 00052 candidate.
@@ -57,7 +57,7 @@ Staging baseline; its expected full-payload digest is
 
 After the corrected baseline received independent review PASS, the packet was executed once in the Staging SQL Editor as a single SELECT-only statement. It returned one row and performed no write, Migration execution, or history registration. Every hard-stop gate passed: rows_51, uniqueness, 00001/00051 bounds, no timestamp versions, exact version set, and absence of 00052 were all true. Actual and expected version/name digest both equal 2d6174dce487614c3280456fff9169d0. Actual and expected full statements[] payload digest both equal 8ec295c38bc90f769dc35ca5fd64a500; the two explicit history equality booleans and both product policy booleans are true. The observed product-policy digest is 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs is 0.
 
-This read-only result is now submitted for a fresh independent review. Until that review returns PASS, Production, any 00052 apply packet, and Batch 4 remain prohibited.
+The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This PASS records the Staging read-only stage only; Production, any 00052 apply packet, and Batch 4 remain prohibited pending their own review.
 
 ## Scope and safety
 
