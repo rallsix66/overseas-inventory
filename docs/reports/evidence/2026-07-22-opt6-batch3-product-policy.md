@@ -67,4 +67,4 @@ Current hygiene evidence is green: `git diff --check` PASS, documentation
 relative-link check `0 missing`, high-confidence secret scan `0`, orphan/temp
 file check `0`, and worktree clean. Before any remote step, the exact
 submitted head must have green quality and PostgreSQL CI jobs, lint/build/type
-checks and an explicit independent reviewer `PASS`. The implementation PASS does not yet authorize preparation: the documentation-only status-sync review must PASS first. It does not authorize execution, Production or Batch 4.
+checks and an explicit independent reviewer `PASS`. Implementation and documentation-only status-sync reviews both returned PASS. Preparation of a Staging SELECT-only preflight is now permitted; execution, Production and Batch 4 remain prohibited.

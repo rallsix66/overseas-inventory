@@ -51,7 +51,7 @@ indexes, business rows, old migrations or remote history. The full
   `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
   implementation-checkpoint evidence only. The first independent review
   returned `CHANGES_REQUIRED` only for stale PR/documentation bindings; those
-  bindings are now corrected, so the implementation review PASS is recorded; this documentation-only status sync is pending independent review and no remote write is authorized.
+  bindings are now corrected; implementation and documentation-only status-sync reviews both returned PASS. No remote write is authorized.
 - Product behavior contract covers anonymous, active Admin, active Operator
   and disabled identities for SELECT/INSERT/UPDATE/DELETE before and after the
   migration, comparing success, row count and SQLSTATE. Guard cases reject an
@@ -69,7 +69,7 @@ Detailed evidence and the exact stop gate are in the
 
 The complete local/CI quality gate and the designated independent review have
 returned `PASS` for implementation head `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`.
-No Staging read-only preflight may be prepared until the documentation-only status-sync review returns PASS; execution or any apply packet still requires its own review. `CHANGES_REQUIRED` stops the route and limits the
+Only preparation of a Staging read-only preflight is now permitted; execution or any apply packet still requires its own review. `CHANGES_REQUIRED` stops the route and limits the
 next edit to the reviewer's requested scope. Production, Batch 4 and all
 remaining policy groups remain prohibited.
 
