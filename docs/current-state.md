@@ -22,8 +22,8 @@
 > 2026-07-22 maintenance window and its SELECT-only postcheck passed: exact
 > 00001–00051 history, canonical 00051 payload, four reviewed role policies,
 > and zero active sync runs. See [apply/postcheck evidence](reports/evidence/2026-07-22-opt6-00051-production-apply.md).
-> Batch 3 remote writes remain prohibited pending its own implementation and
-> independent review. The current implementation checkpoint is indexed in the
+> Batch 3 implementation review has returned PASS; no Staging/Production write has been executed for 00052. The only next step is preparation of a controlled Staging SELECT-only preflight. The
+> current implementation checkpoint and review record are indexed in the
 > [Batch 3 report](reports/2026-07-22-opt6-quality-governance-batch-3.md) and
 > [evidence](reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
 

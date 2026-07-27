@@ -2,7 +2,7 @@
 
 ## Status
 
-`IMPLEMENTATION COMPLETE / REVIEW PENDING / REMOTE WRITE PROHIBITED`
+`IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT PREPARATION PENDING / REMOTE WRITE PROHIBITED`
 
 This is the next independently reviewable policy-overlap candidate after the
 Batch 2 `public.role` closure. It is not a remote apply authorization and it

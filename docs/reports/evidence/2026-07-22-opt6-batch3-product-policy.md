@@ -2,7 +2,7 @@
 
 ## Current status
 
-`IMPLEMENTATION COMPLETE / REVIEW PENDING / REMOTE WRITE PROHIBITED`
+`IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT PREPARATION PENDING / REMOTE WRITE PROHIBITED`
 
 This is a current implementation checkpoint, not a historical remote result.
 No Staging or Production statement for `00052` has been executed.
