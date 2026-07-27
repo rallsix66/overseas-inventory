@@ -2,7 +2,7 @@
 
 ## Current status
 
-PRODUCTION SELECT-ONLY PREFLIGHT EXECUTED ONCE / RESULT PASS / INDEPENDENT REVIEW PENDING / REMOTE WRITE PROHIBITED
+PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / REMOTE WRITE PROHIBITED
 
 The packet was run exactly once in Production SQL Editor on 2026-07-28 after its
 implementation-review PASS. It returned one row with every hard-stop boolean true.
@@ -38,7 +38,7 @@ The single SELECT-only run returned:
   `product_policy_digest=119e5878b2ddd6d3f7c1c01e614c4112`, and
   `in_progress_sync_runs=0`.
 
-All hard-stop booleans were true. This is a read-only result and does not authorize
+All hard-stop booleans were true. The designated independent reviewer returned PASS at head `7f83f01c847d685e865d2c4c7c4d8012267ed085`, CI `30276563343`, and Vercel `4QSHNyh9PDfbnpWMrMeiadV2YBts`. This is a read-only result and does not authorize
 Production apply, Migration 00052, or Batch 4.
 
 ## Reproducible files
@@ -59,6 +59,6 @@ Production apply, Migration 00052, or Batch 4.
 
 ## Stop gate
 
-The permitted read-only run is complete with all gates true and is submitted for
-independent review. Production apply, Migration execution, and Batch 4 remain
-prohibited until a separate explicit reviewer PASS and the next controlled window.
+The permitted read-only run is complete with all gates true and received independent
+PASS. Production apply, Migration execution, and Batch 4 remain prohibited until
+the next separately reviewed controlled window.

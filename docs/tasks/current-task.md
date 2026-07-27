@@ -1,6 +1,6 @@
 # Current Task Packet
 
-The corrected 00052 Staging SELECT-only revalidation ran once after its fresh implementation review PASS; all history/version-name/full-payload, product-policy, and active-sync gates passed, with no write or Migration. The designated independent reviewer returned PASS at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. The Production 00052 SELECT-only preflight then ran exactly once with every gate true; its result is now submitted for independent review. Production apply, any Migration, and Batch 4 remain prohibited.
+The corrected 00052 Staging SELECT-only revalidation ran once after its fresh implementation review PASS; all history/version-name/full-payload, product-policy, and active-sync gates passed, with no write or Migration. The designated independent reviewer returned PASS at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. The Production 00052 SELECT-only preflight then ran exactly once with every gate true; the designated independent reviewer returned PASS at head 7f83f01c847d685e865d2c4c7c4d8012267ed085, CI 30276563343, and Vercel 4QSHNyh9PDfbnpWMrMeiadV2YBts. Production apply, any Migration, and Batch 4 remain prohibited.
 ## Task ID
 
 ### Current gate (2026-07-22)
@@ -33,10 +33,10 @@ The packet and static/PostgreSQL contract were corrected and independently re-ap
 
 ### Production 00052 SELECT-only preflight execution (2026-07-28)
 
-The Production SELECT-only packet was executed exactly once after implementation-review PASS. All history/version-name/full-payload, public.product, and active-sync gates returned true; actual and expected version/name digests both were 2d6174dce487614c3280456fff9169d0, full-payload digests both were 0b7cba5a88fff139fb0ec65e4deaa142, product policy digest was 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs=0. No write, Migration, or apply packet ran. See the [Production preflight report](../reports/2026-07-28-opt6-00052-production-preflight.md) and [evidence](../reports/evidence/2026-07-28-opt6-00052-production-preflight.md). The result is submitted for independent review; no Production write, apply packet, Migration, or Batch 4 is authorized.
+The Production SELECT-only packet was executed exactly once after implementation-review PASS. All history/version-name/full-payload, public.product, and active-sync gates returned true; actual and expected version/name digests both were 2d6174dce487614c3280456fff9169d0, full-payload digests both were 0b7cba5a88fff139fb0ec65e4deaa142, product policy digest was 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs=0. No write, Migration, or apply packet ran. The designated independent reviewer returned PASS at head 7f83f01c847d685e865d2c4c7c4d8012267ed085, CI 30276563343, and Vercel 4QSHNyh9PDfbnpWMrMeiadV2YBts. See the [Production preflight report](../reports/2026-07-28-opt6-00052-production-preflight.md) and [evidence](../reports/evidence/2026-07-28-opt6-00052-production-preflight.md). No Production write, apply packet, Migration, or Batch 4 is authorized.
 
 
-OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT REVIEW PENDING / REMOTE WRITE PROHIBITED
+OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / REMOTE WRITE PROHIBITED
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
