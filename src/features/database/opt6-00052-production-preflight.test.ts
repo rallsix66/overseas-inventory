@@ -1,4 +1,4 @@
-﻿import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -52,4 +52,3 @@ describe('OPT-6 Batch 3 Production 00052 preflight static contract', () => {
     expect(packet).toContain("status = 'in_progress'")
   })
 })
-

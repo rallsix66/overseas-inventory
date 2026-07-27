@@ -1,4 +1,4 @@
-﻿import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Client } from 'pg'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -47,4 +47,3 @@ describe('OPT-6 Batch 3 Production preflight PostgreSQL execution contract', () 
     expect(result.rows[0]).toHaveProperty('in_progress_sync_runs')
   })
 })
-

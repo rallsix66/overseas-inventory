@@ -200,4 +200,3 @@ SELECT
 FROM history_check
 CROSS JOIN history_compare
 CROSS JOIN product_check;
-

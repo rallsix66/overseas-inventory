@@ -1,4 +1,4 @@
-﻿# OPT-6 Batch 3 - 00052 Production SELECT-only preflight
+# OPT-6 Batch 3 - 00052 Production SELECT-only preflight
 
 ## Status
 
@@ -58,4 +58,3 @@ not compare only statements[1].
 This preparation must receive an independent PASS before the packet may be run
 once as Production SELECT-only. A PASS for this read-only preflight would not
 authorize Migration 00052, an apply packet, a Production write, or Batch 4.
-

@@ -1,4 +1,4 @@
-﻿# OPT-6 Batch 3 - 00052 Production preflight evidence
+# OPT-6 Batch 3 - 00052 Production preflight evidence
 
 ## Current status
 
@@ -42,4 +42,3 @@ Migration 00052, an apply packet, a Production write, or Batch 4.
 Independent review of this prepared packet is required before one controlled
 Production SELECT-only run. Even after a read-only PASS, Production apply,
 Migration execution, and Batch 4 remain prohibited.
-
