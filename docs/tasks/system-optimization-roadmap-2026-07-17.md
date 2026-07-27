@@ -249,7 +249,7 @@ candidate is the pure `public.product` SELECT overlap. Forward-only Migration
 `00052_optimize_product_rls_policy_overlap.sql` and its static/PostgreSQL
 behavior contracts are implemented and indexed in the [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md)
 and [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
-Status is IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION APPLY REVIEW PENDING / REMOTE WRITE PROHIBITED.
+Status is IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT REVIEW PENDING / REMOTE WRITE PROHIBITED.
 The remaining policy groups are unchanged. The designated independent review returned `PASS` for implementation head
 `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`; audit submission
 `024a946fa16facaba22fbb85a2af3ff54323832c` records that result. The 00052 Staging SELECT-only preflight packet was independently approved and attempted once; PostgreSQL stopped the first revision with 42P01 for an undefined role_check CTE before any result or write. The corrected packet was independently re-approved and retried once; its full statements[] payload gate returned false because the expected CTE used the Production variant for known Staging rows 00041-00047. A separate SELECT-only comparison matched the prior Staging postcheck, so the packet expected baseline was corrected to the approved Staging variant and now expects digest 8ec295c38bc90f769dc35ca5fd64a500. No write occurred. The corrected SELECT-only revalidation then completed with every history, payload, policy, and active-sync gate true. Fresh independent closing review is pending; Production and later candidates remain prohibited until PASS.
@@ -263,9 +263,4 @@ because PR/documentation carried stale historical bindings; those bindings
 are now corrected and the implementation review `PASS` is recorded; documentation-only status
 sync is bound to CI `30232410813` and Vercel `D9hYAYzUJ88yp7zwQtfqKM2hfa7f`.
 
-**Production 00052 preflight preparation (2026-07-28)**: the SELECT-only packet,
-static contract, isolated PostgreSQL executable contract, report, evidence, and
-navigation are prepared. The expected Production full-payload digest is
-0b7cba5a88fff139fb0ec65e4deaa142 and version/name digest is
-2d6174dce487614c3280456fff9169d0. No Production SQL, Migration, apply packet,
-write, or Batch 4 action is authorized before independent review.
+**Production 00052 SELECT-only preflight execution (2026-07-28)**: after implementation-review PASS, the prepared packet ran exactly once in Production SQL Editor. All history/version-name/full statements[] payload, public.product policy, and zero-active-sync gates passed; actual/expected full-payload digest was 0b7cba5a88fff139fb0ec65e4deaa142, version/name digest was 2d6174dce487614c3280456fff9169d0, product policy digest was 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs=0. No write, Migration, or apply packet ran. The result is submitted for independent review; Production apply and Batch 4 remain prohibited.

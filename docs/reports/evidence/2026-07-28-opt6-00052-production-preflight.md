@@ -2,10 +2,11 @@
 
 ## Current status
 
-PRODUCTION SELECT-ONLY PREFLIGHT PREPARED / REVIEW PENDING / REMOTE EXECUTION PROHIBITED
+PRODUCTION SELECT-ONLY PREFLIGHT EXECUTED ONCE / RESULT PASS / INDEPENDENT REVIEW PENDING / REMOTE WRITE PROHIBITED
 
-No Production SQL was executed for this evidence. This file records the prepared
-packet, its expected baseline, and local verification only.
+The packet was run exactly once in Production SQL Editor on 2026-07-28 after its
+implementation-review PASS. It returned one row with every hard-stop boolean true.
+No Migration 00052, apply packet, or write was executed.
 
 ## Expected baseline and hard stops
 
@@ -21,6 +22,25 @@ packet, its expected baseline, and local verification only.
 Any false result is a hard stop. The packet is SELECT-only and does not authorize
 Migration 00052, an apply packet, a Production write, or Batch 4.
 
+## Remote execution result
+
+The single SELECT-only run returned:
+
+- history/set gates all `true`: `rows_51`, `unique_versions`, `unique_names`,
+  `min_00001`, `max_00051`, `no_timestamp_versions`, `exact_version_set`, and
+  `no_00052`;
+- version/name actual and expected digest both
+  `2d6174dce487614c3280456fff9169d0`, with reviewed-constant gate `true`;
+- complete statements[] actual and expected digest both
+  `0b7cba5a88fff139fb0ec65e4deaa142`, with reviewed-constant gate `true`;
+- `exact_version_name_history=true`, `exact_history_payload=true`,
+  `product_policy_count_2=true`, `exact_product_policies=true`,
+  `product_policy_digest=119e5878b2ddd6d3f7c1c01e614c4112`, and
+  `in_progress_sync_runs=0`.
+
+All hard-stop booleans were true. This is a read-only result and does not authorize
+Production apply, Migration 00052, or Batch 4.
+
 ## Reproducible files
 
 - SQL: [Production preflight SQL](../sql/2026-07-28-opt6-00052-production-preflight.sql)
@@ -35,10 +55,10 @@ Migration 00052, an apply packet, a Production write, or Batch 4.
   digest constants, SELECT-only verbs, product policy catalog, and active-sync gate.
 - The PostgreSQL contract executes the complete packet in an isolated local schema
   and checks the result shape and all required gate columns.
-- Production has not been queried or modified.
+- Production was queried exactly once by the SELECT-only packet; it was not modified.
 
 ## Stop gate
 
-Independent review of this prepared packet is required before one controlled
-Production SELECT-only run. Even after a read-only PASS, Production apply,
-Migration execution, and Batch 4 remain prohibited.
+The permitted read-only run is complete with all gates true and is submitted for
+independent review. Production apply, Migration execution, and Batch 4 remain
+prohibited until a separate explicit reviewer PASS and the next controlled window.
