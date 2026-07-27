@@ -1,4 +1,4 @@
-# OPT-6 Batch 3 ? product policy overlap evidence
+# OPT-6 Batch 3 — product policy overlap evidence
 
 ## Current status
 
@@ -9,7 +9,7 @@ No Staging or Production statement for `00052` has been executed.
 
 ## Approved candidate
 
-The local 00001?00051 replay inventory contains a pure `public.product`
+The local 00001–00051 replay inventory contains a pure `public.product`
 SELECT overlap:
 
 | Existing policy | Command | Predicate |
@@ -49,14 +49,14 @@ Migration edits or history manipulation.
 - Continuous replay contract now includes the 00052 file and asserts the
   four-policy `public.product` catalog; its local run passed 6/6 tests.
 - The combined database-contract command had 4 pre-existing locale-only
-  failures in 00041?00049 English permission-message assertions; the 00052
+  failures in 00041–00049 English permission-message assertions; the 00052
   contract and replay remain green and this batch does not alter those tests.
 
 ## Review and remote stop gates
 
-The submitted exact head is `6fd4537198d458fddad7baae174180d7fe478d3a`,
-bound to CI run `29917354045` (quality and PostgreSQL jobs passed) and Vercel
-Preview `AiTr8VWQjKGAbqcUJW9i55odhhFv` (READY). PR #11 remains Draft/Open.
+The submitted exact head is `cf972945f3668aab105b202a829b506d2af85a2d`,
+bound to CI run `29921729805` (quality and PostgreSQL jobs passed) and Vercel
+Preview `BTqGGZZGF2xBkN9PqVUJREt3QDXs` (READY). PR #11 remains Draft/Open.
 The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e` /
 `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 implementation-checkpoint evidence only. The first independent review found
