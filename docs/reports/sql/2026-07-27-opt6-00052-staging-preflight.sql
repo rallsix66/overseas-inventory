@@ -21,7 +21,7 @@ actual_history AS (
       AS statement_digest
   FROM history
 ),
--- Reviewed Staging baseline. The statement digest is over the complete
+-- Reviewed Staging baseline, including the known 00041-00047 trailing-newline drift. The statement digest is over the complete
 -- statements array joined with E'\\x1f', never a first-element-only projection.
 expected_history(version, name, statement_count, statement_chars, statement_digest) AS (
   VALUES
@@ -65,13 +65,13 @@ expected_history(version, name, statement_count, statement_chars, statement_dige
     ('00038', '00038_golucky_schema', 1, 7017, 'e8883456d9d87922d52d0d0a299e1444'),
     ('00039', '00039_golucky_rls_rpc', 1, 14775, '4353afb962502eea441a563644eff4de'),
     ('00040', '00040_golucky_token_cache', 1, 7517, 'd7e2eef48f84936af77b53fdd6455bf2'),
-    ('00041', '00041_replenishment_warehouse_params', 1, 752, 'dbe56c84bd30d389743043231452ec24'),
-    ('00042', '00042_replenishment_cancellation', 1, 661, 'bbf8ad8299aa3b3e7e7181eb807accf4'),
-    ('00043', '00043_forecast_stockout', 1, 3489, 'cc4a53ddd50f0c2a16d0f793feb7e6ba'),
-    ('00044', '00044_replenishment_rpcs', 1, 9938, 'fefb4f40c5c8e233aef1c6d0497f345e'),
-    ('00045', '00045_product_overview_rpc', 1, 8814, 'b35210ab8d809e7985e3b9d9d055f270'),
-    ('00046', '00046_war_room_variant_detail_rpc', 1, 10501, '66b76a6365d44c069577c3b2d5681a33'),
-    ('00047', '00047_dashboard_warehouse_health_overview', 1, 5519, '2e68149556947358eb11f41963a2b607'),
+    ('00041', '00041_replenishment_warehouse_params', 1, 750, 'adf5951cb448754b4a62e259a533eca1'),
+    ('00042', '00042_replenishment_cancellation', 1, 659, 'da40777c08606c54b750f10c46006b52'),
+    ('00043', '00043_forecast_stockout', 1, 3487, 'c85d29f5a213a6e54b378ce266760de2'),
+    ('00044', '00044_replenishment_rpcs', 1, 9936, 'db8f65300c4ad5b7098f3a1fe8a33c90'),
+    ('00045', '00045_product_overview_rpc', 1, 8812, 'c4bd27c670a112ab58cbf86f21ccd10a'),
+    ('00046', '00046_war_room_variant_detail_rpc', 1, 10499, 'c6bbce9065096d1b53f3f1dc731e139b'),
+    ('00047', '00047_dashboard_warehouse_health_overview', 1, 5517, '1cdf5e8f221e270fe183eddcfbb3b175'),
     ('00048', '00048_restore_claim_sync_run_system', 1, 5596, '0a4a0cb7b1bcae70346efda90333e2f9'),
     ('00049', '00049_database_least_privilege_hardening', 1, 6413, '60a8e975f7a1a30e9938b6a43eb8aea5'),
     ('00050', '00050_optimize_auth_rls_initplan', 1, 6519, 'f5758671947c61dc1fb3bf3e94d8e8d0'),

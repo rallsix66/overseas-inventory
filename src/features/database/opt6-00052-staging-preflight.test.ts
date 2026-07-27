@@ -38,4 +38,9 @@ describe('OPT-6 Batch 3 Staging 00052 preflight static contract', () => {
     expect(packet).toContain("relation.relname = 'product'")
     expect(packet).toContain("status = 'in_progress'")
   })
+  it('pins the known Staging trailing-newline baseline', () => {
+    expect(packet).toContain("('00041', '00041_replenishment_warehouse_params', 1, 750, 'adf5951cb448754b4a62e259a533eca1')")
+    expect(packet).toContain("('00047', '00047_dashboard_warehouse_health_overview', 1, 5517, '1cdf5e8f221e270fe183eddcfbb3b175')")
+    expect(packet).not.toContain('dbe56c84bd30d389743043231452ec24')
+  })
 })

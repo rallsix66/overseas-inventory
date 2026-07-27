@@ -2,11 +2,15 @@
 
 ## Status
 
-EXECUTION HARD STOP / PAYLOAD DRIFT REVIEW PENDING / REMOTE WRITE PROHIBITED
+EXECUTION HARD STOP / STAGING BASELINE CORRECTED / REVALIDATION REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 Batch 3 implementation and documentation-only status-sync reviews are PASS.
-This packet is a new SELECT-only read-only preflight for the reviewed 00052
-candidate. The first approved Staging attempt on 2026-07-27 failed before returning a result with PostgreSQL 42P01 because the packet final SELECT referenced an undefined `role_check` CTE; no write, Migration, or apply packet ran. It is not an apply packet.
+This packet is a SELECT-only read-only preflight for the reviewed 00052 candidate.
+The first approved Staging attempt on 2026-07-27 failed before returning a
+result with PostgreSQL 42P01 because the final SELECT referenced an undefined
+role_check CTE; no write, Migration, or apply packet ran. The corrected packet
+was independently re-approved and retried once; that read-only run also made no
+write.
 
 ## Target and exact gates
 
@@ -23,35 +27,50 @@ candidate. The first approved Staging attempt on 2026-07-27 failed before return
 - public.sync_run must have zero status = in_progress rows.
 - Any false boolean or digest/policy mismatch is a hard stop.
 
-## 2026-07-27 read-only execution result
+## 2026-07-27 read-only execution and baseline reconciliation
 
-The corrected packet was retried once after the fresh independent PASS. The
-query returned one row without error and no write occurred, but the hard-stop
-booleans were not all true: `rows_51`, `unique_versions`, `unique_names`,
-`min_00001`, `max_00051`, `no_timestamp_versions`, `exact_version_set`,
-`no_00052`, `exact_version_name_history`, `product_policy_count_2`,
-`exact_product_policies`, and `in_progress_sync_runs=0` passed. The complete
-history payload gate failed: actual digest
-`8ec295c38bc90f769dc35ca5fd64a500` versus expected digest
-`0b7cba5a88fff139fb0ec65e4deaa142`, `exact_history_payload=false`. This is a
-hard stop; the expected baseline must be independently reconciled before any
-retry or write authorization.
+The corrected packet returned one row without error and no write occurred. Shape,
+version/name, policy and active-sync gates passed. The full history payload gate
+returned exact_history_payload=false: actual digest
+8ec295c38bc90f769dc35ca5fd64a500 versus the then-expected digest
+0b7cba5a88fff139fb0ec65e4deaa142.
+
+A separate SELECT-only per-version comparison located seven rows. Their names and
+statement counts matched, while Staging retained the known trailing-newline
+variant already recorded by the Staging postcheck:
+
+| Version | chars | MD5 |
+|---|---:|---|
+| 00041 | 750 | adf5951cb448754b4a62e259a533eca1 |
+| 00042 | 659 | da40777c08606c54b750f10c46006b52 |
+| 00043 | 3487 | c85d29f5a213a6e54b378ce266760de2 |
+| 00044 | 9936 | db8f65300c4ad5b7098f3a1fe8a33c90 |
+| 00045 | 8812 | c4bd27c670a112ab58cbf86f21ccd10a |
+| 00046 | 10499 | c6bbce9065096d1b53f3f1dc731e139b |
+| 00047 | 5517 | 1cdf5e8f221e270fe183eddcfbb3b175 |
+
+The packet's prior expected rows used the Production variant for these seven
+Staging rows. The SELECT-only packet has now been corrected to the approved
+Staging baseline; its expected full-payload digest is
+8ec295c38bc90f769dc35ca5fd64a500. Fresh independent review is required before
+one further SELECT-only revalidation. No write, Migration, or apply packet ran.
+
 ## Scope and safety
 
-- The packet is one SELECT-only statement batch: no BEGIN/COMMIT, DDL, DML,
-  ACL change, Migration execution or history registration.
-- It does not create an apply packet and does not authorize 00052 execution.
-- The approved Staging SELECT-only packet ran once and stopped with PostgreSQL 42P01; no write, Migration, or apply packet ran.
+- One SELECT-only statement batch: no BEGIN/COMMIT, DDL, DML, ACL change,
+  Migration execution or history registration.
+- No apply packet was created or authorized.
+- Production, remote 00052 apply and later candidate groups remain prohibited.
 
 ## Verification record
 
-- Static contract: src/features/database/opt6-00052-staging-preflight.test.ts.
 - Packet: docs/reports/sql/2026-07-27-opt6-00052-staging-preflight.sql.
-- Correction exact head: `48c81ca6417b45bbd1bcd1ed5a46e2988861202e`; exact-head CI run `30245747778`; Vercel Preview `5UTs9Zqfgi7ECf9fB4Adz8AzUUdY`; all remote checks passed.
-- Implementation review PASS: head 23d92d3, CI 30230526963, Vercel 5F5tvSTDP7A14aCaD217Pxh2yFh3.
-- Status-sync review PASS: head 27a05f5, CI 30235057506, Vercel 3paYznmNCuxke9zJK8VziNL2M856.
-- This preflight packet requires its own independent review before any
-  read-only execution. A false result stops the route.
+- Static contract: src/features/database/opt6-00052-staging-preflight.test.ts.
+- PostgreSQL contract: src/features/database/opt6-00052-staging-preflight.postgres.test.ts.
+- Earlier correction exact head: 48c81ca6417b45bbd1bcd1ed5a46e2988861202e; CI
+  30245747778; Vercel Preview 5UTs9Zqfgi7ECf9bF4Adz8AzUUdY.
+- This baseline correction requires its own independent review and exact-head
+  quality verification before revalidation.
 
 ## Navigation
 

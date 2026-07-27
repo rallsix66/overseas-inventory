@@ -22,10 +22,18 @@
 > 2026-07-22 maintenance window and its SELECT-only postcheck passed: exact
 > 00001–00051 history, canonical 00051 payload, four reviewed role policies,
 > and zero active sync runs. See [apply/postcheck evidence](reports/evidence/2026-07-22-opt6-00051-production-apply.md).
-> Batch 3 implementation review has returned PASS. The approved 00052 Staging SELECT-only packet was attempted once on 2026-07-27 and stopped with PostgreSQL 42P01 (`role_check` CTE missing) before any result; no Staging/Production write, Migration, or apply packet ran. The corrected packet was independently re-approved and retried once; the full history payload gate returned false (actual `8ec295c38bc90f769dc35ca5fd64a500` vs expected `0b7cba5a88fff139fb0ec65e4deaa142`). No write, Migration, or apply packet ran; independent baseline reconciliation is now the hard stop. The
-> current implementation checkpoint and review record are indexed in the
-> [Batch 3 report](reports/2026-07-22-opt6-quality-governance-batch-3.md) and
-> [evidence](reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
+> Batch 3 implementation review has returned PASS. The approved 00052 Staging
+> SELECT-only packet was attempted once on 2026-07-27 and stopped with PostgreSQL
+> 42P01 (role_check CTE missing) before any result; no Staging/Production write,
+> Migration, or apply packet ran. The corrected packet was independently
+> re-approved and retried once; its full payload gate was false because the
+> expected CTE used the Production variant for known Staging rows 00041-00047.
+> A separate SELECT-only comparison matched the recorded Staging postcheck, so
+> the packet was corrected to the approved Staging baseline. Its expected payload
+> digest is now 8ec295c38bc90f769dc35ca5fd64a500. No write ran; fresh independent
+> review and one further SELECT-only revalidation are required. Production and
+> later candidates remain prohibited. The current implementation checkpoint and
+> evidence are indexed in the Batch 3 report and 00052 preflight report/evidence.
 
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051

@@ -2,21 +2,33 @@
 
 ## Current status
 
-EXECUTION HARD STOP / PAYLOAD DRIFT REVIEW PENDING / REMOTE WRITE PROHIBITED
+EXECUTION HARD STOP / STAGING BASELINE CORRECTED / REVALIDATION REVIEW PENDING / REMOTE WRITE PROHIBITED
 
-The reviewed 00052 implementation and status-sync record are PASS. This
-evidence file records the prepared SELECT-only packet; no Staging or Production
-statement has been executed.
+The reviewed 00052 implementation and status-sync record are PASS. This evidence
+records the prepared SELECT-only packet; no Staging or Production write occurred.
 
-## 2026-07-27 retry result
+## Read-only result and reconciliation
 
-The corrected SELECT-only packet ran once after fresh independent PASS. It
-returned one row and performed no write. History shape/set, version-name
-mapping, product policy catalog and zero active sync runs were true. The full
-statements[] payload gate was false: actual digest
-`8ec295c38bc90f769dc35ca5fd64a500`; expected digest
-`0b7cba5a88fff139fb0ec65e4deaa142`. The result is not accepted and remains a
-hard stop pending independent baseline reconciliation.
+The corrected packet ran once after independent PASS, returned one row and made no
+write. History shape/set, version-name mapping, product policy catalog and zero
+active sync runs were true. The full statements[] gate was false because the packet
+used the Production variant for known Staging rows 00041-00047:
+actual digest 8ec295c38bc90f769dc35ca5fd64a500; prior expected digest
+0b7cba5a88fff139fb0ec65e4deaa142.
+
+A separate SELECT-only row comparison matched the prior Staging postcheck:
+00041-00047 retain the 750/659/3487/9936/8812/10499/5517 character payloads and
+MD5s adf5951cb448754b4a62e259a533eca1,
+da40777c08606c54b750f10c46006b52,
+c85d29f5a213a6e54b378ce266760de2,
+db8f65300c4ad5b7098f3a1fe8a33c90,
+c4bd27c670a112ab58cbf86f21ccd10a,
+c6bbce9065096d1b53f3f1dc731e139b,
+1cdf5e8f221e270fe183eddcfbb3b175.
+The packet expected baseline is now corrected to this approved Staging variant;
+its expected full-payload digest is 8ec295c38bc90f769dc35ca5fd64a500.
+Fresh independent review and one further SELECT-only revalidation are required.
+
 ## Hard-stop assertions
 
 1. History is exactly 00001-00051; 00052 is absent.
@@ -25,20 +37,23 @@ hard stop pending independent baseline reconciliation.
 3. The single 00051 payload is 5686 characters with MD5
    aee8d4811b5382afc9786ef0dae195be.
 4. public.product has exactly the two reviewed baseline policies with full
-   catalog equality: admin_all_product and operator_select_product.
+   catalog equality.
 5. public.sync_run has zero in-progress rows.
 
-Any false result is a hard stop. This packet does not authorize applying 00052
-or any other Migration.
+Any false result is a hard stop. This packet does not authorize applying 00052 or
+any other Migration.
 
 ## Reproducible files
 
 - SQL: docs/reports/sql/2026-07-27-opt6-00052-staging-preflight.sql
 - Static contract: src/features/database/opt6-00052-staging-preflight.test.ts
+- PostgreSQL contract: src/features/database/opt6-00052-staging-preflight.postgres.test.ts
 - Main report: docs/reports/2026-07-27-opt6-00052-staging-preflight.md
-- Correction exact head: `48c81ca6417b45bbd1bcd1ed5a46e2988861202e`; CI `30245747778`; Vercel Preview `5UTs9Zqfgi7ECf9fB4Adz8AzUUdY`; all checks passed.
 - Batch 3 report: docs/reports/2026-07-22-opt6-quality-governance-batch-3.md
 
 ## Stop gate
 
-The packet received independent PASS and was executed once read-only in Staging; the 42P01 hard stop means no result was accepted. The corrected packet must receive a fresh independent PASS before retry. It does not authorize an apply packet, any write, Production or Batch 4.
+The packet received independent PASS and was executed once read-only. Baseline
+reconciliation corrected the environment-specific expected rows; the corrected
+packet must receive a fresh independent PASS before retry. It does not authorize
+an apply packet, any write, Production or Batch 4.
