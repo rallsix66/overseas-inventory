@@ -29,9 +29,7 @@ exact-head checks are green. The earlier `ce7e623ff396f099c3bf9256733973ce158beb
 / `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 implementation-checkpoint evidence only. No Staging/Production SQL has been
 run. The first independent review returned `CHANGES_REQUIRED` only for stale
-PR/documentation bindings; those wording fixes are now pushed and the current
-re-review remains `FINAL REVIEW PENDING`. Wait for `PASS`/`CHANGES_REQUIRED`
-before preparing any remote preflight. A `PASS` authorizes only the next
+PR/documentation bindings; those wording fixes are now pushed and the implementation review `PASS` is recorded; this documentation-only status sync is pending independent review. No Staging preflight may be prepared until the status-sync review returns `PASS`. A `PASS` authorizes only the next
 controlled Staging read-only preflight, not Production or a later candidate
 group.
 
@@ -39,7 +37,7 @@ group.
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
-> FINAL PASS / BATCH 3 IMPLEMENTATION REVIEW PENDING`; no remote write is
+> FINAL PASS / BATCH 3 IMPLEMENTATION REVIEW PASS`; no remote write is
 > authorized for 00052.
 
 ## Handoff from OPT-5

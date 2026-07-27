@@ -51,8 +51,7 @@ indexes, business rows, old migrations or remote history. The full
   `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
   implementation-checkpoint evidence only. The first independent review
   returned `CHANGES_REQUIRED` only for stale PR/documentation bindings; those
-  bindings are now corrected, so the current re-review remains FINAL REVIEW
-  PENDING and no remote write is authorized.
+  bindings are now corrected, so the implementation review PASS is recorded; this documentation-only status sync is pending independent review and no remote write is authorized.
 - Product behavior contract covers anonymous, active Admin, active Operator
   and disabled identities for SELECT/INSERT/UPDATE/DELETE before and after the
   migration, comparing success, row count and SQLSTATE. Guard cases reject an
