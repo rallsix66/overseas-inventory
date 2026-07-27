@@ -250,7 +250,7 @@ and [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
 Status is `IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT PREPARATION PENDING / REMOTE WRITE PROHIBITED`.
 The remaining policy groups are unchanged. The designated independent review returned `PASS` for implementation head
 `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`; audit submission
-`024a946fa16facaba22fbb85a2af3ff54323832c` records that result. Implementation and documentation-only status-sync reviews both returned PASS. Preparation of a controlled Staging SELECT-only preflight is now permitted; execution, Production and later candidates remain prohibited pending their own review gates.
+`024a946fa16facaba22fbb85a2af3ff54323832c` records that result. The 00052 Staging SELECT-only preflight packet is prepared and indexed; it requires its own independent PASS before read-only execution. Production and later candidates remain prohibited pending their own review gates.
 The current submitted exact head is `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`,
 bound to CI `30230526963` and Vercel Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3`;
 both are green and exact-head matched. The earlier
