@@ -34,6 +34,7 @@ candidate. The first approved Staging attempt on 2026-07-27 failed before return
 
 - Static contract: src/features/database/opt6-00052-staging-preflight.test.ts.
 - Packet: docs/reports/sql/2026-07-27-opt6-00052-staging-preflight.sql.
+- Correction exact head: `48c81ca6417b45bbd1bcd1ed5a46e2988861202e`; exact-head CI run `30245747778`; Vercel Preview `5UTs9Zqfgi7ECf9fB4Adz8AzUUdY`; all remote checks passed.
 - Implementation review PASS: head 23d92d3, CI 30230526963, Vercel 5F5tvSTDP7A14aCaD217Pxh2yFh3.
 - Status-sync review PASS: head 27a05f5, CI 30235057506, Vercel 3paYznmNCuxke9zJK8VziNL2M856.
 - This preflight packet requires its own independent review before any

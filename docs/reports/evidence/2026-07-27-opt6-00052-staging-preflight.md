@@ -27,6 +27,7 @@ or any other Migration.
 - SQL: docs/reports/sql/2026-07-27-opt6-00052-staging-preflight.sql
 - Static contract: src/features/database/opt6-00052-staging-preflight.test.ts
 - Main report: docs/reports/2026-07-27-opt6-00052-staging-preflight.md
+- Correction exact head: `48c81ca6417b45bbd1bcd1ed5a46e2988861202e`; CI `30245747778`; Vercel Preview `5UTs9Zqfgi7ECf9fB4Adz8AzUUdY`; all checks passed.
 - Batch 3 report: docs/reports/2026-07-22-opt6-quality-governance-batch-3.md
 
 ## Stop gate
