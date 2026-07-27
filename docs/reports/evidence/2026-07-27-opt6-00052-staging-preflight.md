@@ -2,12 +2,21 @@
 
 ## Current status
 
-EXECUTION HARD STOP / CORRECTION REVIEW PENDING / REMOTE WRITE PROHIBITED
+EXECUTION HARD STOP / PAYLOAD DRIFT REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 The reviewed 00052 implementation and status-sync record are PASS. This
 evidence file records the prepared SELECT-only packet; no Staging or Production
 statement has been executed.
 
+## 2026-07-27 retry result
+
+The corrected SELECT-only packet ran once after fresh independent PASS. It
+returned one row and performed no write. History shape/set, version-name
+mapping, product policy catalog and zero active sync runs were true. The full
+statements[] payload gate was false: actual digest
+`8ec295c38bc90f769dc35ca5fd64a500`; expected digest
+`0b7cba5a88fff139fb0ec65e4deaa142`. The result is not accepted and remains a
+hard stop pending independent baseline reconciliation.
 ## Hard-stop assertions
 
 1. History is exactly 00001-00051; 00052 is absent.

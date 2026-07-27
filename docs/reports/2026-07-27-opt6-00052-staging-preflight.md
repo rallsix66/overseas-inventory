@@ -2,7 +2,7 @@
 
 ## Status
 
-EXECUTION HARD STOP / CORRECTION REVIEW PENDING / REMOTE WRITE PROHIBITED
+EXECUTION HARD STOP / PAYLOAD DRIFT REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 Batch 3 implementation and documentation-only status-sync reviews are PASS.
 This packet is a new SELECT-only read-only preflight for the reviewed 00052
@@ -23,6 +23,19 @@ candidate. The first approved Staging attempt on 2026-07-27 failed before return
 - public.sync_run must have zero status = in_progress rows.
 - Any false boolean or digest/policy mismatch is a hard stop.
 
+## 2026-07-27 read-only execution result
+
+The corrected packet was retried once after the fresh independent PASS. The
+query returned one row without error and no write occurred, but the hard-stop
+booleans were not all true: `rows_51`, `unique_versions`, `unique_names`,
+`min_00001`, `max_00051`, `no_timestamp_versions`, `exact_version_set`,
+`no_00052`, `exact_version_name_history`, `product_policy_count_2`,
+`exact_product_policies`, and `in_progress_sync_runs=0` passed. The complete
+history payload gate failed: actual digest
+`8ec295c38bc90f769dc35ca5fd64a500` versus expected digest
+`0b7cba5a88fff139fb0ec65e4deaa142`, `exact_history_payload=false`. This is a
+hard stop; the expected baseline must be independently reconciled before any
+retry or write authorization.
 ## Scope and safety
 
 - The packet is one SELECT-only statement batch: no BEGIN/COMMIT, DDL, DML,

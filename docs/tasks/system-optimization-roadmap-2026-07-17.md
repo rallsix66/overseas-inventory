@@ -247,10 +247,10 @@ candidate is the pure `public.product` SELECT overlap. Forward-only Migration
 `00052_optimize_product_rls_policy_overlap.sql` and its static/PostgreSQL
 behavior contracts are implemented and indexed in the [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md)
 and [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
-Status is `IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT CORRECTION REVIEW PENDING / REMOTE WRITE PROHIBITED`.
+Status is `IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT PAYLOAD DRIFT REVIEW PENDING / REMOTE WRITE PROHIBITED`.
 The remaining policy groups are unchanged. The designated independent review returned `PASS` for implementation head
 `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`; audit submission
-`024a946fa16facaba22fbb85a2af3ff54323832c` records that result. The 00052 Staging SELECT-only preflight packet was independently approved and attempted once; PostgreSQL stopped it with 42P01 for an undefined `role_check` CTE before any result or write. The corrected packet and static/PostgreSQL regression contracts are indexed and require a fresh independent PASS before retry. Production and later candidates remain prohibited.
+`024a946fa16facaba22fbb85a2af3ff54323832c` records that result. The 00052 Staging SELECT-only preflight packet was independently approved and attempted once; PostgreSQL stopped it with 42P01 for an undefined `role_check` CTE before any result or write. The corrected packet was independently re-approved and retried once; its full statements[] payload gate returned false (actual `8ec295c38bc90f769dc35ca5fd64a500` vs expected `0b7cba5a88fff139fb0ec65e4deaa142`). No write occurred. Independent baseline reconciliation is required before any further retry; Production and later candidates remain prohibited. Production and later candidates remain prohibited.
 The current submitted exact head is `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`,
 bound to CI `30230526963` and Vercel Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3`;
 both are green and exact-head matched. The earlier

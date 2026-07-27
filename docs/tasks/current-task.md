@@ -28,10 +28,10 @@ CI `30230526963` and Vercel Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3`; both
 exact-head checks are green. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e`
 / `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 implementation-checkpoint evidence only. The approved Staging SELECT-only packet was attempted once on 2026-07-27 and stopped with PostgreSQL 42P01 because its final SELECT referenced an undefined `role_check` CTE; no write, Migration, or apply packet ran.
-The packet and static/PostgreSQL contract are corrected (`product_check` final projection plus regression assertions) and require a fresh independent review before retry.
+The packet and static/PostgreSQL contract were corrected and independently re-approved. The retry returned a hard-stop `exact_history_payload=false`: actual digest `8ec295c38bc90f769dc35ca5fd64a500` versus expected `0b7cba5a88fff139fb0ec65e4deaa142`; no write, Migration, or apply packet ran. Independent baseline reconciliation is required before any further retry.
 Production, apply packets, and later candidate groups remain prohibited.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT CORRECTION REVIEW PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT PAYLOAD DRIFT REVIEW PENDING**
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
