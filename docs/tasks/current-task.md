@@ -29,9 +29,9 @@ CI `30230526963` and Vercel Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3`; both
 exact-head checks are green. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e`
 / `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 implementation-checkpoint evidence only. The approved Staging SELECT-only packet was attempted once on 2026-07-27 and stopped with PostgreSQL 42P01 because its final SELECT referenced an undefined `role_check` CTE; no write, Migration, or apply packet ran.
-The packet and static/PostgreSQL contract were corrected and independently re-approved. The retry returned a hard-stop exact_history_payload=false because the expected CTE used the Production variant for Staging rows 00041-00047; no write, Migration, or apply packet ran. A separate SELECT-only comparison matched the recorded Staging postcheck, so the expected CTE was corrected to the approved Staging baseline and now expects payload digest 8ec295c38bc90f769dc35ca5fd64a500. Fresh independent review and one further SELECT-only revalidation are required. Production, apply packets, and later candidate groups remain prohibited.
+The packet and static/PostgreSQL contract were corrected and independently re-approved. The retry returned a hard-stop exact_history_payload=false because the expected CTE used the Production variant for Staging rows 00041-00047; no write, Migration, or apply packet ran. A separate SELECT-only comparison matched the recorded Staging postcheck, so the expected CTE was corrected to the approved Staging baseline and now expects payload digest 8ec295c38bc90f769dc35ca5fd64a500. The corrected packet then ran once read-only with every history, payload, policy, and active-sync gate true. Fresh independent closing review is pending. Production, apply packets, and later candidate groups remain prohibited.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT BASELINE CORRECTION / REVALIDATION REVIEW PENDING**
+OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING REVALIDATION PASS / REVIEW SUBMISSION PENDING / REMOTE WRITE PROHIBITED
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK

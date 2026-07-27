@@ -58,7 +58,7 @@ any other Migration.
 
 ## Stop gate
 
-The packet received independent PASS and was executed once read-only. Baseline
-reconciliation corrected the environment-specific expected rows; the corrected
-packet must receive a fresh independent PASS before retry. It does not authorize
-an apply packet, any write, Production or Batch 4.
+The packet received independent implementation review PASS and was executed once
+read-only after the Staging baseline correction. Every history, payload, policy,
+and active-sync gate passed. The result awaits fresh independent closing review;
+it does not authorize an apply packet, any write, Production or Batch 4.

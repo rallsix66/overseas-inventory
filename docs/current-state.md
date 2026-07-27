@@ -32,10 +32,11 @@ The corrected 00052 Staging SELECT-only revalidation returned one row with all h
 > expected CTE used the Production variant for known Staging rows 00041-00047.
 > A separate SELECT-only comparison matched the recorded Staging postcheck, so
 > the packet was corrected to the approved Staging baseline. Its expected payload
-> digest is now 8ec295c38bc90f769dc35ca5fd64a500. No write ran; fresh independent
-> review and one further SELECT-only revalidation are required. Production and
-> later candidates remain prohibited. The current implementation checkpoint and
-> evidence are indexed in the Batch 3 report and 00052 preflight report/evidence.
+> digest is now 8ec295c38bc90f769dc35ca5fd64a500. No write ran; the corrected
+> SELECT-only revalidation completed with every hard-stop gate true. Its result
+> is submitted for fresh independent closing review; Production and later
+> candidates remain prohibited until PASS. See the [00052 preflight report](reports/2026-07-27-opt6-00052-staging-preflight.md) and
+> [evidence](reports/evidence/2026-07-27-opt6-00052-staging-preflight.md).
 
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051
