@@ -24,8 +24,8 @@ Migration 00052, an apply packet, a Production write, or Batch 4.
 ## Reproducible files
 
 - SQL: [Production preflight SQL](../sql/2026-07-28-opt6-00052-production-preflight.sql)
-- Static contract: [Production static contract](../../src/features/database/opt6-00052-production-preflight.test.ts)
-- PostgreSQL contract: [Production PostgreSQL contract](../../src/features/database/opt6-00052-production-preflight.postgres.test.ts)
+- Static contract: [Production static contract](../../../src/features/database/opt6-00052-production-preflight.test.ts)
+- PostgreSQL contract: [Production PostgreSQL contract](../../../src/features/database/opt6-00052-production-preflight.postgres.test.ts)
 - Main report: [Production preflight report](../2026-07-28-opt6-00052-production-preflight.md)
 - Staging result: [Staging evidence](2026-07-27-opt6-00052-staging-preflight.md)
 

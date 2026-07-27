@@ -29,7 +29,7 @@ has not executed Migration 00052, and has not created or executed any apply pack
 
 The 00001-00040 and 00048-00051 rows match the repository/Production evidence.
 Production 00041-00047 use the known Production payload variant recorded in
-[OPT-4 Production history evidence](../evidence/2026-07-20-opt4-production-history-postcheck.md):
+[OPT-4 Production history evidence](evidence/2026-07-20-opt4-production-history-postcheck.md):
 752/dbe56c84..., 661/bbf8ad82..., 3489/cc4a53dd..., 9938/fefb4f40...,
 8814/b35210ab..., 10501/66b76a63..., and 5519/2e681495....
 The packet keeps the complete statements[] cardinality/length/MD5 rule; it does
