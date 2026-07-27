@@ -247,10 +247,12 @@ candidate is the pure `public.product` SELECT overlap. Forward-only Migration
 `00052_optimize_product_rls_policy_overlap.sql` and its static/PostgreSQL
 behavior contracts are implemented and indexed in the [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md)
 and [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
-Status is `IMPLEMENTATION COMPLETE / REVIEW PENDING / REMOTE WRITE PROHIBITED`.
-The remaining policy groups are unchanged. Complete local/CI verification and
-an explicit independent `PASS` are required before preparing a Staging
-read-only preflight; Production and later candidates remain prohibited.
+Status is `IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT PREPARATION PENDING / REMOTE WRITE PROHIBITED`.
+The remaining policy groups are unchanged. The designated independent review returned `PASS` for implementation head
+`23d92d3e7ed43013e5dbbe0a828a166a05245cfc`; audit submission
+`024a946fa16facaba22fbb85a2af3ff54323832c` records that result. Preparation
+of a controlled Staging SELECT-only preflight is now permitted; execution,
+Production and later candidates remain prohibited pending their own review gates.
 The current submitted exact head is `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`,
 bound to CI `30230526963` and Vercel Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3`;
 both are green and exact-head matched. The earlier
@@ -258,4 +260,5 @@ both are green and exact-head matched. The earlier
 `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical implementation-checkpoint
 evidence only. The first independent review returned `CHANGES_REQUIRED` only
 because PR/documentation carried stale historical bindings; those bindings
-are now corrected and the current re-review is `FINAL REVIEW PENDING`.
+are now corrected and the implementation review `PASS` is recorded; documentation-only status
+sync is bound to CI `30232410813` and Vercel `D9hYAYzUJ88yp7zwQtfqKM2hfa7f`.

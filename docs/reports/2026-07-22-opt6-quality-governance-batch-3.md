@@ -68,9 +68,10 @@ Detailed evidence and the exact stop gate are in the
 
 ## Stop gate
 
-The complete local/CI quality gate and the designated independent review must
-return `PASS` for this exact head before a Staging read-only preflight or any
-apply packet is prepared. `CHANGES_REQUIRED` stops the route and limits the
+The complete local/CI quality gate and the designated independent review have
+returned `PASS` for implementation head `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`.
+Only preparation of a Staging read-only preflight is now permitted; execution
+or any apply packet still requires its own review. `CHANGES_REQUIRED` stops the route and limits the
 next edit to the reviewer's requested scope. Production, Batch 4 and all
 remaining policy groups remain prohibited.
 

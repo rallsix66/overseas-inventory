@@ -35,7 +35,7 @@ before preparing any remote preflight. A `PASS` authorizes only the next
 controlled Staging read-only preflight, not Production or a later candidate
 group.
 
-**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PENDING**
+**OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE — BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY PREFLIGHT PREPARATION PENDING**
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
@@ -173,6 +173,6 @@ policies. See [remote postcheck evidence](../reports/evidence/2026-07-20-opt6-00
 - No index deletion from a single Advisor snapshot; require a production statistics window and separate approval boundary.
 - No Auth platform setting write unless a controlled connector exists and login regression evidence is available.
 - Do not touch user synchronization scripts, `.claude` state, or project-summary files.
-- Do not prepare a remote preflight/apply packet, write Staging/Production, or
-  start another candidate until this Batch 3 implementation has complete
-  evidence and designated independent review `PASS`.
+- Do not execute a remote preflight/apply packet, write Staging/Production, or
+  start another candidate. The implementation review `PASS` permits only
+  preparation of the controlled Staging SELECT-only preflight.
