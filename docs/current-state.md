@@ -37,6 +37,12 @@ The corrected 00052 Staging SELECT-only revalidation returned one row with all h
 > is submitted for fresh independent closing review; Production and later
 > candidates remain prohibited until PASS. See the [00052 preflight report](reports/2026-07-27-opt6-00052-staging-preflight.md) and
 > [evidence](reports/evidence/2026-07-27-opt6-00052-staging-preflight.md).
+> Production 00052 SELECT-only preflight is prepared but not executed. Its
+> expected Production full-payload digest is 0b7cba5a88fff139fb0ec65e4deaa142
+> and version/name digest is 2d6174dce487614c3280456fff9169d0; the packet,
+> static contract, PostgreSQL contract, report, and evidence are indexed below.
+> Production SQL, Migration 00052, apply packets, and Batch 4 remain prohibited.
+
 
 > 2026-07-21 OPT-6 Batch 2: Batch 1's remote-final-PASS evidence was merged
 > as `2510b0e070b7fe637239cf0a8eecc3e63aec9570`. Batch 2 has a narrow 00051

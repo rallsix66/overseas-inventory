@@ -31,6 +31,17 @@ exact-head checks are green. The earlier `ce7e623ff396f099c3bf9256733973ce158beb
 implementation-checkpoint evidence only. The approved Staging SELECT-only packet was attempted once on 2026-07-27 and stopped with PostgreSQL 42P01 because its final SELECT referenced an undefined `role_check` CTE; no write, Migration, or apply packet ran.
 The packet and static/PostgreSQL contract were corrected and independently re-approved. The retry returned a hard-stop exact_history_payload=false because the expected CTE used the Production variant for Staging rows 00041-00047; no write, Migration, or apply packet ran. A separate SELECT-only comparison matched the recorded Staging postcheck, so the expected CTE was corrected to the approved Staging baseline and now expects payload digest 8ec295c38bc90f769dc35ca5fd64a500. The corrected packet then ran once read-only with every history, payload, policy, and active-sync gate true. Fresh independent closing review is pending. Production, apply packets, and later candidate groups remain prohibited.
 
+### Production 00052 preflight preparation (2026-07-28)
+
+The Production SELECT-only packet is prepared with the reviewed 00001-00051
+full history baseline, explicit digest constants, public.product catalog gate,
+and active-sync hard stop. It has not been executed. See the [Production
+preflight report](../reports/2026-07-28-opt6-00052-production-preflight.md) and
+[evidence](../reports/evidence/2026-07-28-opt6-00052-production-preflight.md).
+An independent review is required before one controlled Production read-only
+run; no Production write, apply packet, Migration, or Batch 4 is authorized.
+
+
 OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION APPLY REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 > The title above is a packet label. The current state is

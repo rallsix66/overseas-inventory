@@ -262,3 +262,10 @@ evidence only. The first independent review returned `CHANGES_REQUIRED` only
 because PR/documentation carried stale historical bindings; those bindings
 are now corrected and the implementation review `PASS` is recorded; documentation-only status
 sync is bound to CI `30232410813` and Vercel `D9hYAYzUJ88yp7zwQtfqKM2hfa7f`.
+
+**Production 00052 preflight preparation (2026-07-28)**: the SELECT-only packet,
+static contract, isolated PostgreSQL executable contract, report, evidence, and
+navigation are prepared. The expected Production full-payload digest is
+0b7cba5a88fff139fb0ec65e4deaa142 and version/name digest is
+2d6174dce487614c3280456fff9169d0. No Production SQL, Migration, apply packet,
+write, or Batch 4 action is authorized before independent review.
