@@ -4,8 +4,8 @@
 > apply/postcheck remains closed with its historical independent `PASS` at
 > `96c87461afd444b2065059c98ba0cf08522b749e` / CI `29908869113` / Vercel
 > `87HAB8w8rTZhDtJAZCvt2kmaRM31`. The active Batch 3 `00052` implementation
-> exact head is `cf972945f3668aab105b202a829b506d2af85a2d`, with CI
-> `29921729805` and Vercel Preview `BTqGGZZGF2xBkN9PqVUJREt3QDXs` both green
+> exact head is `c552eb4ff3d320679633bc986f18fd4434dbafcd`, with CI
+> `30230292388` and Vercel Preview `14QETChxcKHy51iiCD4R3QyJdWB2` both green
 > and exact-head matched. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e`
 > / `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 > implementation-checkpoint evidence only. Its first independent review found

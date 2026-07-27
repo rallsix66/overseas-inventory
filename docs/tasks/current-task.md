@@ -23,8 +23,8 @@ forward-only `00052_optimize_product_rls_policy_overlap.sql`. Its static and
 PostgreSQL behavior contracts, evidence and navigation are recorded in the
 [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md) and
 [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
-The current exact head is `cf972945f3668aab105b202a829b506d2af85a2d`, bound to
-CI `29921729805` and Vercel Preview `BTqGGZZGF2xBkN9PqVUJREt3QDXs`; both
+The current exact head is `c552eb4ff3d320679633bc986f18fd4434dbafcd`, bound to
+CI `30230292388` and Vercel Preview `14QETChxcKHy51iiCD4R3QyJdWB2`; both
 exact-head checks are green. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e`
 / `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 implementation-checkpoint evidence only. No Staging/Production SQL has been

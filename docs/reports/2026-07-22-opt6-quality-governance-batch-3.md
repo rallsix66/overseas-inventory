@@ -44,9 +44,9 @@ indexes, business rows, old migrations or remote history. The full
   English `permission denied` while this PostgreSQL installation emits the
   equivalent Chinese message. The new 00052 contract and the extended replay
   contract are both fully green; CI remains the authoritative full-suite gate.
-- Exact-head remote gate: `cf972945f3668aab105b202a829b506d2af85a2d`, GitHub
-  Actions run `29921729805` (quality and PostgreSQL jobs passed), and Vercel
-  Preview `BTqGGZZGF2xBkN9PqVUJREt3QDXs` (READY, exact-head match). PR #11 is
+- Exact-head remote gate: `c552eb4ff3d320679633bc986f18fd4434dbafcd`, GitHub
+  Actions run `30230292388` (quality and PostgreSQL jobs passed), and Vercel
+  Preview `14QETChxcKHy51iiCD4R3QyJdWB2` (READY, exact-head match). PR #11 is
   Draft/Open. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e` /
   `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
   implementation-checkpoint evidence only. The first independent review
