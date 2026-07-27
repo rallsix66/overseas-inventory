@@ -3,7 +3,7 @@
 --
 -- This packet contains SELECT statements only. It does not begin a write
 -- transaction, execute a Migration, alter policy, or register 00051. Run it
--- only as the Production preflight before a separately reviewed Staging maintenance
+-- only as the Staging SELECT-only preflight before a separately reviewed Staging maintenance
 -- window. A false result is a hard stop.
 
 WITH history AS (
@@ -81,7 +81,7 @@ history_check AS (
   SELECT
     count(*) = 51 AS rows_51,
     count(DISTINCT version) = 51 AS unique_versions,
-    count(DISTINCT name) = 50 AS unique_names,
+    count(DISTINCT name) = 51 AS unique_names,
     min(version) = '00001' AS min_00001,
     max(version) = '00051' AS max_00051,
     count(*) FILTER (WHERE version !~ '^[0-9]{5}$') = 0 AS no_timestamp_versions,
@@ -164,11 +164,11 @@ expected_product_policy(policy_name, permissive, roles, command, using_expressio
 ),
 product_check AS (
   SELECT
-    (SELECT count(*) FROM actual_role_policy) = 2 AS product_policy_count_2,
+    (SELECT count(*) FROM actual_product_policy) = 2 AS product_policy_count_2,
     (
       SELECT count(*)
-      FROM expected_role_policy AS expected
-      LEFT JOIN actual_role_policy AS actual USING (policy_name)
+      FROM expected_product_policy AS expected
+      LEFT JOIN actual_product_policy AS actual USING (policy_name)
       WHERE actual.policy_name IS NULL
          OR actual.permissive IS DISTINCT FROM expected.permissive
          OR actual.roles IS DISTINCT FROM expected.roles
@@ -183,7 +183,7 @@ product_check AS (
             || using_expression || '|' || with_check_expression,
           E'\n' ORDER BY policy_name
         )
-        FROM actual_role_policy
+        FROM actual_product_policy
       )
     ) AS product_policy_digest
 )
