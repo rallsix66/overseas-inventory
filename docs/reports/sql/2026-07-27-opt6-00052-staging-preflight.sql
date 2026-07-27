@@ -190,7 +190,7 @@ product_check AS (
 SELECT
   history_check.*,
   history_compare.*,
-  role_check.*,
+  product_check.*,
   (
     SELECT count(*) FROM public.sync_run WHERE status = 'in_progress'
   ) AS in_progress_sync_runs

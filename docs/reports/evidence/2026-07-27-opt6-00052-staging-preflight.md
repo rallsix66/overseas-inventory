@@ -2,7 +2,7 @@
 
 ## Current status
 
-PREFLIGHT PREPARED / REVIEW PENDING / REMOTE READ-ONLY EXECUTION PROHIBITED
+EXECUTION HARD STOP / CORRECTION REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 The reviewed 00052 implementation and status-sync record are PASS. This
 evidence file records the prepared SELECT-only packet; no Staging or Production
@@ -31,6 +31,4 @@ or any other Migration.
 
 ## Stop gate
 
-The packet must receive an independent PASS before it may be executed read-only
-in Staging. It does not authorize an apply packet, any write, Production or
-Batch 4.
+The packet received independent PASS and was executed once read-only in Staging; the 42P01 hard stop means no result was accepted. The corrected packet must receive a fresh independent PASS before retry. It does not authorize an apply packet, any write, Production or Batch 4.

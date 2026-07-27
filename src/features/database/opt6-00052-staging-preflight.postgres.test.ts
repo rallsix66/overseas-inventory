@@ -3,6 +3,8 @@ import { Client } from 'pg'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+const nl = '\n'
+
 const required = ['PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD'] as const
 const missing = required.filter((name) => !process.env[name])
 if (missing.length > 0) throw new Error('PostgreSQL preflight contract requires: ' + missing.join(', '))

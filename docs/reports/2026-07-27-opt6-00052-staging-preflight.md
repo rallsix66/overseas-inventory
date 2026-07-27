@@ -2,12 +2,11 @@
 
 ## Status
 
-PREFLIGHT PREPARED / REVIEW PENDING / REMOTE READ-ONLY EXECUTION PROHIBITED
+EXECUTION HARD STOP / CORRECTION REVIEW PENDING / REMOTE WRITE PROHIBITED
 
 Batch 3 implementation and documentation-only status-sync reviews are PASS.
 This packet is a new SELECT-only read-only preflight for the reviewed 00052
-candidate. It has not been executed in Staging or Production, and it is not
-an apply packet.
+candidate. The first approved Staging attempt on 2026-07-27 failed before returning a result with PostgreSQL 42P01 because the packet final SELECT referenced an undefined `role_check` CTE; no write, Migration, or apply packet ran. It is not an apply packet.
 
 ## Target and exact gates
 
@@ -29,7 +28,7 @@ an apply packet.
 - The packet is one SELECT-only statement batch: no BEGIN/COMMIT, DDL, DML,
   ACL change, Migration execution or history registration.
 - It does not create an apply packet and does not authorize 00052 execution.
-- No Staging/Production SQL has been executed for 00052.
+- The approved Staging SELECT-only packet ran once and stopped with PostgreSQL 42P01; no write, Migration, or apply packet ran.
 
 ## Verification record
 

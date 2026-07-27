@@ -31,6 +31,8 @@ describe('OPT-6 Batch 3 Staging 00052 preflight static contract', () => {
     expect(packet).toContain('count(DISTINCT name) = 51 AS unique_names')
     expect(packet).toContain('expected_product_policy')
     expect(packet).not.toContain('expected_role_policy')
+    expect(packet).toContain('product_check.*')
+    expect(packet).not.toContain('role_check')
     expect(packet).toContain('product_policy_count_2')
     expect(packet).toContain('exact_product_policies')
     expect(packet).toContain("relation.relname = 'product'")
