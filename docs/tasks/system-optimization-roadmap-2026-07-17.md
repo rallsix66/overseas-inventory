@@ -1,5 +1,7 @@
 # DIS 系统优化路线图（2026-07-17）
 
+Batch 3 current gate update (2026-07-27): the corrected 00052 Staging SELECT-only revalidation was executed once after independent review PASS. All 51-row history/set, version/name, complete statements[] payload, public.product policy, and zero-active-sync gates passed; actual and expected full-payload digest both equal 8ec295c38bc90f769dc35ca5fd64a500. No write or Migration ran. The result is now submitted for designated independent review. Production, 00052 apply, and Batch 4 remain prohibited until explicit PASS.
+
 ## 文档定位
 
 本路线图把 `DIS-项目代码总结.md`（2026-07-13，42 个 Migration / 3524 个测试）中仍然有效的建议，按 2026-07-17 的真实代码、Migration、测试和线上 Supabase 状态重新校准。

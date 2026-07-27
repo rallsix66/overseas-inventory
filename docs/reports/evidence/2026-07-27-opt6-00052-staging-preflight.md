@@ -2,7 +2,7 @@
 
 ## Current status
 
-EXECUTION HARD STOP / STAGING BASELINE CORRECTED / REVALIDATION REVIEW PENDING / REMOTE WRITE PROHIBITED
+EXECUTION HARD STOP / STAGING REVALIDATION PASS / REVIEW SUBMISSION PENDING / REMOTE WRITE PROHIBITED
 
 The reviewed 00052 implementation and status-sync record are PASS. This evidence
 records the prepared SELECT-only packet; no Staging or Production write occurred.
@@ -27,7 +27,12 @@ c6bbce9065096d1b53f3f1dc731e139b,
 1cdf5e8f221e270fe183eddcfbb3b175.
 The packet expected baseline is now corrected to this approved Staging variant;
 its expected full-payload digest is 8ec295c38bc90f769dc35ca5fd64a500.
-Fresh independent review and one further SELECT-only revalidation are required.
+Fresh independent review and one further SELECT-only revalidation were required; the completed result is recorded below.
+## Corrected revalidation result (2026-07-27)
+
+The corrected packet was run once as SELECT-only in Staging after independent review PASS. It returned one row and made no write. All hard-stop booleans were true: exact 51-row history/set, no 00052, exact version/name mapping, exact full statements[] payload, two exact public.product policies, and zero in-progress sync runs. Actual and expected version/name digest were both 2d6174dce487614c3280456fff9169d0; actual and expected full-payload digest were both 8ec295c38bc90f769dc35ca5fd64a500; observed product-policy digest was 119e5878b2ddd6d3f7c1c01e614c4112.
+
+The result is submitted for fresh independent review. This is not an apply authorization: Production, 00052 writes, and Batch 4 remain prohibited until that review returns PASS.
 
 ## Hard-stop assertions
 
