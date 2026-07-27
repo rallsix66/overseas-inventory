@@ -54,9 +54,9 @@ Migration edits or history manipulation.
 
 ## Review and remote stop gates
 
-The submitted exact head is `c552eb4ff3d320679633bc986f18fd4434dbafcd`,
-bound to CI run `30230292388` (quality and PostgreSQL jobs passed) and Vercel
-Preview `14QETChxcKHy51iiCD4R3QyJdWB2` (READY). PR #11 remains Draft/Open.
+The submitted exact head is `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`,
+bound to CI run `30230526963` (quality and PostgreSQL jobs passed) and Vercel
+Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3` (READY). PR #11 remains Draft/Open.
 The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e` /
 `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 implementation-checkpoint evidence only. The first independent review found
