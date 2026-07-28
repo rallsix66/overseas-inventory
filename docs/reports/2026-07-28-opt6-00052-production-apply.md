@@ -35,7 +35,7 @@ The reviewed packet was executed once in the controlled Production window and it
 
 ## Scope and stop gate
 
-This is preparation only. Independent review returned PASS at head c8b679ecbfc00ca7d414a40d8f2a10f1228259a5, CI 30322612198, and Vercel 9cLc8DEK6mH35UdeoFen2i2yr76b. A separately controlled Production apply window is pending; review PASS does not execute the packet, and Production write, Migration replay outside this packet, and Batch 4 remain prohibited.
+Production apply was executed once in the controlled window and the independent postcheck passed. The current gate is final evidence review only; do not execute another Production write, replay an old Migration, or start Batch 4.
 
 
 ## Controlled Production apply and postcheck (2026-07-28T11:06:50+08:00)

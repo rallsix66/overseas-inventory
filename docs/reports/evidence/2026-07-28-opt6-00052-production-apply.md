@@ -35,9 +35,9 @@ Migration replay outside the packet, or Batch 4.
 
 ## Stop gate
 
-Independent review PASS is recorded at head c8b679ecbfc00ca7d414a40d8f2a10f1228259a5, CI 30322612198, and Vercel 9cLc8DEK6mH35UdeoFen2i2yr76b. A separately controlled Production apply window may be
-requested. Even after review PASS, the packet must remain paused until the separate
-window is explicitly opened; no Production SQL write or Batch 4 action is allowed.
+Production apply was executed once in the controlled window and the independent
+SELECT-only postcheck passed. Final post-apply evidence review is pending; do not
+execute another Production write, replay an old Migration, or start Batch 4.
 
 
 ## Controlled Production apply and postcheck (2026-07-28T11:06:50+08:00)
