@@ -1,5 +1,7 @@
 # DIS 系统优化路线图（2026-07-17）
 
+Batch 3 current gate update (2026-07-28): the corrected 00052 Staging SELECT-only revalidation passed, then the reviewed Production 00052 apply packet executed once and its independent postcheck passed. The current gate is final evidence review only; no further Production write, old Migration replay, or Batch 4 is allowed.
+
 ## 文档定位
 
 本路线图把 `DIS-项目代码总结.md`（2026-07-13，42 个 Migration / 3524 个测试）中仍然有效的建议，按 2026-07-17 的真实代码、Migration、测试和线上 Supabase 状态重新校准。
@@ -190,7 +192,7 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 
 ## OPT-6：渐进式质量治理
 
-**当前状态**：`BATCH 1 REMOTE FINAL PASS / PR #10 MERGE PENDING`。OPT-6 Batch 1 head `d2eef9cbf09d35de3e0ab01bd2f84991ad59cb51` 已获代码终审 PASS；PR #9 合并为 `d9acf51e0cfbfd2e21f243f41273de7278f4e80a`，master CI `29733960202` 与 Vercel production deployment `BKDzcK4k9noxQgzAboJB6h2XjmeF` 全绿。00050 已按 Staging → Production 顺序受控执行，两环境均为 50/50 的精确 `00001`–`00050` 集合；远端证据 head `1fbc6b042caf289698d60d2697a909787002968d`、CI `29739720283`、Vercel Preview `obXa1wmkxzMorYz9k8AmpkhBSZmG` 经指定会话复核并获得 `OPT-6 BATCH 1 REMOTE FINAL PASS`。当前只待合并文档 PR #10；合并后方可进入 Batch 2。115 条 multiple-permissive-policy 与索引治理继续留在后续批次。详见 [Batch 1 报告](../reports/2026-07-20-opt6-quality-governance-batch-1.md) 与[远端 postcheck 证据](../reports/evidence/2026-07-20-opt6-00050-remote-postcheck.md)。
+**当前状态（2026-07-21）**：Batch 1 remote final PASS evidence 已合并为 `2510b0e070b7fe637239cf0a8eecc3e63aec9570`。Batch 2 的代码与本地验证已完成，并获指定独立审查 `FINAL PASS`（head `3885651309ac37f2bf5dd48ce905dfdfe6da8886`；CI `29798631677` 与 Vercel Preview 全绿）。Staging 已在受控窗口应用 `00051`，原子事务返回成功，后续 SELECT-only postcheck 九项全部为 `true`：`00001`–`00051` 精确 history、00051 payload 与四条 `public.role` policy catalog 全部命中。该 Staging apply/postcheck 证据现提交指定独立审查；Production 与其余候选组仍禁止。回放 inventory 有 42 条 policy、将 `FOR ALL` 展开后有 23 个 table/action overlap group。`00051` 仅处理 `public.role` 的 Admin/Operator SELECT union，并以完整 catalog 与身份矩阵证明等价；其余 22 组仍待逐组证明。详见 [Batch 2 报告](../reports/2026-07-21-opt6-quality-governance-batch-2.md)、[Staging apply/postcheck evidence](../reports/evidence/2026-07-21-opt6-00051-staging-preflight.md) 与 [inventory evidence](../reports/evidence/2026-07-21-opt6-batch2-policy-inventory.md)。
 
 - 清理 31 个 unused-vars warning；CI warning budget 从 31 逐步降至 0。
 - 对 6 个 auth init-plan policy 使用 `(select auth.uid())` 等等价形式优化，并验证权限矩阵不变。
@@ -216,3 +218,50 @@ OPT-6 Lint / 文档 / 性能告警渐进治理
 - 任一数据库任务无法证明 Admin/Operator/RLS 语义等价，不进入 Production。
 - 任一 Migration 无法在空库连续重放，不部署 Staging/Production。
 - 用户已对 OPT-4 剩余项与 OPT-5/OPT-6 既定路线给出持续授权；仍须逐阶段完成“实施/执行 → 完整验证与证据 → 指定会话明确 PASS”，且 PASS 前不得进入下一阶段。意外数据删除、直接回滚、重放旧 Migration、绕过 RLS、密钥暴露、范围外架构变更或 materially different 的操作仍必须停止并取得单独确认。
+The preceding 2026-07-21 Batch 2 paragraph is a historical checkpoint only;
+its Production-prohibited wording is superseded by this current gate.
+
+**Current gate (2026-07-22)**: Staging `00051` remote apply/postcheck has
+designated independent `PASS`. Production `00051` apply/postcheck evidence has
+been captured and the SELECT-only postcheck passed, but the current independent
+closing review returned `PASS` at exact head `96c87461afd444b2065059c98ba0cf08522b749e`,
+CI `29908869113`, and Vercel Preview `87HAB8w8rTZhDtJAZCvt2kmaRM31`. The
+earlier packet-review head `f7acf211ac66e2b86a22e14254a1ffe75782c224` authorized
+execution only; it is not the closing review result. Batch 3 and every other
+policy group remain blocked until their own implementation and independent
+review.
+This current-gate note supersedes the earlier Batch 2 paragraph that described
+the Staging evidence as still pending review.
+The corrected Production exact preflight packet was executed read-only on
+2026-07-22 and all history, full-payload, role-catalog, and active-run gates
+passed. The separately reviewed apply packet then committed in the approved
+window; its postcheck confirmed exact 00001–00051 history, canonical 00051
+payload, four reviewed role policies, and zero active sync runs. Batch 3 remains
+blocked by its separate implementation/review gate.
+The packet's `expected_history` CTE pins the reviewed `00001`–`00050`
+version/name and full `statements[]` payload summaries. Its
+`exact_version_name_history` and `exact_history_payload` booleans are the
+row-by-row hard stop; the read-only static contract is indexed from the
+preflight report. No digest-only output can authorize the next step.
+
+**Batch 3 implementation checkpoint (2026-07-22)**: the next bounded
+candidate is the pure `public.product` SELECT overlap. Forward-only Migration
+`00052_optimize_product_rls_policy_overlap.sql` and its static/PostgreSQL
+behavior contracts are implemented and indexed in the [Batch 3 report](../reports/2026-07-22-opt6-quality-governance-batch-3.md)
+and [evidence](../reports/evidence/2026-07-22-opt6-batch3-product-policy.md).
+Status is IMPLEMENTATION COMPLETE / IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / PRODUCTION APPLY AND POSTCHECK EXECUTED / INDEPENDENT REVIEW PENDING / BATCH 4 PROHIBITED.
+The remaining policy groups are unchanged. The designated independent review returned `PASS` for implementation head
+`23d92d3e7ed43013e5dbbe0a828a166a05245cfc`; audit submission
+`024a946fa16facaba22fbb85a2af3ff54323832c` records that result. The 00052 Staging SELECT-only preflight packet was independently approved and attempted once; PostgreSQL stopped the first revision with 42P01 for an undefined role_check CTE before any result or write. The corrected packet was independently re-approved and retried once; its full statements[] payload gate returned false because the expected CTE used the Production variant for known Staging rows 00041-00047. A separate SELECT-only comparison matched the prior Staging postcheck, so the packet expected baseline was corrected to the approved Staging variant and now expects digest 8ec295c38bc90f769dc35ca5fd64a500. No write occurred. The corrected SELECT-only revalidation then completed with every history, payload, policy, and active-sync gate true. Fresh independent closing review is pending; Production and later candidates remain prohibited until PASS.
+The current submitted exact head is `23d92d3e7ed43013e5dbbe0a828a166a05245cfc`,
+bound to CI `30230526963` and Vercel Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3`;
+both are green and exact-head matched. The earlier
+`ce7e623ff396f099c3bf9256733973ce158beb9e` / `29913122480` /
+`EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical implementation-checkpoint
+evidence only. The first independent review returned `CHANGES_REQUIRED` only
+because PR/documentation carried stale historical bindings; those bindings
+are now corrected and the implementation review `PASS` is recorded; documentation-only status
+sync is bound to CI `30232410813` and Vercel `D9hYAYzUJ88yp7zwQtfqKM2hfa7f`.
+
+**Production 00052 SELECT-only preflight execution (2026-07-28)**: after implementation-review PASS, the prepared packet ran exactly once in Production SQL Editor. All history/version-name/full statements[] payload, public.product policy, and zero-active-sync gates passed; actual/expected full-payload digest was 0b7cba5a88fff139fb0ec65e4deaa142, version/name digest was 2d6174dce487614c3280456fff9169d0, product policy digest was 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs=0. No write, Migration, or apply packet ran. The designated independent reviewer returned PASS at head `7f83f01c847d685e865d2c4c7c4d8012267ed085`, CI `30276563343`, and Vercel `4QSHNyh9PDfbnpWMrMeiadV2YBts`; Production apply and Batch 4 remain prohibited.
+**Production 00052 apply and postcheck (2026-07-28)**: the reviewed packet was executed once in the controlled Production window. Its transaction committed and the independent SELECT-only postcheck confirmed 52 history rows, exact old-history digests `0b7cba5a88fff139fb0ec65e4deaa142` / `2d6174dce487614c3280456fff9169d0`, canonical 00052 payload (5786 chars, MD5 `580fd279b2f8d07f6c5a550acc82812a`), four product policies, and zero active sync runs. Final post-apply evidence review is pending; no old Migration was replayed and Batch 4 remains prohibited.
