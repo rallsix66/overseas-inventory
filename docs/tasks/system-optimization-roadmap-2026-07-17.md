@@ -264,3 +264,10 @@ are now corrected and the implementation review `PASS` is recorded; documentatio
 sync is bound to CI `30232410813` and Vercel `D9hYAYzUJ88yp7zwQtfqKM2hfa7f`.
 
 **Production 00052 SELECT-only preflight execution (2026-07-28)**: after implementation-review PASS, the prepared packet ran exactly once in Production SQL Editor. All history/version-name/full statements[] payload, public.product policy, and zero-active-sync gates passed; actual/expected full-payload digest was 0b7cba5a88fff139fb0ec65e4deaa142, version/name digest was 2d6174dce487614c3280456fff9169d0, product policy digest was 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs=0. No write, Migration, or apply packet ran. The designated independent reviewer returned PASS at head `7f83f01c847d685e865d2c4c7c4d8012267ed085`, CI `30276563343`, and Vercel `4QSHNyh9PDfbnpWMrMeiadV2YBts`; Production apply and Batch 4 remain prohibited.
+**Production 00052 apply packet preparation (2026-07-28)**: the prepared packet
+locks history and sync runs before the body, checks the exact reviewed 00001-00051
+full payload and product policy catalog, embeds canonical 00052 (5786 chars,
+MD5 `580fd279b2f8d07f6c5a550acc82812a`), and postchecks 52 history rows, four
+policies, unchanged old history, and zero active sync runs. Static contract 6/6
+and lint pass. It has not been executed; independent review is required before a
+controlled Production apply window. Production write and Batch 4 remain prohibited.
