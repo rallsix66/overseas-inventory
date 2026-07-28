@@ -2,10 +2,12 @@
 
 ## Current status
 
-EXECUTION HARD STOP / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION APPLY REVIEW PENDING / REMOTE WRITE PROHIBITED
+STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION 00052 APPLY-POSTCHECK COMPLETE / FINAL EVIDENCE REVIEW PENDING
 
 The reviewed 00052 implementation and status-sync record are PASS. This evidence
-records the prepared SELECT-only packet; no Staging or Production write occurred.
+records the prepared SELECT-only packet; the Staging packet performed no write.
+The reviewed Production 00052 apply/postcheck has since completed once and passed;
+the current gate is final evidence review only.
 
 ## Read-only result and reconciliation
 
@@ -32,7 +34,7 @@ Fresh independent review and one further SELECT-only revalidation were required;
 
 The corrected packet was run once as SELECT-only in Staging after independent review PASS. It returned one row and made no write. All hard-stop booleans were true: exact 51-row history/set, no 00052, exact version/name mapping, exact full statements[] payload, two exact public.product policies, and zero in-progress sync runs. Actual and expected version/name digest were both 2d6174dce487614c3280456fff9169d0; actual and expected full-payload digest were both 8ec295c38bc90f769dc35ca5fd64a500; observed product-policy digest was 119e5878b2ddd6d3f7c1c01e614c4112.
 
-The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This is not an apply authorization: Production, 00052 writes, and Batch 4 remain prohibited pending their own review.
+The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This historical Staging PASS was not itself an apply authorization; the reviewed Production 00052 apply/postcheck has since completed once and passed. No further Production write, old Migration replay, or Batch 4 is allowed while final evidence review is pending.
 
 ## Hard-stop assertions
 
@@ -45,8 +47,9 @@ The designated independent reviewer returned PASS for this read-only result at h
    catalog equality.
 5. public.sync_run has zero in-progress rows.
 
-Any false result is a hard stop. This packet does not authorize applying 00052 or
-any other Migration.
+Any false result is a hard stop. This Staging packet did not authorize or perform a
+write; after the separate reviewed Production apply completed once, no further
+Production write, old Migration replay, or Batch 4 is allowed.
 
 ## Reproducible files
 
@@ -60,5 +63,6 @@ any other Migration.
 
 The packet received independent implementation review PASS and was executed once
 read-only after the Staging baseline correction. Every history, payload, policy,
-and active-sync gate passed. The result awaits fresh independent closing review;
-it does not authorize an apply packet, any write, Production or Batch 4.
+and active-sync gate passed. The reviewed Production 00052 apply/postcheck has since
+completed once and passed; the result awaits final independent evidence review only.
+No further Production write, old Migration replay, or Batch 4 is allowed.
