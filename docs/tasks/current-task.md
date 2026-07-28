@@ -1,6 +1,6 @@
 # Current Task Packet
 
-The corrected 00052 Staging SELECT-only revalidation ran once after its fresh implementation review PASS; all history/version-name/full-payload, product-policy, and active-sync gates passed, with no write or Migration. The designated independent reviewer returned PASS at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. The Production 00052 SELECT-only preflight then ran exactly once with every gate true; the designated independent reviewer returned PASS at head 7f83f01c847d685e865d2c4c7c4d8012267ed085, CI 30276563343, and Vercel 4QSHNyh9PDfbnpWMrMeiadV2YBts. Production 00052 apply/postcheck has since completed once and passed; the current gate is final evidence review only. No further Production write, old Migration replay, or Batch 4 is allowed.
+The corrected 00052 Staging SELECT-only revalidation ran once after its fresh implementation review PASS; all history/version-name/full-payload, product-policy, and active-sync gates passed, with no write or Migration. The designated independent reviewer returned PASS at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. The Production 00052 SELECT-only preflight then ran exactly once with every gate true; the designated independent reviewer returned PASS at head 7f83f01c847d685e865d2c4c7c4d8012267ed085, CI 30276563343, and Vercel 4QSHNyh9PDfbnpWMrMeiadV2YBts. Production 00052 apply/postcheck completed once and passed; final evidence review returned PASS at HEAD e92b8720dbc2be29dc371e5de61c6e70d88beeec. PR #11 merged as f8f467f7fc649dd37d584864e2c79505fd53719e, master CI 30330308092 and Vercel production deployment 6EDexdjVENq4CDJgPW7RdSwztT3h passed. Current gate: wait for the user's next instruction; no further Production write, old Migration replay, or Batch 4 is allowed.
 ## Task ID
 
 ### Current gate (2026-07-22)
@@ -29,7 +29,7 @@ CI `30230526963` and Vercel Preview `5F5tvSTDP7A14aCaD217Pxh2yFh3`; both
 exact-head checks are green. The earlier `ce7e623ff396f099c3bf9256733973ce158beb9e`
 / `29913122480` / `EeNmUmEaEajq3MnRVe7V3RCTfGph` values are historical
 implementation-checkpoint evidence only. The approved Staging SELECT-only packet was attempted once on 2026-07-27 and stopped with PostgreSQL 42P01 because its final SELECT referenced an undefined `role_check` CTE; no write, Migration, or apply packet ran.
-The packet and static/PostgreSQL contract were corrected and independently re-approved. The retry returned a hard-stop exact_history_payload=false because the expected CTE used the Production variant for Staging rows 00041-00047; no write, Migration, or apply packet ran. A separate SELECT-only comparison matched the recorded Staging postcheck, so the expected CTE was corrected to the approved Staging baseline and now expects payload digest 8ec295c38bc90f769dc35ca5fd64a500. The corrected packet then ran once read-only with every history, payload, policy, and active-sync gate true. Fresh independent closing review is pending. Production, apply packets, and later candidate groups remain prohibited.
+The packet and static/PostgreSQL contract were corrected and independently re-approved. The retry returned a hard-stop exact_history_payload=false because the expected CTE used the Production variant for Staging rows 00041-00047; no write, Migration, or apply packet ran. A separate SELECT-only comparison matched the recorded Staging postcheck, so the expected CTE was corrected to the approved Staging baseline and now expects payload digest 8ec295c38bc90f769dc35ca5fd64a500. The corrected packet then ran once read-only with every history, payload, policy, and active-sync gate true. The historical Staging checkpoint was later accepted by final independent evidence review at HEAD e92b8720dbc2be29dc371e5de61c6e70d88beeec; Production apply/postcheck then completed once and passed. This task packet is closed after PR #11 merge; no further Production write, old Migration replay, or later candidate group is allowed.
 
 ### Production 00052 SELECT-only preflight execution (2026-07-28)
 
@@ -40,13 +40,14 @@ The reviewed Production apply packet was executed once after the packet review P
 The transaction committed and the independent SELECT-only postcheck returned:
 52 history rows (`00001..00052`), exact old-history digests, canonical 00052
 payload (5786 chars / MD5 `580fd279b2f8d07f6c5a550acc82812a`), four reviewed
-`public.product` policies, and `in_progress_sync_runs=0`. See the [apply report](../reports/2026-07-28-opt6-00052-production-apply.md) and [evidence](../reports/evidence/2026-07-28-opt6-00052-production-apply.md). Final post-apply evidence review is pending; Batch 4 remains prohibited.
+`public.product` policies, and `in_progress_sync_runs=0`. See the [apply report](../reports/2026-07-28-opt6-00052-production-apply.md) and [evidence](../reports/evidence/2026-07-28-opt6-00052-production-apply.md). Final post-apply evidence review returned PASS at HEAD e92b8720dbc2be29dc371e5de61c6e70d88beeec; PR #11 merged as f8f467f7fc649dd37d584864e2c79505fd53719e and master deployment completed. Batch 4 remains prohibited pending a separate task packet.
 
-OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / PRODUCTION APPLY AND POSTCHECK EXECUTED / INDEPENDENT REVIEW PENDING / BATCH 4 PROHIBITED
+OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / PRODUCTION APPLY AND POSTCHECK PASS / PR #11 MERGED / PRODUCTION DEPLOYMENT COMPLETE / BATCH 4 PROHIBITED
 
 > The title above is a packet label. The current state is
-> `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
-> EXECUTED / FINAL POST-APPLY EVIDENCE REVIEW PENDING`; no Batch 4 action is
+> `STAGING SELECT-ONLY FINAL PASS / PRODUCTION APPLY/POSTCHECK PASS / PR #11
+> MERGED / PRODUCTION DEPLOYMENT COMPLETE`; wait for the user's next
+> instruction. No further Production write, old Migration replay, or Batch 4 is
 > authorized.
 
 ## Handoff from OPT-5

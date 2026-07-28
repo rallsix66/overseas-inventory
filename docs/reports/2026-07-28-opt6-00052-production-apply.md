@@ -2,9 +2,9 @@
 
 ## Status
 
-PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / APPLY AND POSTCHECK EXECUTED / INDEPENDENT REVIEW PENDING / BATCH 4 PROHIBITED
+PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / APPLY AND POSTCHECK PASS / FINAL EVIDENCE REVIEW PASS / PR #11 MERGED / PRODUCTION DEPLOYMENT COMPLETE / BATCH 4 PROHIBITED
 
-The reviewed packet was executed once in the controlled Production window and its independent postcheck passed. Migration 00052 is registered exactly once, old history was unchanged, and Batch 4 has not started. Final evidence review is pending.
+The reviewed packet was executed once in the controlled Production window and its independent postcheck passed. Migration 00052 is registered exactly once, old history was unchanged, and Batch 4 has not started. Final evidence review returned PASS at HEAD e92b8720dbc2be29dc371e5de61c6e70d88beeec; PR #11 merged as f8f467f7fc649dd37d584864e2c79505fd53719e, master CI 30330308092 passed, and Vercel production deployment 6EDexdjVENq4CDJgPW7RdSwztT3h completed.
 
 ## Packet safety gates
 
@@ -35,7 +35,7 @@ The reviewed packet was executed once in the controlled Production window and it
 
 ## Scope and stop gate
 
-Production apply was executed once in the controlled window and the independent postcheck passed. The current gate is final evidence review only; do not execute another Production write, replay an old Migration, or start Batch 4.
+Production apply was executed once in the controlled window and the independent postcheck passed. Final evidence review returned PASS; PR #11 is merged and the production deployment completed. Wait for the user's next instruction; do not execute another Production write, replay an old Migration, or start Batch 4.
 
 
 ## Controlled Production apply and postcheck (2026-07-28T11:06:50+08:00)
@@ -62,7 +62,8 @@ Independent SELECT-only postcheck results:
 - `in_progress_sync_runs=0`.
 
 No old Migration was replayed, no old history row was updated, and no Batch 4
-operation started. Final post-apply evidence is submitted for independent review.
+operation started. Final post-apply evidence received independent PASS; PR #11
+was merged and production deployment completed.
 ## Reproducible files
 
 - SQL packet: [00052 Production apply SQL](sql/2026-07-28-opt6-00052-production-apply.sql)

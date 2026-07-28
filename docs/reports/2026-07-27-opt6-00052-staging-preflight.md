@@ -2,7 +2,7 @@
 
 ## Status
 
-STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION 00052 APPLY-POSTCHECK COMPLETE / FINAL EVIDENCE REVIEW PENDING
+STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION 00052 APPLY-POSTCHECK PASS / FINAL EVIDENCE REVIEW PASS / PR #11 MERGED / PRODUCTION DEPLOYMENT COMPLETE / BATCH 4 PROHIBITED
 
 Batch 3 implementation and documentation-only status-sync reviews are PASS.
 This packet is a SELECT-only read-only preflight for the reviewed 00052 candidate.
@@ -57,7 +57,7 @@ Staging baseline; its expected full-payload digest is
 
 After the corrected baseline received independent review PASS, the packet was executed once in the Staging SQL Editor as a single SELECT-only statement. It returned one row and performed no write, Migration execution, or history registration. Every hard-stop gate passed: rows_51, uniqueness, 00001/00051 bounds, no timestamp versions, exact version set, and absence of 00052 were all true. Actual and expected version/name digest both equal 2d6174dce487614c3280456fff9169d0. Actual and expected full statements[] payload digest both equal 8ec295c38bc90f769dc35ca5fd64a500; the two explicit history equality booleans and both product policy booleans are true. The observed product-policy digest is 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs is 0.
 
-The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This PASS records the Staging read-only stage only; the reviewed Production 00052 apply/postcheck has since completed once and passed. The current gate is final evidence review only; no further Production write, old Migration replay, or Batch 4 is allowed.
+The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This PASS records the Staging read-only stage only; the reviewed Production 00052 apply/postcheck has since completed once and passed. Final independent evidence review returned PASS at HEAD e92b8720dbc2be29dc371e5de61c6e70d88beeec; PR #11 is merged and production deployment completed. No further Production write, old Migration replay, or Batch 4 is allowed.
 
 ## Scope and safety
 
@@ -66,8 +66,8 @@ The designated independent reviewer returned PASS for this read-only result at h
 - No apply packet was created or authorized.
 - The Staging packet itself performed no remote write; the later reviewed Production
   00052 apply/postcheck completed once and passed. No further Production write, old
-  Migration replay, or later candidate group (Batch 4) is allowed while final evidence
-  review is pending.
+  Migration replay, or later candidate group (Batch 4) is allowed. Final evidence
+  review passed and PR #11 is merged; this stop gate remains in force.
 
 ## Verification record
 

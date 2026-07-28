@@ -2,12 +2,12 @@
 
 ## Current status
 
-STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION 00052 APPLY-POSTCHECK COMPLETE / FINAL EVIDENCE REVIEW PENDING
+STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION 00052 APPLY-POSTCHECK PASS / FINAL EVIDENCE REVIEW PASS / PR #11 MERGED / PRODUCTION DEPLOYMENT COMPLETE / BATCH 4 PROHIBITED
 
 The reviewed 00052 implementation and status-sync record are PASS. This evidence
 records the prepared SELECT-only packet; the Staging packet performed no write.
 The reviewed Production 00052 apply/postcheck has since completed once and passed;
-the current gate is final evidence review only.
+Final independent evidence review returned PASS at HEAD e92b8720dbc2be29dc371e5de61c6e70d88beeec; PR #11 is merged and production deployment completed. The current gate is wait for the user's next instruction.
 
 ## Read-only result and reconciliation
 
@@ -34,7 +34,7 @@ Fresh independent review and one further SELECT-only revalidation were required;
 
 The corrected packet was run once as SELECT-only in Staging after independent review PASS. It returned one row and made no write. All hard-stop booleans were true: exact 51-row history/set, no 00052, exact version/name mapping, exact full statements[] payload, two exact public.product policies, and zero in-progress sync runs. Actual and expected version/name digest were both 2d6174dce487614c3280456fff9169d0; actual and expected full-payload digest were both 8ec295c38bc90f769dc35ca5fd64a500; observed product-policy digest was 119e5878b2ddd6d3f7c1c01e614c4112.
 
-The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This historical Staging PASS was not itself an apply authorization; the reviewed Production 00052 apply/postcheck has since completed once and passed. No further Production write, old Migration replay, or Batch 4 is allowed while final evidence review is pending.
+The designated independent reviewer returned PASS for this read-only result at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. This historical Staging PASS was not itself an apply authorization; the reviewed Production 00052 apply/postcheck has since completed once and passed. Final evidence review returned PASS; PR #11 is merged and production deployment completed. No further Production write, old Migration replay, or Batch 4 is allowed.
 
 ## Hard-stop assertions
 
