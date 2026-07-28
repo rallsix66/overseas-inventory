@@ -141,8 +141,8 @@ BEGIN
       policy.polpermissive AS permissive,
       policy.polroles::text AS roles,
       policy.polcmd AS command,
-      regexp_replace(coalesce(pg_get_expr(policy.polqual, policy.polrelid), ''), '\\s+', '', 'g') AS qual,
-      regexp_replace(coalesce(pg_get_expr(policy.polwithcheck, policy.polrelid), ''), '\\s+', '', 'g') AS with_check
+      regexp_replace(coalesce(pg_get_expr(policy.polqual, policy.polrelid), ''), '\s+', '', 'g') AS qual,
+      regexp_replace(coalesce(pg_get_expr(policy.polwithcheck, policy.polrelid), ''), '\s+', '', 'g') AS with_check
     FROM pg_policy policy
     JOIN pg_class relation ON relation.oid = policy.polrelid
     JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
@@ -516,8 +516,8 @@ BEGIN
       policy.polpermissive AS permissive,
       policy.polroles::text AS roles,
       policy.polcmd AS command,
-      regexp_replace(coalesce(pg_get_expr(policy.polqual, policy.polrelid), ''), '\\s+', '', 'g') AS qual,
-      regexp_replace(coalesce(pg_get_expr(policy.polwithcheck, policy.polrelid), ''), '\\s+', '', 'g') AS with_check
+      regexp_replace(coalesce(pg_get_expr(policy.polqual, policy.polrelid), ''), '\s+', '', 'g') AS qual,
+      regexp_replace(coalesce(pg_get_expr(policy.polwithcheck, policy.polrelid), ''), '\s+', '', 'g') AS with_check
     FROM pg_policy policy
     JOIN pg_class relation ON relation.oid = policy.polrelid
     JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
