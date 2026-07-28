@@ -42,11 +42,10 @@ policy catalog checks, canonical 00052 payload, and a 52-row postcheck. It has n
 been executed. See the [apply report](../reports/2026-07-28-opt6-00052-production-apply.md),
 [evidence](../reports/evidence/2026-07-28-opt6-00052-production-apply.md), and
 [SQL packet](../reports/sql/2026-07-28-opt6-00052-production-apply.sql).
-Independent review is required before requesting a controlled Production apply
-window; review PASS does not execute the packet.
+Independent review PASS is recorded at head c8b679ecbfc00ca7d414a40d8f2a10f1228259a5, CI 30322612198, and Vercel 9cLc8DEK6mH35UdeoFen2i2yr76b. A separately controlled Production apply window is pending; review PASS does not execute the packet.
 
 
-OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / PRODUCTION APPLY PACKET REVIEW PENDING / REMOTE WRITE PROHIBITED
+OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / PRODUCTION APPLY PACKET REVIEW FINAL PASS / CONTROLLED WINDOW PENDING / REMOTE WRITE PROHIBITED
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK

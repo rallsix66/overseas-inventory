@@ -269,5 +269,4 @@ locks history and sync runs before the body, checks the exact reviewed 00001-000
 full payload and product policy catalog, embeds canonical 00052 (5786 chars,
 MD5 `580fd279b2f8d07f6c5a550acc82812a`), and postchecks 52 history rows, four
 policies, unchanged old history, and zero active sync runs. Static contract 6/6
-and lint pass. It has not been executed; independent review is required before a
-controlled Production apply window. Production write and Batch 4 remain prohibited.
+and lint pass. It has not been executed; independent review PASS is recorded at head c8b679ecbfc00ca7d414a40d8f2a10f1228259a5, CI 30322612198, and Vercel 9cLc8DEK6mH35UdeoFen2i2yr76b. A separately controlled Production apply window is pending. Production write and Batch 4 remain prohibited.

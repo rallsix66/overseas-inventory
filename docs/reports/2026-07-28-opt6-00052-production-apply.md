@@ -2,7 +2,7 @@
 
 ## Status
 
-PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / APPLY PACKET PREPARED / INDEPENDENT REVIEW PENDING / REMOTE WRITE PROHIBITED
+PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / APPLY PACKET REVIEW FINAL PASS / CONTROLLED WINDOW PENDING / REMOTE WRITE PROHIBITED
 
 This packet is prepared for a separately reviewed controlled Production window. It
 has not been executed. Migration 00052 has not been replayed, no Production policy
@@ -37,11 +37,7 @@ has been changed, and Batch 4 has not started.
 
 ## Scope and stop gate
 
-This is preparation only. Independent review of the complete diff, packet structure,
-canonical payload, history/policy/sync gates, links/secrets/orphans, CI, and Vercel
-is required before any controlled Production apply window. Review PASS does not by
-itself execute the packet; Production write, Migration replay outside this packet,
-and Batch 4 remain prohibited.
+This is preparation only. Independent review returned PASS at head c8b679ecbfc00ca7d414a40d8f2a10f1228259a5, CI 30322612198, and Vercel 9cLc8DEK6mH35UdeoFen2i2yr76b. A separately controlled Production apply window is pending; review PASS does not execute the packet, and Production write, Migration replay outside this packet, and Batch 4 remain prohibited.
 
 ## Reproducible files
 
