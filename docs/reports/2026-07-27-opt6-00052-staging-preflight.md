@@ -76,8 +76,8 @@ The designated independent reviewer returned PASS for this read-only result at h
 - PostgreSQL contract: src/features/database/opt6-00052-staging-preflight.postgres.test.ts.
 - Earlier correction exact head: 48c81ca6417b45bbd1bcd1ed5a46e2988861202e; CI
   30245747778; Vercel Preview 5UTs9Zqfgi7ECf9bF4Adz8AzUUdY.
-- This baseline correction requires its own independent review and exact-head
-  quality verification before revalidation.
+- This baseline correction received independent review and exact-head quality
+  verification before the completed revalidation.
 
 ## Navigation
 
