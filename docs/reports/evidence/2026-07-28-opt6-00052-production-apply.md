@@ -29,6 +29,7 @@ Migration replay outside the packet, or Batch 4.
 ## Local verification
 
 - Static contract: 6/6 focused tests PASS.
+- PostgreSQL apply contract: full packet execution plus history/policy/active-sync drift rollback cases are included in `test:database-contract`.
 - Lint with zero warnings: PASS.
 - No remote apply has been attempted.
 
@@ -43,4 +44,5 @@ window is explicitly opened; no Production SQL write or Batch 4 action is allowe
 - SQL: [00052 Production apply packet](../sql/2026-07-28-opt6-00052-production-apply.sql)
 - Main report: [apply packet report](../2026-07-28-opt6-00052-production-apply.md)
 - Static contract: [apply packet static contract](../../../src/features/database/opt6-00052-production-apply.test.ts)
+- PostgreSQL contract: [apply packet PostgreSQL contract](../../../src/features/database/opt6-00052-production-apply.postgres.test.ts)
 - Production preflight evidence: [read-only PASS evidence](2026-07-28-opt6-00052-production-preflight.md)

@@ -70,7 +70,7 @@ VALUES('00001', '00001_initial_schema', 1, 15219, 'b9ffd51f5f16c72c95a86a55ab053
     ('00047', '00047_dashboard_warehouse_health_overview', 1, 5519, '2e68149556947358eb11f41963a2b607'),
     ('00048', '00048_restore_claim_sync_run_system', 1, 5596, '0a4a0cb7b1bcae70346efda90333e2f9'),
     ('00049', '00049_database_least_privilege_hardening', 1, 6413, '60a8e975f7a1a30e9938b6a43eb8aea5'),
-    ('00050', '00050_optimize_auth_rls_initplan', 1, 6519, 'f5758671947c61dc1fb3bf3e94d8e8d0');,
+    ('00050', '00050_optimize_auth_rls_initplan', 1, 6519, 'f5758671947c61dc1fb3bf3e94d8e8d0'),
     ('00051', '00051_optimize_role_rls_policy_overlap', 1, 5686, 'aee8d4811b5382afc9786ef0dae195be');
 
 DO $$

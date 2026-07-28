@@ -31,6 +31,7 @@ has been changed, and Batch 4 has not started.
 ## Verification
 
 - Static packet contract: 6/6 focused tests passed.
+- PostgreSQL apply contract: the complete packet is included in `test:database-contract` with normal execution and history/policy/active-sync drift rollback cases.
 - `npm run lint -- --max-warnings 0`: PASS.
 - Packet SQL is indexed from the evidence and task navigation below.
 
@@ -48,4 +49,5 @@ and Batch 4 remain prohibited.
 - Evidence: [apply packet evidence](evidence/2026-07-28-opt6-00052-production-apply.md)
 - Migration: [00052 migration](../../supabase/migrations/00052_optimize_product_rls_policy_overlap.sql)
 - Static contract: [apply packet contract](../../src/features/database/opt6-00052-production-apply.test.ts)
+- PostgreSQL contract: [apply packet PostgreSQL contract](../../src/features/database/opt6-00052-production-apply.postgres.test.ts)
 - Prior read-only PASS: [Production preflight](2026-07-28-opt6-00052-production-preflight.md)
