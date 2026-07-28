@@ -2,7 +2,7 @@
 
 ## Status
 
-STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION 00052 APPLY-POSTCHECK COMPLETE / FINAL EVIDENCE REVIEW PENDING
+STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION 00052 APPLY-POSTCHECK PASS / FINAL EVIDENCE REVIEW PASS / PR #11 MERGED / PRODUCTION DEPLOYMENT COMPLETE / BATCH 4 PROHIBITED
 
 Batch 3 implementation and documentation-only status-sync reviews are PASS.
 This packet is a SELECT-only read-only preflight for the reviewed 00052 candidate.
@@ -66,8 +66,8 @@ The designated independent reviewer returned PASS for this read-only result at h
 - No apply packet was created or authorized.
 - The Staging packet itself performed no remote write; the later reviewed Production
   00052 apply/postcheck completed once and passed. No further Production write, old
-  Migration replay, or later candidate group (Batch 4) is allowed while final evidence
-  review is pending.
+  Migration replay, or later candidate group (Batch 4) is allowed. Final evidence
+  review passed and PR #11 is merged; this stop gate remains in force.
 
 ## Verification record
 
