@@ -23,15 +23,16 @@ evidence review is pending; Batch 4 has not started.
 - Postcheck requires 52 history rows, unchanged old history, exact canonical
   `00052`, four product policies, and zero active sync runs before `COMMIT`.
 
-Any false gate is a hard stop. This packet does not authorize a Production write,
-Migration replay outside the packet, or Batch 4.
+Any false gate is a hard stop. The controlled Production apply has completed once;
+no further Production write, Migration replay outside the packet, or Batch 4 is allowed.
 
 ## Local verification
 
 - Static contract: 6/6 focused tests PASS.
 - PostgreSQL apply contract: full packet execution plus history/policy/active-sync drift rollback cases are included in `test:database-contract`.
 - Lint with zero warnings: PASS.
-- No remote apply has been attempted.
+- The remote apply was executed once in the controlled window; no additional
+  apply or write has been attempted.
 
 ## Stop gate
 

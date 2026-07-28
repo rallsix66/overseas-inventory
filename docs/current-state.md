@@ -1,6 +1,6 @@
 # Current Project State
 
-The corrected 00052 Staging SELECT-only revalidation returned one row with all history, full statements[] payload, public.product policy, and active-sync hard-stop gates passing. Version/name digests matched at 2d6174dce487614c3280456fff9169d0; full-payload digests matched at 8ec295c38bc90f769dc35ca5fd64a500; in_progress_sync_runs=0. No write, Migration, or apply packet ran. The designated independent reviewer returned PASS for this read-only stage at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. Production, 00052 apply, and Batch 4 remain prohibited.
+The corrected 00052 Staging SELECT-only revalidation returned one row with all history, full statements[] payload, public.product policy, and active-sync hard-stop gates passing. Version/name digests matched at 2d6174dce487614c3280456fff9169d0; full-payload digests matched at 8ec295c38bc90f769dc35ca5fd64a500; in_progress_sync_runs=0. No write, Migration, or apply packet ran during that Staging read-only stage. The designated independent reviewer returned PASS for this read-only stage at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. Production 00052 apply/postcheck has since completed once and passed; the current gate is final evidence review only. No further Production write, old Migration replay, or Batch 4 is allowed.
 
 > Current gate (2026-07-22 Batch 3): Batch 2 Staging/Production `00051`
 > apply/postcheck remains closed with its historical independent `PASS` at
