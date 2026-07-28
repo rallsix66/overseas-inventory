@@ -2,11 +2,9 @@
 
 ## Status
 
-PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / APPLY PACKET REVIEW FINAL PASS / CONTROLLED WINDOW PENDING / REMOTE WRITE PROHIBITED
+PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / APPLY AND POSTCHECK EXECUTED / INDEPENDENT REVIEW PENDING / BATCH 4 PROHIBITED
 
-This packet is prepared for a separately reviewed controlled Production window. It
-has not been executed. Migration 00052 has not been replayed, no Production policy
-has been changed, and Batch 4 has not started.
+The reviewed packet was executed once in the controlled Production window and its independent postcheck passed. Migration 00052 is registered exactly once, old history was unchanged, and Batch 4 has not started. Final evidence review is pending.
 
 ## Packet safety gates
 
@@ -39,6 +37,32 @@ has been changed, and Batch 4 has not started.
 
 This is preparation only. Independent review returned PASS at head c8b679ecbfc00ca7d414a40d8f2a10f1228259a5, CI 30322612198, and Vercel 9cLc8DEK6mH35UdeoFen2i2yr76b. A separately controlled Production apply window is pending; review PASS does not execute the packet, and Production write, Migration replay outside this packet, and Batch 4 remain prohibited.
 
+
+## Controlled Production apply and postcheck (2026-07-28T11:06:50+08:00)
+
+The reviewed packet was executed once in the Production SQL Editor after the
+independent packet PASS. Supabase returned `Success. No rows returned` and the
+single transaction committed. The earlier editor submission that showed a
+syntax error was caused by stale editor text before execution; it produced no
+remote write and was not treated as an apply.
+
+Independent SELECT-only postcheck results:
+
+- `history_rows=52`, `unique_versions=52`, `unique_names=52`, range
+  `00001..00052`, and `timestamp_versions=0`.
+- `00052_optimize_product_rls_policy_overlap`, one statement, 5786 characters,
+  MD5 `580fd279b2f8d07f6c5a550acc82812a`.
+- Unchanged `00001..00051` full-payload digest
+  `0b7cba5a88fff139fb0ec65e4deaa142`; version/name digest
+  `2d6174dce487614c3280456fff9169d0`; old history row count 51.
+- Four permissive `public.product` policies with roles `{0}` and commands
+  `d`, `a`, `r`, `w`: `product_delete_admin`, `product_insert_admin`,
+  `product_select_admin_or_operator`, and `product_update_admin`; the reviewed
+  admin/operator predicates and admin UPDATE `WITH CHECK` are present.
+- `in_progress_sync_runs=0`.
+
+No old Migration was replayed, no old history row was updated, and no Batch 4
+operation started. Final post-apply evidence is submitted for independent review.
 ## Reproducible files
 
 - SQL packet: [00052 Production apply SQL](sql/2026-07-28-opt6-00052-production-apply.sql)

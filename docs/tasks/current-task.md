@@ -34,23 +34,20 @@ The packet and static/PostgreSQL contract were corrected and independently re-ap
 ### Production 00052 SELECT-only preflight execution (2026-07-28)
 
 The Production SELECT-only packet was executed exactly once after implementation-review PASS. All history/version-name/full-payload, public.product, and active-sync gates returned true; actual and expected version/name digests both were 2d6174dce487614c3280456fff9169d0, full-payload digests both were 0b7cba5a88fff139fb0ec65e4deaa142, product policy digest was 119e5878b2ddd6d3f7c1c01e614c4112, and in_progress_sync_runs=0. No write, Migration, or apply packet ran. The designated independent reviewer returned PASS at head 7f83f01c847d685e865d2c4c7c4d8012267ed085, CI 30276563343, and Vercel 4QSHNyh9PDfbnpWMrMeiadV2YBts. See the [Production preflight report](../reports/2026-07-28-opt6-00052-production-preflight.md) and [evidence](../reports/evidence/2026-07-28-opt6-00052-production-preflight.md). No Production write, apply packet, Migration, or Batch 4 is authorized.
-### Production 00052 apply packet preparation (2026-07-28)
+### Production 00052 apply and postcheck (2026-07-28)
 
-The reviewed Production apply packet is prepared with lock-before-body ordering,
-exact 00001-00051 full-history and active-sync gates, complete pre/post product
-policy catalog checks, canonical 00052 payload, and a 52-row postcheck. It has not
-been executed. See the [apply report](../reports/2026-07-28-opt6-00052-production-apply.md),
-[evidence](../reports/evidence/2026-07-28-opt6-00052-production-apply.md), and
-[SQL packet](../reports/sql/2026-07-28-opt6-00052-production-apply.sql).
-Independent review PASS is recorded at head c8b679ecbfc00ca7d414a40d8f2a10f1228259a5, CI 30322612198, and Vercel 9cLc8DEK6mH35UdeoFen2i2yr76b. A separately controlled Production apply window is pending; review PASS does not execute the packet.
+The reviewed Production apply packet was executed once after the packet review PASS.
+The transaction committed and the independent SELECT-only postcheck returned:
+52 history rows (`00001..00052`), exact old-history digests, canonical 00052
+payload (5786 chars / MD5 `580fd279b2f8d07f6c5a550acc82812a`), four reviewed
+`public.product` policies, and `in_progress_sync_runs=0`. See the [apply report](../reports/2026-07-28-opt6-00052-production-apply.md) and [evidence](../reports/evidence/2026-07-28-opt6-00052-production-apply.md). Final post-apply evidence review is pending; Batch 4 remains prohibited.
 
-
-OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / PRODUCTION APPLY PACKET REVIEW FINAL PASS / CONTROLLED WINDOW PENDING / REMOTE WRITE PROHIBITED
+OPT-6-PROGRESSIVE-QUALITY-GOVERNANCE - BATCH 2 REMOTE APPLY/POSTCHECK PASS / BATCH 3 IMPLEMENTATION REVIEW PASS / STAGING SELECT-ONLY REVALIDATION FINAL PASS / PRODUCTION SELECT-ONLY PREFLIGHT FINAL PASS / PRODUCTION APPLY AND POSTCHECK EXECUTED / INDEPENDENT REVIEW PENDING / BATCH 4 PROHIBITED
 
 > The title above is a packet label. The current state is
 > `STAGING REMOTE APPLY/POSTCHECK FINAL PASS / PRODUCTION APPLY/POSTCHECK
-> FINAL PASS / BATCH 3 IMPLEMENTATION REVIEW PASS`; no remote write is
-> authorized for 00052.
+> EXECUTED / FINAL POST-APPLY EVIDENCE REVIEW PENDING`; no Batch 4 action is
+> authorized.
 
 ## Handoff from OPT-5
 
