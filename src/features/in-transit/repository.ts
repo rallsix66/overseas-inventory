@@ -8,11 +8,13 @@ import { createClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import type {
+  GoluckyImportResult,
   ShipmentBindingCandidate,
   ShipmentExternalRefRow,
   TrackingEventExternalRow,
 } from './types';
 import type { PostgrestError } from '@supabase/supabase-js';
+import { goluckyImportResultSchema } from './schema';
 
 export type ExternalRefWithTracking = ShipmentExternalRefRow & {
   events: TrackingEventExternalRow[];
@@ -278,5 +280,69 @@ export const externalTrackingRepository = {
     }
 
     return data;
+  },
+
+  /** P0: 批量导入喜运达运单 — 封装 RPC 调用、参数映射与返回值校验 */
+  async importGoluckyRefs(
+    items: Array<{
+      waybillNo: string;
+      warehouseId: string;
+      country: string;
+      externalOrderNo?: string;
+    }>,
+  ): Promise<GoluckyImportResult> {
+    const supabase = await createClient();
+
+    const pItems = items.map((item) => ({
+      waybill_no: item.waybillNo,
+      warehouse_id: item.warehouseId,
+      country: item.country,
+      external_order_no: item.externalOrderNo ?? null,
+    }));
+
+    const { data, error } = await supabase.rpc('import_golucky_refs', {
+      p_items: pItems,
+    });
+
+    if (error) {
+      throw new ExternalTrackingError(`导入失败: ${error.message}`, 'DB_ERROR');
+    }
+
+    const parsed = goluckyImportResultSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new ExternalTrackingError('导入返回数据格式异常', 'DB_ERROR');
+    }
+
+    return parsed.data;
+  },
+
+  /** P0: 绑定外部物流记录到 Shipment — 封装 RPC 调用 */
+  async bindExternalRefToShipment(
+    refId: string,
+    shipmentId: string,
+  ): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase.rpc('bind_external_ref_to_shipment', {
+      p_ref_id: refId,
+      p_shipment_id: shipmentId,
+    });
+
+    if (error) {
+      throw new ExternalTrackingError(`绑定失败: ${error.message}`, 'DB_ERROR');
+    }
+  },
+
+  /** P0: 重激活外部物流记录同步 — 封装 RPC 调用 */
+  async reactivateExternalRef(refId: string): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase.rpc('reactivate_external_ref', {
+      p_ref_id: refId,
+    });
+
+    if (error) {
+      throw new ExternalTrackingError(`重激活失败: ${error.message}`, 'DB_ERROR');
+    }
   },
 };

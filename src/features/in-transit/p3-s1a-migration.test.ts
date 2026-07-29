@@ -353,7 +353,7 @@ describe('P3-S1A — 范围约束（P0 更新：喜运达 golucky 模块新增�
       const files = fs.readdirSync(inTransitDir);
       const allowedFiles = [
         'types.ts', 'schema.ts', 'p3-s1a-migration.test.ts', 'p0-golucky.test.ts',
-        'p0-golucky-binding-ui.test.ts',
+        'p0-golucky-binding-ui.test.ts', 'actions-behavior.test.ts',
         'actions.ts', 'repository.ts', 'golucky-sync.ts', 'golucky-import.ts',
         'components',
       ];

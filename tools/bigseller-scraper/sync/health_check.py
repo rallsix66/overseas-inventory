@@ -157,7 +157,10 @@ def main():
 
             try:
                 # ── Navigate to inventory page ───────────────────
-                page.goto(INVENTORY_URL, wait_until='domcontentloaded', timeout=30000)
+                # BigSeller may leave DOMContentLoaded pending when an optional
+                # third-party asset stalls. Continue once the document response
+                # commits, then rely on the explicit login/table checks below.
+                page.goto(INVENTORY_URL, wait_until='commit', timeout=30000)
                 page.wait_for_timeout(4000)
 
                 page_url = page.url.lower()

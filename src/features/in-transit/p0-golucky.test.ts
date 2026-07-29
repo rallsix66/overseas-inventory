@@ -8,9 +8,9 @@
 // 5. 绑定并发保护 — FOR UPDATE + AND shipment_id IS NULL
 // 6. 外部轨迹详情展示链路 — 页面 import + 组件存在性
 //
-// 纯静态文本检查 + 纯函数单元测试，不连接 Supabase。
+// 纯静态文本检查 + 纯函数单元测试 + Repository Mock 单测，不连接 Supabase。
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -21,6 +21,7 @@ const CRON_ROUTE_PATH = path.resolve(process.cwd(), 'src/app/api/cron/golucky/ro
 const VERCEL_JSON_PATH = path.resolve(process.cwd(), 'vercel.json');
 const DETAIL_PAGE_PATH = path.resolve(process.cwd(), 'src/app/dashboard/shipments/[id]/page.tsx');
 const ACTIONS_PATH = path.resolve(process.cwd(), 'src/features/in-transit/actions.ts');
+const REPOSITORY_PATH = path.resolve(process.cwd(), 'src/features/in-transit/repository.ts');
 
 // ─── 1. Token RPC 权限 — 00040 ──────────────────────────────────────────
 
@@ -463,10 +464,15 @@ describe('P0-GOLUCKY — 外部轨迹详情展示链路', () => {
     expect(actionsSrc).not.toMatch(/service.?_role/i);
   });
 
-  it('actions.ts 使用服务端 createClient（用户会话）', () => {
+  it('actions.ts 是 Server Action 但不直接调用 createClient、supabase.rpc 或 supabase.from', () => {
     const actionsSrc = fs.readFileSync(ACTIONS_PATH, 'utf-8');
-    // 应有 'use server' 或导入 createClient
+    // 应有 'use server'
     expect(actionsSrc).toMatch(/'use server'/);
+    // 不得导入 createClient（应通过 Repository 访问数据库）
+    expect(actionsSrc).not.toMatch(/import\s+\{\s*createClient\s*\}/);
+    // 不得直接调用 supabase.rpc 或 supabase.from
+    expect(actionsSrc).not.toMatch(/supabase\.rpc\(/);
+    expect(actionsSrc).not.toMatch(/supabase\.from\(/);
   });
 });
 
@@ -694,11 +700,16 @@ describe('P0-GOLUCKY — 同步失败错误持久化与重试', () => {
     expect(fn).toMatch(/未知错误/);
   });
 
-  // ── 9.4 重激活链路不变 ──
+  // ── 9.4 重激活链路：Repository 封装 RPC ──
 
-  it('reactivateExternalRef action 仍通过 RPC 重激活', () => {
-    const fn = extractTsMethod(actionsSrc, 'reactivateExternalRef');
+  it('reactivateExternalRef 通过 Repository 调用 reactivate_external_ref RPC', () => {
+    const fn = extractTsMethod(repoSrc, 'reactivateExternalRef');
     expect(fn).toMatch(/reactivate_external_ref/);
+  });
+
+  it('reactivateExternalRef action 调用 externalTrackingRepository.reactivateExternalRef', () => {
+    const fn = extractTsMethod(actionsSrc, 'reactivateExternalRef');
+    expect(fn).toMatch(/externalTrackingRepository\.reactivateExternalRef/);
   });
 
   it('reactivateExternalRef Zod schema 仅需 refId', () => {
@@ -958,6 +969,356 @@ describe('P0-GOLUCKY — 网络错误诊断与安全脱敏', () => {
     const syncSrc2 = fs.readFileSync(syncPath, 'utf-8');
     // 错误消息仅使用 err.message，不自行构建含凭证的字符串
     expect(syncSrc2).toMatch(/err instanceof Error \? err\.message/);
+  });
+});
+
+// ─── 11. Repository 边界 — Action → Repository 调用链 ─────────────────
+
+describe('P0-GOLUCKY — Repository 边界：Action → Repository', () => {
+  let actionsSrc: string;
+  let repoSrc: string;
+
+  beforeAll(() => {
+    actionsSrc = fs.readFileSync(ACTIONS_PATH, 'utf-8');
+    repoSrc = fs.readFileSync(REPOSITORY_PATH, 'utf-8');
+  });
+
+  it('importGoluckyRefs action 调用 externalTrackingRepository.importGoluckyRefs', () => {
+    // extractTsMethod 无法处理泛型返回值含 { 的函数签名，使用全文匹配
+    expect(actionsSrc).toMatch(
+      /externalTrackingRepository\.importGoluckyRefs\(parsed\.data\.items\)/,
+    );
+  });
+
+  it('bindExternalRefToShipment action 调用 externalTrackingRepository.bindExternalRefToShipment', () => {
+    const fn = extractTsMethod(actionsSrc, 'bindExternalRefToShipment');
+    expect(fn).toMatch(/externalTrackingRepository\.bindExternalRefToShipment/);
+  });
+
+  it('reactivateExternalRef action 调用 externalTrackingRepository.reactivateExternalRef', () => {
+    const fn = extractTsMethod(actionsSrc, 'reactivateExternalRef');
+    expect(fn).toMatch(/externalTrackingRepository\.reactivateExternalRef/);
+  });
+
+  it('actions 不导入 createClient', () => {
+    expect(actionsSrc).not.toMatch(/import\s+\{\s*createClient\s*\}/);
+  });
+
+  it('actions 不调用 supabase.rpc', () => {
+    const actionBodies = [
+      extractTsMethod(actionsSrc, 'importGoluckyRefs'),
+      extractTsMethod(actionsSrc, 'bindExternalRefToShipment'),
+      extractTsMethod(actionsSrc, 'reactivateExternalRef'),
+    ];
+    for (const body of actionBodies) {
+      expect(body).not.toMatch(/supabase\.rpc\(/);
+    }
+  });
+
+  it('actions 不调用 supabase.from', () => {
+    expect(actionsSrc).not.toMatch(/supabase\.from\(/);
+  });
+
+  it('Repository.importGoluckyRefs 调用 supabase.rpc import_golucky_refs 并映射参数', () => {
+    const fn = extractTsMethod(repoSrc, 'importGoluckyRefs');
+    expect(fn).toMatch(/\.rpc\(['"]import_golucky_refs['"]/);
+    expect(fn).toMatch(/p_items/);
+    expect(fn).toMatch(/waybill_no/);
+    expect(fn).toMatch(/warehouse_id/);
+    expect(fn).toMatch(/external_order_no/);
+  });
+
+  it('Repository.bindExternalRefToShipment 调用 supabase.rpc bind_external_ref_to_shipment', () => {
+    const fn = extractTsMethod(repoSrc, 'bindExternalRefToShipment');
+    expect(fn).toMatch(/\.rpc\(['"]bind_external_ref_to_shipment['"]/);
+    expect(fn).toMatch(/p_ref_id/);
+    expect(fn).toMatch(/p_shipment_id/);
+  });
+
+  it('Repository.reactivateExternalRef 调用 supabase.rpc reactivate_external_ref', () => {
+    const fn = extractTsMethod(repoSrc, 'reactivateExternalRef');
+    expect(fn).toMatch(/\.rpc\(['"]reactivate_external_ref['"]/);
+    expect(fn).toMatch(/p_ref_id/);
+  });
+
+  it('Repository.importGoluckyRefs 使用 goluckyImportResultSchema 校验返回值', () => {
+    const fn = extractTsMethod(repoSrc, 'importGoluckyRefs');
+    expect(fn).toMatch(/goluckyImportResultSchema\.safeParse/);
+  });
+
+  it('Repository 方法对 RPC error 抛出 ExternalTrackingError', () => {
+    const importFn = extractTsMethod(repoSrc, 'importGoluckyRefs');
+    const bindFn = extractTsMethod(repoSrc, 'bindExternalRefToShipment');
+    const reactivateFn = extractTsMethod(repoSrc, 'reactivateExternalRef');
+
+    for (const fn of [importFn, bindFn, reactivateFn]) {
+      expect(fn).toMatch(/ExternalTrackingError/);
+      expect(fn).toMatch(/error\.message/);
+    }
+  });
+
+  it('importGoluckyRefs 保留中文错误提示', () => {
+    // 使用全文匹配（extractTsMethod 无法处理泛型返回值含 { 的函数签名）
+    expect(actionsSrc).toContain('导入运单失败');
+    expect(actionsSrc).toContain('导入数据校验失败');
+  });
+
+  it('bindExternalRefToShipment 保留中文错误提示', () => {
+    const fn = extractTsMethod(actionsSrc, 'bindExternalRefToShipment');
+    expect(fn).toContain('绑定外部物流记录失败');
+    expect(fn).toContain('校验失败');
+  });
+
+  it('reactivateExternalRef 保留中文错误提示', () => {
+    const fn = extractTsMethod(actionsSrc, 'reactivateExternalRef');
+    expect(fn).toContain('重激活失败');
+    expect(fn).toContain('校验失败');
+  });
+
+  it('importGoluckyRefs 保留 revalidatePath 调用', () => {
+    // 使用全文匹配（extractTsMethod 无法处理泛型返回值含 { 的函数签名）
+    expect(actionsSrc).toMatch(/revalidatePath\(['"]\/dashboard\/shipments['"]\)/);
+    expect(actionsSrc).toMatch(
+      /revalidatePath\(['"]\/dashboard\/shipments\/import\/golucky['"]\)/,
+    );
+  });
+
+  it('bindExternalRefToShipment 保留 revalidatePath 调用', () => {
+    const fn = extractTsMethod(actionsSrc, 'bindExternalRefToShipment');
+    expect(fn).toMatch(/revalidatePath\(['"]\/dashboard\/shipments['"]\)/);
+    expect(fn).toMatch(/revalidatePath\(['"]\/dashboard\/shipments\/import\/golucky['"]\)/);
+    expect(fn).toMatch(/revalidatePath\(`\/dashboard\/shipments\/\$\{shipmentId\}`\)/);
+  });
+
+  it('reactivateExternalRef 保留 revalidatePath 调用', () => {
+    const fn = extractTsMethod(actionsSrc, 'reactivateExternalRef');
+    expect(fn).toMatch(/revalidatePath\(['"]\/dashboard\/shipments['"]\)/);
+    expect(fn).toMatch(/revalidatePath\(['"]\/dashboard\/shipments\/import\/golucky['"]\)/);
+  });
+
+  it('三个 Action 均包含 requireActiveAuth 认证调用', () => {
+    // importGoluckyRefs 使用全文匹配（extractTsMethod 无法处理泛型返回值含 { 的函数签名）
+    const bindFn = extractTsMethod(actionsSrc, 'bindExternalRefToShipment');
+    const reactivateFn = extractTsMethod(actionsSrc, 'reactivateExternalRef');
+    // importGoluckyRefs 的 requireActiveAuth 通过全文匹配验证
+    const importSection = actionsSrc.slice(
+      actionsSrc.indexOf('export async function importGoluckyRefs'),
+      actionsSrc.indexOf('export async function bindExternalRefToShipment'),
+    );
+    expect(importSection).toMatch(/requireActiveAuth/);
+    expect(bindFn).toMatch(/requireActiveAuth/);
+    expect(reactivateFn).toMatch(/requireActiveAuth/);
+  });
+});
+
+// ─── 12. Repository RPC 行为（Mock 单测）────────────────────────────────
+
+const { mockRpc, mockFrom } = vi.hoisted(() => ({
+  mockRpc: vi.fn(),
+  mockFrom: vi.fn(),
+}));
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: vi.fn(() =>
+    Promise.resolve({
+      rpc: mockRpc,
+      from: mockFrom,
+    }),
+  ),
+}));
+
+import { externalTrackingRepository } from '@/features/in-transit/repository';
+import { ExternalTrackingError } from '@/features/in-transit/repository';
+
+describe('P0-GOLUCKY — Repository RPC 行为', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ── importGoluckyRefs ──
+
+  describe('importGoluckyRefs', () => {
+    const validItems = [
+      {
+        waybillNo: 'WB001',
+        warehouseId: '00000000-0000-0000-0000-000000000001',
+        country: 'TH',
+      },
+    ];
+
+    it('调用 supabase.rpc import_golucky_refs 并传入正确参数', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: { succeeded: 1, duplicated: 0, failed: [] },
+        error: null,
+      });
+
+      await externalTrackingRepository.importGoluckyRefs(validItems);
+
+      expect(mockRpc).toHaveBeenCalledWith('import_golucky_refs', {
+        p_items: [
+          {
+            waybill_no: 'WB001',
+            warehouse_id: '00000000-0000-0000-0000-000000000001',
+            country: 'TH',
+            external_order_no: null,
+          },
+        ],
+      });
+    });
+
+    it('camelCase 参数正确映射为 snake_case', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: { succeeded: 1, duplicated: 0, failed: [] },
+        error: null,
+      });
+
+      await externalTrackingRepository.importGoluckyRefs([
+        {
+          waybillNo: 'WB002',
+          warehouseId: '00000000-0000-0000-0000-000000000002',
+          country: 'MY',
+          externalOrderNo: 'EO-123',
+        },
+      ]);
+
+      expect(mockRpc).toHaveBeenCalledWith('import_golucky_refs', {
+        p_items: [
+          {
+            waybill_no: 'WB002',
+            warehouse_id: '00000000-0000-0000-0000-000000000002',
+            country: 'MY',
+            external_order_no: 'EO-123',
+          },
+        ],
+      });
+    });
+
+    it('RPC 错误时抛出 ExternalTrackingError（DB_ERROR）', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'database connection failed', code: '08000' },
+      });
+
+      const err = await externalTrackingRepository
+        .importGoluckyRefs(validItems)
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ExternalTrackingError);
+      expect((err as ExternalTrackingError).code).toBe('DB_ERROR');
+    });
+
+    it('RPC 返回结构与 schema 不匹配时抛出 ExternalTrackingError', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: { succeeded: 'not-a-number', duplicated: 0, failed: [] },
+        error: null,
+      });
+
+      const err = await externalTrackingRepository
+        .importGoluckyRefs(validItems)
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ExternalTrackingError);
+      expect((err as ExternalTrackingError).code).toBe('DB_ERROR');
+    });
+
+    it('缺少 succeeded 字段时抛出 ExternalTrackingError', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: { duplicated: 0, failed: [] },
+        error: null,
+      });
+
+      const err = await externalTrackingRepository
+        .importGoluckyRefs(validItems)
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ExternalTrackingError);
+    });
+
+    it('failed 数组元素缺少 index 时抛出 ExternalTrackingError', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: {
+          succeeded: 0,
+          duplicated: 0,
+          failed: [{ waybill_no: 'WB001', error: 'some error' }],
+        },
+        error: null,
+      });
+
+      const err = await externalTrackingRepository
+        .importGoluckyRefs(validItems)
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ExternalTrackingError);
+    });
+
+    it('正常返回通过 Zod 校验后返回正确数据', async () => {
+      const expected = {
+        succeeded: 2,
+        duplicated: 1,
+        failed: [{ index: 3, waybill_no: 'WB003', error: '运单号重复' }],
+      };
+      mockRpc.mockResolvedValueOnce({ data: expected, error: null });
+
+      const result = await externalTrackingRepository.importGoluckyRefs(validItems);
+
+      expect(result).toEqual(expected);
+    });
+  });
+
+  // ── bindExternalRefToShipment ──
+
+  describe('bindExternalRefToShipment', () => {
+    const refId = '00000000-0000-0000-0000-000000000001';
+    const shipmentId = '00000000-0000-0000-0000-000000000002';
+
+    it('调用 supabase.rpc bind_external_ref_to_shipment 并传入正确参数', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: null });
+
+      await externalTrackingRepository.bindExternalRefToShipment(refId, shipmentId);
+
+      expect(mockRpc).toHaveBeenCalledWith('bind_external_ref_to_shipment', {
+        p_ref_id: refId,
+        p_shipment_id: shipmentId,
+      });
+    });
+
+    it('RPC 错误时抛出 ExternalTrackingError（DB_ERROR）', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'ALREADY_BOUND: 已绑定 Shipment', code: 'P0001' },
+      });
+
+      const err = await externalTrackingRepository
+        .bindExternalRefToShipment(refId, shipmentId)
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ExternalTrackingError);
+      expect((err as ExternalTrackingError).code).toBe('DB_ERROR');
+    });
+  });
+
+  // ── reactivateExternalRef ──
+
+  describe('reactivateExternalRef', () => {
+    const refId = '00000000-0000-0000-0000-000000000001';
+
+    it('调用 supabase.rpc reactivate_external_ref 并传入正确参数', async () => {
+      mockRpc.mockResolvedValueOnce({ data: null, error: null });
+
+      await externalTrackingRepository.reactivateExternalRef(refId);
+
+      expect(mockRpc).toHaveBeenCalledWith('reactivate_external_ref', {
+        p_ref_id: refId,
+      });
+    });
+
+    it('RPC 错误时抛出 ExternalTrackingError（DB_ERROR）', async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'INVALID_STATUS: 仅可重激活状态为 error 或 stale 的记录', code: 'P0001' },
+      });
+
+      const err = await externalTrackingRepository
+        .reactivateExternalRef(refId)
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(ExternalTrackingError);
+      expect((err as ExternalTrackingError).code).toBe('DB_ERROR');
+    });
   });
 });
 

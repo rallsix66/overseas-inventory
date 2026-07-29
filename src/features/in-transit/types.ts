@@ -20,6 +20,20 @@ export interface ShipmentExternalRefDetail extends ShipmentExternalRefRow {
   events: TrackingEventExternalRow[];
 }
 
+/** 喜运达导入单条失败记录 */
+export interface GoluckyFailedItem {
+  index: number;
+  waybill_no: string;
+  error: string;
+}
+
+/** 喜运达批量导入 RPC 返回结构 */
+export interface GoluckyImportResult {
+  succeeded: number;
+  duplicated: number;
+  failed: GoluckyFailedItem[];
+}
+
 /** 可与未绑定外部物流记录关联的内部 Shipment。 */
 export interface ShipmentBindingCandidate {
   id: string;

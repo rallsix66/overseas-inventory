@@ -5,11 +5,10 @@
 import 'server-only';
 import { z } from 'zod';
 import { requireActiveAuth } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import type { ActionResult } from '@/types/common';
-import { externalTrackingRepository } from './repository';
-import type { ShipmentBindingCandidate } from './types';
+import { externalTrackingRepository, ExternalTrackingError } from './repository';
+import type { GoluckyImportResult, ShipmentBindingCandidate } from './types';
 
 // ─── Zod Schemas ────────────────────────────────────────
 
@@ -44,7 +43,7 @@ const listShipmentBindingCandidatesSchema = z.object({
 /** P0: 批量导入喜运达运单 */
 export async function importGoluckyRefs(
   items: z.infer<typeof importGoluckyItemSchema>[],
-): Promise<ActionResult<{ succeeded: number; duplicated: number; failed: unknown[] }>> {
+): Promise<ActionResult<GoluckyImportResult>> {
   try {
     await requireActiveAuth();
 
@@ -54,34 +53,15 @@ export async function importGoluckyRefs(
       return { success: false, error: parsed.error.issues[0]?.message ?? '导入数据校验失败' };
     }
 
-    const supabase = await createClient();
-
-    // 构建 p_items JSONB 数组
-    const pItems = parsed.data.items.map((item) => ({
-      waybill_no: item.waybillNo,
-      warehouse_id: item.warehouseId,
-      country: item.country,
-      external_order_no: item.externalOrderNo ?? null,
-    }));
-
-    const { data, error } = await supabase.rpc('import_golucky_refs', {
-      p_items: pItems,
-    });
-
-    if (error) {
-      return { success: false, error: `导入失败: ${error.message}` };
-    }
-
-    const result = data as {
-      succeeded: number;
-      duplicated: number;
-      failed: Array<{ index: number; waybill_no: string; error: string }>;
-    };
+    const result = await externalTrackingRepository.importGoluckyRefs(parsed.data.items);
 
     revalidatePath('/dashboard/shipments');
     revalidatePath('/dashboard/shipments/import/golucky');
     return { success: true, data: result };
   } catch (err) {
+    if (err instanceof ExternalTrackingError) {
+      return { success: false, error: err.message };
+    }
     const message = err instanceof Error ? err.message : '未知错误';
     return { success: false, error: `导入运单失败: ${message}` };
   }
@@ -100,22 +80,19 @@ export async function bindExternalRefToShipment(
       return { success: false, error: parsed.error.issues[0]?.message ?? '校验失败' };
     }
 
-    const supabase = await createClient();
-
-    const { error } = await supabase.rpc('bind_external_ref_to_shipment', {
-      p_ref_id: parsed.data.refId,
-      p_shipment_id: parsed.data.shipmentId,
-    });
-
-    if (error) {
-      return { success: false, error: `绑定失败: ${error.message}` };
-    }
+    await externalTrackingRepository.bindExternalRefToShipment(
+      parsed.data.refId,
+      parsed.data.shipmentId,
+    );
 
     revalidatePath('/dashboard/shipments');
     revalidatePath('/dashboard/shipments/import/golucky');
     revalidatePath(`/dashboard/shipments/${shipmentId}`);
     return { success: true };
   } catch (err) {
+    if (err instanceof ExternalTrackingError) {
+      return { success: false, error: err.message };
+    }
     const message = err instanceof Error ? err.message : '未知错误';
     return { success: false, error: `绑定外部物流记录失败: ${message}` };
   }
@@ -131,20 +108,15 @@ export async function reactivateExternalRef(refId: string): Promise<ActionResult
       return { success: false, error: parsed.error.issues[0]?.message ?? '校验失败' };
     }
 
-    const supabase = await createClient();
-
-    const { error } = await supabase.rpc('reactivate_external_ref', {
-      p_ref_id: parsed.data.refId,
-    });
-
-    if (error) {
-      return { success: false, error: `重激活失败: ${error.message}` };
-    }
+    await externalTrackingRepository.reactivateExternalRef(parsed.data.refId);
 
     revalidatePath('/dashboard/shipments');
     revalidatePath('/dashboard/shipments/import/golucky');
     return { success: true };
   } catch (err) {
+    if (err instanceof ExternalTrackingError) {
+      return { success: false, error: err.message };
+    }
     const message = err instanceof Error ? err.message : '未知错误';
     return { success: false, error: `重激活失败: ${message}` };
   }

@@ -1,7 +1,33 @@
 # Current Task Packet
 
 The corrected 00052 Staging SELECT-only revalidation ran once after its fresh implementation review PASS; all history/version-name/full-payload, product-policy, and active-sync gates passed, with no write or Migration. The designated independent reviewer returned PASS at head a2e319eeb587474b71e66888bdbccbc27f38813c, CI 30266046505, and Vercel 7Py8GVBM1NhfendWozqvRwvLCT2G. The Production 00052 SELECT-only preflight then ran exactly once with every gate true; the designated independent reviewer returned PASS at head 7f83f01c847d685e865d2c4c7c4d8012267ed085, CI 30276563343, and Vercel 4QSHNyh9PDfbnpWMrMeiadV2YBts. Production 00052 apply/postcheck completed once and passed; final evidence review returned PASS at HEAD e92b8720dbc2be29dc371e5de61c6e70d88beeec. PR #11 merged as f8f467f7fc649dd37d584864e2c79505fd53719e, master CI 30330308092 and Vercel production deployment 6EDexdjVENq4CDJgPW7RdSwztT3h passed. Current gate: wait for the user's next instruction; no further Production write, old Migration replay, or Batch 4 is allowed.
-## Task ID
+
+## Task ID: ARCH-IN-TRANSIT-REPOSITORY-BOUNDARY
+
+### Status: DONE / 验收 PASS（2026-07-29，返工完成）
+
+`actions.ts` 中 `importGoluckyRefs` / `bindExternalRefToShipment` / `reactivateExternalRef` 原先直接 `createClient()` + `supabase.rpc()`，违反 Server Action → Repository → Supabase/RPC 数据访问链路。
+
+**实施内容：**
+- `repository.ts` 新增三个方法封装 RPC 调用、参数映射和错误转换
+- `schema.ts` 新增 `goluckyImportResultSchema`（`.int().min(0)` 收紧为非负整数）
+- `types.ts` 新增 `GoluckyFailedItem` / `GoluckyImportResult`；`importGoluckyRefs` 返回类型收紧为 `ActionResult<GoluckyImportResult>`
+- `actions.ts` 移除 `createClient` import，三个 Action 改为调用 Repository；`ExternalTrackingError` 直接透传 `err.message` 避免重复业务前缀
+
+**测试：**
+- `p0-golucky.test.ts`：32 个新增 `it()`、2 个旧测试删除/替换 → 净增 30 项
+- `actions-behavior.test.ts`：新增 7 项行为测试
+- 合计净增 37 项测试，替换 2 个旧测试
+- in-transit：229/229（4 文件）
+- `npm run test`：4012/4013，1 个既有失败：`opt6-production-apply.test.ts` "embeds the canonical migration body byte-for-byte"（绑定 00051 Migration 及 Production apply SQL packet，均未被本任务修改）
+- `dry-run.live.test.ts` 被 `npm run test` 明确排除，不计入质量门
+- lint --max-warnings 0: 0 errors / 0 warnings
+- build pass（保留既有 sync NFT trace warning）
+- git diff --check pass
+
+**未做：** 不修改 Migration、OPT-6 SQL packet、sync/server-actions.ts 或其他模块，不执行 Staging/Production 写入。
+
+### Historical: OPT-6 Batch 3 gate (2026-07-22)
 
 ### Current gate (2026-07-22)
 

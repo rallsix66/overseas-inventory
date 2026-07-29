@@ -380,7 +380,10 @@ def scrape():
         page = context.new_page()
 
         try:
-            page.goto(INVENTORY_URL, wait_until='domcontentloaded', timeout=60000)
+            # BigSeller may keep DOMContentLoaded pending while third-party assets
+            # stall. Commit proves the document response arrived; the existing
+            # login/table readiness checks below remain the source of truth.
+            page.goto(INVENTORY_URL, wait_until='commit', timeout=60000)
             page.wait_for_timeout(4000)
 
             # 调试：保存初始页面截图和 URL
@@ -512,7 +515,7 @@ def scrape():
                     print('超时！请检查登录状态。')
                 # 确保在库存页
                 if 'inventory' not in page.url.lower():
-                    page.goto(INVENTORY_URL, wait_until='domcontentloaded', timeout=60000)
+                    page.goto(INVENTORY_URL, wait_until='commit', timeout=60000)
                 page.wait_for_timeout(6000)
 
             # 等表格出现
@@ -1030,7 +1033,7 @@ def _session_only_flow(page, context):
             return
         # 确保在库存页
         if 'inventory' not in page.url.lower():
-            page.goto(INVENTORY_URL, wait_until='domcontentloaded', timeout=60000)
+            page.goto(INVENTORY_URL, wait_until='commit', timeout=60000)
         page.wait_for_timeout(4000)
         _persist_session_cookies(context)
         context.close()

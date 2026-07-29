@@ -36,6 +36,20 @@ export const shipmentExternalItemSchema = z.object({
 
 export type ShipmentExternalItemValues = z.infer<typeof shipmentExternalItemSchema>;
 
+/** 喜运达导入失败项校验 */
+export const goluckyFailedItemSchema = z.object({
+  index: z.number().int().min(0),
+  waybill_no: z.string(),
+  error: z.string(),
+});
+
+/** 喜运达批量导入 RPC 返回值校验 */
+export const goluckyImportResultSchema = z.object({
+  succeeded: z.number().int().min(0),
+  duplicated: z.number().int().min(0),
+  failed: z.array(goluckyFailedItemSchema),
+});
+
 /** 外部物流轨迹校验 */
 export const trackingEventExternalSchema = z.object({
   external_ref_id: z.string().uuid(),
